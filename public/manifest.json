@@ -1,0 +1,25 @@
+{
+  "short_name": "StudentAttend",
+  "name": "STUDENT ATTEND - Sistem Kehadiran Pelajar Universal",
+  "description": "Sistem Pengurusan Kehadiran QR Pelajar Universal & Cloud Sync untuk Acara, Kuliah & Program Rasmi",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/StudentAttend/android-chrome-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/StudentAttend/android-chrome-192x192.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}

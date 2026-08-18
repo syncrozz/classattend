@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "students": {
+      "title": "Students",
+      "description": "Master directory of students across sets DIA_4A, DIA_4B, DIA_4C, DIA_4D",
+      "properties": {
+        "id": { "type": "string", "description": "Unique student identifier (e.g. PDA-2502-005)" },
+        "studentId": { "type": "string", "description": "Normalized No_Pelajar" },
+        "name": { "type": "string", "description": "Full name" },
+        "className": { "type": "string", "description": "Class set code (e.g. DIA_4B)" },
+        "classId": { "type": "string", "description": "Optional class identifier" },
+        "email": { "type": "string", "description": "Email address" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "avatarUrl": { "type": "string", "description": "Avatar URL" },
+        "department": { "type": "string", "description": "Programme or department name" }
+      },
+      "required": ["id", "studentId", "name", "className", "email", "phone"]
+    },
+    "activities": {
+      "title": "Attendance Activities",
+      "description": "Master parent activity definitions (e.g. Perhimpunan, Kuliah, Program)",
+      "properties": {
+        "id": { "type": "string", "description": "Unique activity ID" },
+        "name": { "type": "string", "description": "Activity name" },
+        "category": { "type": "string", "description": "Category enum" },
+        "description": { "type": "string", "description": "Description" },
+        "organizer": { "type": "string", "description": "Organizer name" },
+        "location": { "type": "string", "description": "Location name" },
+        "status": { "type": "string", "description": "Status ACTIVE or ARCHIVED" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "name", "category", "organizer", "status", "createdAt"]
+    },
+    "sessions": {
+      "title": "Attendance Sessions",
+      "description": "Individual attendance sessions spawned from activities",
+      "properties": {
+        "id": { "type": "string", "description": "Unique session ID" },
+        "activityId": { "type": "string", "description": "Linked activity ID" },
+        "activityName": { "type": "string", "description": "Activity name" },
+        "category": { "type": "string", "description": "Category enum" },
+        "sessionName": { "type": "string", "description": "Session name" },
+        "date": { "type": "string", "description": "Session date (YYYY-MM-DD)" },
+        "startTime": { "type": "string", "description": "Start time (HH:mm)" },
+        "endTime": { "type": "string", "description": "End time (HH:mm)" },
+        "status": { "type": "string", "description": "Status OPEN, CLOSED, or ARCHIVED" },
+        "attendanceMethod": { "type": "string", "description": "Attendance method" },
+        "qrToken": { "type": "string", "description": "QR security token" },
+        "location": { "type": "string", "description": "Location name" },
+        "organizer": { "type": "string", "description": "Organizer" },
+        "className": { "type": "string", "description": "Target class set" },
+        "subjectName": { "type": "string", "description": "Subject name" },
+        "lecturerName": { "type": "string", "description": "Lecturer name" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "activityId", "sessionName", "date", "startTime", "endTime", "status", "attendanceMethod", "createdAt"]
+    },
+    "attendanceRecords": {
+      "title": "Attendance Records",
+      "description": "Attendance scan verification logs for students in sessions",
+      "properties": {
+        "id": { "type": "string", "description": "Unique attendance record ID" },
+        "sessionId": { "type": "string", "description": "Session ID" },
+        "studentId": { "type": "string", "description": "Student ID" },
+        "timestamp": { "type": "string", "description": "ISO timestamp" },
+        "status": { "type": "string", "description": "Status PRESENT, ABSENT, etc." },
+        "method": { "type": "string", "description": "Scan method" },
+        "notes": { "type": "string", "description": "Notes" },
+        "verifiedBy": { "type": "string", "description": "Verified by identifier" }
+      },
+      "required": ["id", "sessionId", "studentId", "timestamp", "status", "method"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "students",
+      "description": "Collection of student records"
+    },
+    "/activities/{activityId}": {
+      "schema": "activities",
+      "description": "Collection of master attendance activities"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "sessions",
+      "description": "Collection of attendance sessions"
+    },
+    "/attendance_records/{recordId}": {
+      "schema": "attendanceRecords",
+      "description": "Collection of student attendance records"
+    }
+  }
+}

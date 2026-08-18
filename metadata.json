@@ -1,0 +1,10 @@
+{
+  "name": "Class Attend",
+  "description": "Sistem Pengurusan Kehadiran Khusus Kelas, Subjek dan Seksyen Pelajar KPM Bandar Penawar dengan Pengesahan Pensyarah (@bpenawar.kpm.edu.my) & Kod QR.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
