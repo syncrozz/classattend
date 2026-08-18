@@ -321,9 +321,10 @@ class AttendanceEngine {
   }
 
   // --- Lecturer Authentication & Verification ---
-  public verifyLecturer(email: string, pin: string): { success: boolean; lecturer?: Lecturer; message: string } {
+  public verifyLecturer(email: string, icOrPin: string): { success: boolean; lecturer?: Lecturer; message: string } {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPin = pin.trim();
+    const rawInput = icOrPin.trim();
+    const cleanInputNumeric = rawInput.replace(/[^0-9]/g, '');
 
     // 1. Validate email domain
     if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
@@ -337,31 +338,39 @@ class AttendanceEngine {
     const foundLecturer = this.lecturers.find((l) => l.email.toLowerCase() === cleanEmail);
 
     if (!foundLecturer) {
-      // If lecturer not preloaded, check if PIN is 4 digits and derive from email username
-      // Or inform lecturer to register their IC
       return {
         success: false,
-        message: `Emel pensyarah [${cleanEmail}] belum didaftarkan. Sila daftarkan profil pensyarah dengan No. Kad Pengenalan anda.`
+        message: `Emel pensyarah [${cleanEmail}] belum didaftarkan dalam senarai. Sila import atau daftarkan profil pensyarah dahulu.`
       };
     }
 
-    // 3. Extract last 4 digits of IC as PIN
-    const normalizedIC = foundLecturer.icNumber.replace(/[^0-9]/g, '');
-    const expectedPin = foundLecturer.pin || (normalizedIC.length >= 4 ? normalizedIC.slice(-4) : '');
+    // 3. Extract last 4 digits of IC as PIN and normalized IC
+    const normalizedRegisteredIC = (foundLecturer.icNumber || '').replace(/[^0-9]/g, '');
+    const expectedPin = foundLecturer.pin || (normalizedRegisteredIC.length >= 4 ? normalizedRegisteredIC.slice(-4) : '');
 
-    if (cleanPin === expectedPin || (cleanPin === '5313' && foundLecturer.role === 'ADMIN')) {
+    // Check matches:
+    // a) Exact 4-digit PIN match
+    const isPinMatch = rawInput === expectedPin;
+    // b) Full IC match (raw input without dashes matches registered IC without dashes)
+    const isICMatch = cleanInputNumeric.length >= 6 && cleanInputNumeric === normalizedRegisteredIC;
+    // c) Input is full IC and its last 4 digits match
+    const isLast4Match = cleanInputNumeric.length >= 4 && cleanInputNumeric.slice(-4) === expectedPin;
+    // d) Master admin emergency bypass
+    const isMasterBypass = rawInput === '5313' && foundLecturer.role === 'ADMIN';
+
+    if (isPinMatch || isICMatch || isLast4Match || isMasterBypass) {
       this.activeLecturer = foundLecturer;
       this.saveActiveLecturerLocally();
       return {
         success: true,
         lecturer: foundLecturer,
-        message: `Pengesahan Berjaya! Selamat datang, ${foundLecturer.name}.`
+        message: `Pengesahan Berjaya! Selamat bertugas, ${foundLecturer.name}.`
       };
     }
 
     return {
       success: false,
-      message: `PIN keselamatan salah! PIN mesti merupakan 4 digit terakhir No. Kad Pengenalan (${foundLecturer.name}).`
+      message: `Padanan Emel dan No. IC / PIN tidak sah! Sila masukkan No. IC sah atau 4 digit terakhir IC bagi ${foundLecturer.name}.`
     };
   }
 
@@ -407,6 +416,34 @@ class AttendanceEngine {
       success: true,
       message: `Pensyarah berjaya didaftarkan. PIN keselamatan anda adalah [${derivedPin}].`
     };
+  }
+
+  public saveLecturersList(lecturers: Lecturer[]) {
+    this.lecturers = lecturers;
+    this.saveLecturersLocally();
+
+    if (db && lecturers.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        lecturers.forEach((lecturer) => {
+          batch.set(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
+        });
+        batch.commit().catch((err) => {
+          console.warn('Error batch-saving lecturers to Firestore:', err?.message || err);
+        });
+      } catch (err) {
+        console.warn('Batch lecturers write notice:', err);
+      }
+    }
+  }
+
+  public deleteLecturer(lecturerId: string) {
+    this.lecturers = this.lecturers.filter((l) => l.id !== lecturerId);
+    this.saveLecturersLocally();
+
+    if (db) {
+      deleteDoc(doc(db, 'lecturers', lecturerId)).catch(console.warn);
+    }
   }
 
   public getActiveLecturer(): Lecturer | null {

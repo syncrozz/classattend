@@ -213,7 +213,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 1. HERO / ACTIVE SESSION ACTION BANNER */}
       {activeSession ? (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 border border-indigo-500/30 p-5 sm:p-6 shadow-xl">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex flex-col gap-5 w-full">
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="flex h-2.5 w-2.5 relative">
@@ -250,8 +250,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
 
-            {/* Quick Metrics & Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 shrink-0">
+            {/* Quick Metrics & Actions - Row Berasingan dalam 1 Kolum */}
+            <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800">
               {/* Option Switcher between Class (Primary) and Overall */}
               <div className="flex items-center justify-between sm:justify-start gap-2 border-b sm:border-b-0 sm:border-r border-slate-800 pb-2 sm:pb-0 sm:pr-3">
                 <button
@@ -282,7 +282,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {/* Stats Value Display */}
               {bannerStatMode === 'CLASS' ? (
-                <div className="flex items-center gap-1.5 sm:px-2 flex-wrap">
+                <div className="flex items-center gap-1.5 sm:px-2 flex-wrap flex-1 justify-start sm:justify-center">
                   {activeSession?.className ? (
                     <div className="px-3 py-1 rounded-lg border bg-indigo-950/60 border-indigo-500/50 text-center">
                       <div className="text-[10px] font-bold text-indigo-300">Seksyen {activeSession.className}</div>
@@ -303,7 +303,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="text-center px-3 sm:border-r border-slate-800">
+                <div className="text-center px-3 sm:border-r border-slate-800 flex-1">
                   <div className="text-2xl font-extrabold text-emerald-400">
                     {activePercent}%
                   </div>
@@ -314,7 +314,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-2 sm:pt-0 sm:pl-1">
+              <div className="flex items-center gap-2 pt-2 sm:pt-0 sm:pl-1 shrink-0">
                 <button
                   id="dashboard-btn-open-scanner"
                   onClick={onOpenScanner}

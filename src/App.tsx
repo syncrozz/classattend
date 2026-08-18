@@ -46,6 +46,7 @@ export default function App() {
   const [isAdminPinModalOpen, setIsAdminPinModalOpen] = useState<boolean>(false);
   const [adminActionTitle, setAdminActionTitle] = useState<string>('Sila Sahkan Akses Admin / Pensyarah');
   const [isCSVModalOpen, setIsCSVModalOpen] = useState<boolean>(false);
+  const [csvImportInitialMode, setCsvImportInitialMode] = useState<'STUDENT' | 'LECTURER'>('STUDENT');
 
   // PWA Installation state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -59,6 +60,7 @@ export default function App() {
 
     const handleAppInstalled = () => {
       setDeferredPrompt(null);
+      setIsPWAInstallModalOpen(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -70,7 +72,7 @@ export default function App() {
     };
   }, []);
 
-  // Subscriptions to Engine / Firestore
+  // Subscribe to real-time engine changes
   useEffect(() => {
     const unsubStudents = attendanceEngine.subscribeStudents((data) => setStudents(data));
     const unsubSubjects = attendanceEngine.subscribeSubjects((data) => setSubjects(data));
@@ -188,13 +190,44 @@ export default function App() {
 
   // Import CSV Students
   const handleImportStudents = (newStudentsList: Student[]) => {
-    // Merge with existing students by ID
     const existingMap = new Map<string, Student>(students.map((s) => [s.id, s]));
     newStudentsList.forEach((s) => existingMap.set(s.id, s));
     const merged = Array.from(existingMap.values());
 
     attendanceEngine.saveStudentsList(merged);
     setStudents(merged);
+  };
+
+  // Import CSV Lecturers
+  const handleImportLecturers = (newLecturersList: Lecturer[]) => {
+    const existingMap = new Map<string, Lecturer>(lecturers.map((l) => [l.email.toLowerCase(), l]));
+    newLecturersList.forEach((l) => existingMap.set(l.email.toLowerCase(), l));
+    const merged = Array.from(existingMap.values());
+
+    attendanceEngine.saveLecturersList(merged);
+    setLecturers(merged);
+    soundService.playSuccess();
+  };
+
+  // Add Single Lecturer
+  const handleAddLecturer = (newLecturer: Lecturer) => {
+    const updated = [...lecturers.filter((l) => l.email.toLowerCase() !== newLecturer.email.toLowerCase()), newLecturer];
+    attendanceEngine.saveLecturersList(updated);
+    setLecturers(updated);
+  };
+
+  // Delete Lecturer
+  const handleDeleteLecturer = (lecturerId: string) => {
+    attendanceEngine.deleteLecturer(lecturerId);
+    setLecturers(attendanceEngine.getLecturers());
+  };
+
+  // Select/Activate Lecturer
+  const handleSelectActiveLecturer = (lec: Lecturer) => {
+    attendanceEngine.setActiveLecturer(lec);
+    setActiveLecturer(lec);
+    setIsAdmin(true);
+    soundService.playSuccess();
   };
 
   // Reset Data to Default 95 Students
@@ -298,11 +331,23 @@ export default function App() {
               students={students}
               sessions={sessions}
               subjects={subjects}
+              lecturers={lecturers}
+              activeLecturer={activeLecturer}
               attendanceRecords={attendanceRecords}
               isAdmin={isAdmin}
               onAddStudent={handleAddStudent}
               onDeleteStudent={handleDeleteStudent}
-              onOpenCSVImport={() => setIsCSVModalOpen(true)}
+              onAddLecturer={handleAddLecturer}
+              onDeleteLecturer={handleDeleteLecturer}
+              onSelectActiveLecturer={handleSelectActiveLecturer}
+              onOpenCSVImport={() => {
+                setCsvImportInitialMode('STUDENT');
+                setIsCSVModalOpen(true);
+              }}
+              onOpenLecturerCSVImport={() => {
+                setCsvImportInitialMode('LECTURER');
+                setIsCSVModalOpen(true);
+              }}
               onRequestAdminAccess={handleRequestAdminAccess}
               onQuickSimulateScan={handleQuickSimulateScan}
             />
@@ -345,11 +390,13 @@ export default function App() {
         actionTitle={adminActionTitle}
       />
 
-      {/* CSV Import Modal */}
+      {/* CSV Import Modal (Dual-mode: Students & Lecturers) */}
       <CSVImportModal
         isOpen={isCSVModalOpen}
         onClose={() => setIsCSVModalOpen(false)}
+        initialMode={csvImportInitialMode}
         onImport={handleImportStudents}
+        onImportLecturers={handleImportLecturers}
       />
 
       {/* PWA Install Modal */}

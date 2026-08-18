@@ -144,11 +144,11 @@ export interface StudentAttendanceSummary {
  * Official ClassAttend App Icon — Single Source of Truth
  */
 export const OFFICIAL_STUDENT_ATTEND_ICON =
-  'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/StudentAttend/android-chrome-192x192.png';
+  'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/ClassAttend/android-chrome-192x192.png';
 
 /**
  * Official ClassAttend Open Graph Image (OGI) — Single Source of Truth
  */
 export const OFFICIAL_STUDENT_ATTEND_OGI =
-  'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/StudentAttend/OGI%20StudentAttend.jpg';
+  'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/ClassAttend/OGI%20ClassAttend.jpg';
 

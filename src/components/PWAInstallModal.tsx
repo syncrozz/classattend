@@ -65,7 +65,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
           <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg border border-indigo-500/30 bg-slate-900 flex items-center justify-center shrink-0">
             <img
               src={OFFICIAL_STUDENT_ATTEND_ICON}
-              alt="StudentAttend Icon"
+              alt="ClassAttend Icon"
               className="w-full h-full object-contain"
               referrerPolicy="no-referrer"
             />
@@ -78,7 +78,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Gunakan StudentAttend seperti aplikasi mudah alih asli (Native App).
+              Gunakan ClassAttend seperti aplikasi mudah alih asli (Native App).
             </p>
           </div>
         </div>
