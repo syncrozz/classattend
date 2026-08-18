@@ -250,87 +250,107 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
 
-            {/* Quick Metrics & Actions - Row Berasingan dalam 1 Kolum */}
-            <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800">
-              {/* Option Switcher between Class (Primary) and Overall */}
-              <div className="flex items-center justify-between sm:justify-start gap-2 border-b sm:border-b-0 sm:border-r border-slate-800 pb-2 sm:pb-0 sm:pr-3">
-                <button
-                  type="button"
-                  onClick={() => setBannerStatMode('CLASS')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    bannerStatMode === 'CLASS'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
-                  }`}
-                  title="Papar Peratus Mengikut Seksyen Kelas"
-                >
-                  👥 Ikut Seksyen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBannerStatMode('OVERALL')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    bannerStatMode === 'OVERALL'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
-                  }`}
-                  title="Papar Peratus Keseluruhan"
-                >
-                  🌐 Keseluruhan ({activePercent}%)
-                </button>
+            {/* Quick Metrics & Actions */}
+            <div className="w-full flex flex-col gap-3.5 bg-slate-950/70 p-4 rounded-xl border border-slate-800">
+              {/* Row 1: Option Switcher & Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                {/* Option Switcher between Class (Primary) and Overall */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBannerStatMode('CLASS')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      bannerStatMode === 'CLASS'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
+                    }`}
+                    title="Papar Peratus Mengikut Seksyen Kelas"
+                  >
+                    👥 Ikut Seksyen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBannerStatMode('OVERALL')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      bannerStatMode === 'OVERALL'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
+                    }`}
+                    title="Papar Peratus Keseluruhan"
+                  >
+                    🌐 Keseluruhan ({activePercent}%)
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    id="dashboard-btn-open-scanner"
+                    onClick={onOpenScanner}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Buka Kamera QR</span>
+                  </button>
+                  <button
+                    id="dashboard-btn-close-session"
+                    onClick={() => onCloseActiveSession(activeSession.id)}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                    title="Tutup Sesi Kuliah Ini"
+                  >
+                    Tutup Sesi
+                  </button>
+                </div>
               </div>
 
-              {/* Stats Value Display */}
-              {bannerStatMode === 'CLASS' ? (
-                <div className="flex items-center gap-1.5 sm:px-2 flex-wrap flex-1 justify-start sm:justify-center">
-                  {activeSession?.className ? (
-                    <div className="px-3 py-1 rounded-lg border bg-indigo-950/60 border-indigo-500/50 text-center">
-                      <div className="text-[10px] font-bold text-indigo-300">Seksyen {activeSession.className}</div>
-                      <div className="text-xs font-black text-white">
-                        {activePercent}% <span className="text-[9px] font-normal text-slate-300">({activeSessionRecords.length}/{targetStudentsForActive.length})</span>
+              {/* Row 2: Stats Value Display on separate row */}
+              <div className="w-full">
+                {bannerStatMode === 'CLASS' ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {activeSession?.className ? (
+                      <div className="col-span-2 sm:col-span-4 p-2.5 rounded-xl border bg-indigo-950/60 border-indigo-500/50 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-indigo-300">Peratus Kehadiran Seksyen {activeSession.className}</div>
+                          <div className="text-[11px] text-slate-300">
+                            {activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Telah Hadir
+                          </div>
+                        </div>
+                        <div className="text-xl font-black text-white px-3 py-1 bg-indigo-600/40 rounded-lg border border-indigo-500/40">
+                          {activePercent}%
+                        </div>
+                      </div>
+                    ) : (
+                      detailedClassStats.map((st) => (
+                        <div
+                          key={st.name}
+                          className="p-2 rounded-xl border bg-slate-900/90 border-slate-800 flex items-center justify-between"
+                        >
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-300">{st.name}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {st.presentInActive}/{st.totalStudents} Pelajar
+                            </div>
+                          </div>
+                          <div className="text-sm font-black text-white font-mono">
+                            {st.activeRate}%
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-400">Kehadiran Keseluruhan Sesi Aktif</div>
+                      <div className="text-[11px] text-slate-300">
+                        {activeSessionRecords.length} / {targetStudentsForActive.length} Pelajar Berjaya Direkodkan
                       </div>
                     </div>
-                  ) : (
-                    detailedClassStats.map((st) => (
-                      <div
-                        key={st.name}
-                        className="px-2 py-1 rounded-lg border text-center bg-slate-900/90 border-slate-800"
-                      >
-                        <div className="text-[10px] font-bold text-slate-400">{st.name}</div>
-                        <div className="text-xs font-black text-white">{st.activeRate}% <span className="text-[9px] font-normal text-slate-400">({st.presentInActive}/{st.totalStudents})</span></div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ) : (
-                <div className="text-center px-3 sm:border-r border-slate-800 flex-1">
-                  <div className="text-2xl font-extrabold text-emerald-400">
-                    {activePercent}%
+                    <div className="text-2xl font-black text-emerald-400 font-mono">
+                      {activePercent}%
+                    </div>
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium">
-                    {activeSessionRecords.length} / {targetStudentsForActive.length} Pelajar
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-2 sm:pt-0 sm:pl-1 shrink-0">
-                <button
-                  id="dashboard-btn-open-scanner"
-                  onClick={onOpenScanner}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Buka Kamera QR</span>
-                </button>
-                <button
-                  id="dashboard-btn-close-session"
-                  onClick={() => onCloseActiveSession(activeSession.id)}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
-                  title="Tutup Sesi Kuliah Ini"
-                >
-                  Tutup Sesi
-                </button>
+                )}
               </div>
             </div>
           </div>

@@ -412,67 +412,76 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
           {/* Sub-header Controls: LECTURERS TAB */}
           {activeMainTab === 'LECTURERS' && (
             <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-white">Padanan Akses Pensyarah Melalui CSV</h3>
-                    <p className="text-[11px] text-slate-400">
-                      Muat turun templat CSV, isikan senarai pensyarah, dan import kembali untuk penetapan kebenaran.
-                    </p>
-                  </div>
+              {/* Row 1: Header Text Info */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
-
-                {/* Actions for Lecturers */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleDownloadLecturerTemplate}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-600/40 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Muat Turun Templat CSV Pensyarah</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onOpenLecturerCSVImport) {
-                        onOpenLecturerCSVImport();
-                      } else {
-                        onOpenCSVImport();
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV Pensyarah</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportLecturersCSV}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Eksport CSV Pensyarah</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsAddLecturerOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Pensyarah</span>
-                  </button>
+                <div>
+                  <h3 className="text-xs font-bold text-white">Padanan Akses Pensyarah Melalui CSV</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Muat turun templat CSV, isikan senarai pensyarah, dan import kembali untuk penetapan kebenaran.
+                  </p>
                 </div>
               </div>
 
-              {/* Search Box for Lecturers */}
-              <div className="relative w-full sm:w-80">
+              {/* Row 2: Action Buttons (Muat Turun Templat, Import, Eksport, Tambah Pensyarah) on separate row */}
+              <div className="flex flex-wrap items-center gap-2 w-full pt-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadLecturerTemplate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-600/40 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Muat Turun Templat CSV Pensyarah</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                      onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
+                      return;
+                    }
+                    if (onOpenLecturerCSVImport) {
+                      onOpenLecturerCSVImport();
+                    } else {
+                      onOpenCSVImport();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Import CSV Pensyarah</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportLecturersCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Eksport CSV Pensyarah</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                      onRequestAdminAccess('Akses Admin Diperlukan untuk Menambah Pensyarah');
+                      return;
+                    }
+                    setIsAddLecturerOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Pensyarah</span>
+                </button>
+              </div>
+
+              {/* Row 3: Search Box for Lecturers */}
+              <div className="relative w-full sm:w-80 pt-1">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
@@ -607,6 +616,63 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
         {/* ===================== VIEW 2: LECTURERS GRID ===================== */}
         {activeMainTab === 'LECTURERS' && (
           <div className="space-y-4">
+            {/* Dedicated Admin CSV Space for Lecturers */}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/40 shadow-xl space-y-4">
+              {/* Row 1: Header Text Info */}
+              <div className="space-y-1.5 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Ruang Memuat Turun & Memuat Naik Templat CSV Pensyarah</span>
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-white">
+                  Pusat Data Pensyarah (Padanan E-mel Rasmi & No. Kad Pengenalan / PIN)
+                </h3>
+                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                  Muat turun templat rasmi, isikan maklumat e-mel (<code className="text-emerald-300 font-mono">@bpenawar.kpm.edu.my</code>) dan No. Kad Pengenalan pensyarah, kemudian muat naik semula. Pemasukan data ini dikunci untuk capaian Pentadbir (Admin) sahaja.
+                </p>
+              </div>
+
+              {/* Row 2: CSV Action Buttons on separate row */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadLecturerTemplate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/50 text-xs font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>1. Muat Turun Templat CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                      onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
+                      return;
+                    }
+                    if (onOpenLecturerCSVImport) {
+                      onOpenLecturerCSVImport();
+                    } else {
+                      onOpenCSVImport();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>2. Muat Naik CSV Pensyarah</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportLecturersCSV}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Eksport CSV</span>
+                </button>
+              </div>
+            </div>
+
             {filteredLecturers.length === 0 ? (
               <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 text-slate-500 text-xs">
                 Tiada rekod pensyarah dijumpai. Anda boleh memuat turun templat CSV dan mengimport senarai pensyarah rasmi.

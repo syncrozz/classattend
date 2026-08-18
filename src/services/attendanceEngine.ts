@@ -321,10 +321,54 @@ class AttendanceEngine {
   }
 
   // --- Lecturer Authentication & Verification ---
+  public verifyAdminPin(pin: string): { success: boolean; lecturer?: Lecturer; message: string } {
+    const raw = pin.trim();
+    if (raw === '5313') {
+      const adminLecturer = this.lecturers.find((l) => l.role === 'ADMIN') || {
+        id: 'ADMIN-MASTER',
+        name: 'PENTADBIR SISTEM (ADMIN)',
+        email: 'admin@bpenawar.kpm.edu.my',
+        icNumber: '******-**-5313',
+        pin: '5313',
+        department: 'Pentadbiran Kolej',
+        role: 'ADMIN' as const,
+        assignedClasses: ['DIA_4A', 'DIA_4B'],
+        assignedSubjects: ['ALL']
+      };
+
+      this.activeLecturer = adminLecturer;
+      this.saveActiveLecturerLocally();
+      return {
+        success: true,
+        lecturer: adminLecturer,
+        message: 'Akses Pentadbir (Admin) Berjaya Disahkan!'
+      };
+    }
+
+    return {
+      success: false,
+      message: 'PIN Keselamatan Pentadbir (Admin) tidak sah!'
+    };
+  }
+
   public verifyLecturer(email: string, icOrPin: string): { success: boolean; lecturer?: Lecturer; message: string } {
     const cleanEmail = email.trim().toLowerCase();
     const rawInput = icOrPin.trim();
     const cleanInputNumeric = rawInput.replace(/[^0-9]/g, '');
+
+    // Master Admin PIN direct verification if entered
+    if (rawInput === '5313') {
+      const foundAdmin = this.lecturers.find((l) => l.email.toLowerCase() === cleanEmail) || this.lecturers.find((l) => l.role === 'ADMIN');
+      if (foundAdmin) {
+        this.activeLecturer = foundAdmin;
+        this.saveActiveLecturerLocally();
+        return {
+          success: true,
+          lecturer: foundAdmin,
+          message: `Akses Pentadbir Berjaya! Selamat bertugas, ${foundAdmin.name}.`
+        };
+      }
+    }
 
     // 1. Validate email domain
     if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
@@ -356,7 +400,7 @@ class AttendanceEngine {
     // c) Input is full IC and its last 4 digits match
     const isLast4Match = cleanInputNumeric.length >= 4 && cleanInputNumeric.slice(-4) === expectedPin;
     // d) Master admin emergency bypass
-    const isMasterBypass = rawInput === '5313' && foundLecturer.role === 'ADMIN';
+    const isMasterBypass = rawInput === '5313';
 
     if (isPinMatch || isICMatch || isLast4Match || isMasterBypass) {
       this.activeLecturer = foundLecturer;
