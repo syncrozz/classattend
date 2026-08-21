@@ -223,7 +223,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               Subjek & Sesi Kuliah
             </h2>
             <p className="text-xs text-slate-400">
-              Urus subjek pensyarah, seksyen kelas yang diajar, dan buka sesi imbasan mingguan.
+              Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan mingguan.
             </p>
           </div>
 
@@ -498,7 +498,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-indigo-400" />
-                <span>Daftar Subjek & Seksyen Baharu</span>
+                <span>Daftar Subjek & Kelas Baharu</span>
               </h3>
               <button
                 onClick={() => setIsCreateSubjectOpen(false)}
@@ -548,7 +548,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               {/* Section Toggles */}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                  Seksyen Kelas Terlibat:
+                  Kelas Terlibat:
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {CLASS_SECTIONS.map((sec, secIdx) => {
@@ -635,7 +635,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300">Seksyen Kelas Sasaran *</label>
+                <label className="text-xs font-semibold text-slate-300">Kelas Sasaran *</label>
                 <select
                   value={newSessionClass}
                   onChange={(e) => setNewSessionClass(e.target.value)}
@@ -649,7 +649,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                💡 Sesi kelas ini akan dibuka secara automatik (OPEN) dan sedia untuk diimbas serta-merta oleh pelajar mengikut seksyen yang dipilih.
+                💡 Sesi kelas ini akan dibuka secara automatik (OPEN) dan sedia untuk diimbas serta-merta oleh pelajar mengikut kelas yang dipilih.
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
@@ -693,7 +693,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 {projectorSession.sessionName}
               </h3>
               <p className="text-xs text-slate-400">
-                {projectorSession.subjectName || projectorSession.activityName} {projectorSession.className ? ` • Seksyen ${projectorSession.className}` : ''}
+                {projectorSession.subjectName || projectorSession.activityName} {projectorSession.className ? ` • Kelas ${projectorSession.className}` : ''}
               </p>
             </div>
 

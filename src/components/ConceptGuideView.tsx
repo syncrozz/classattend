@@ -27,7 +27,7 @@ export const ConceptGuideView: React.FC = () => {
           Panduan & Aliran Kerja Sistem CLASS ATTEND
         </h2>
         <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-          Platform CLASS ATTEND direka bentuk khusus untuk merekod kehadiran kuliah dan tutorial mengikut Kelas, Subjek, dan Seksyen pensyarah secara pantas, telus, dan selamat.
+          Platform CLASS ATTEND direka bentuk khusus untuk merekod kehadiran kuliah dan tutorial mengikut Kelas, Subjek, dan Sesi Kuliah pensyarah secara pantas, telus, dan selamat.
         </p>
       </div>
 
@@ -75,7 +75,7 @@ export const ConceptGuideView: React.FC = () => {
             <div className="w-6 h-6 rounded-lg bg-indigo-600/30 text-indigo-300 flex items-center justify-center font-bold shrink-0">1</div>
             <div>
               <strong className="text-white block text-sm">Muat Turun Templat Rasmi:</strong>
-              Pensyarah boleh memuat turun templat CSV standard yang mengandungi format lajur: <code className="text-indigo-300">Bil, No_Pelajar, Nama_Pelajar, Kelas_Seksyen, No_Telefon, Email, Program</code>.
+              Pensyarah boleh memuat turun templat CSV standard yang mengandungi format lajur: <code className="text-indigo-300">Bil, No_Pelajar, Nama_Pelajar, Kelas, No_Telefon, Email, Program</code>.
             </div>
           </div>
 
@@ -101,7 +101,7 @@ export const ConceptGuideView: React.FC = () => {
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 space-y-4">
         <h3 className="text-base font-bold text-white flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-indigo-400" />
-          <span>3. Struktur Subjek, Seksyen & Sesi Kuliah</span>
+          <span>3. Struktur Subjek, Kelas & Sesi Kuliah</span>
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -114,10 +114,10 @@ export const ConceptGuideView: React.FC = () => {
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
-            <div className="text-xs font-bold text-indigo-400 uppercase">Seksyen Kelas</div>
+            <div className="text-xs font-bold text-indigo-400 uppercase">Kelas</div>
             <h4 className="text-sm font-bold text-white">DIA_4A, DIA_4B, DIA_4C, DIA_4D</h4>
             <p className="text-[11px] text-slate-400">
-              Pelajar dibahagikan mengikut seksyen kelas. Pensyarah boleh mengajar satu atau beberapa seksyen serentak.
+              Pelajar dibahagikan mengikut kelas masing-masing. Pensyarah boleh mengajar satu atau beberapa kelas serentak.
             </p>
           </div>
 

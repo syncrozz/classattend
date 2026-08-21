@@ -171,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Chart data for class % comparison
   const classChartData = detailedClassStats.map((cls) => ({
-    name: `Seksyen ${cls.name}`,
+    name: `Kelas ${cls.name}`,
     shortName: cls.name,
     Peratus: cls.displayRate,
     Pelajar: cls.totalStudents,
@@ -230,7 +230,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
                 {activeSession.className && (
                   <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
-                    Seksyen {activeSession.className}
+                    Kelas {activeSession.className}
                   </span>
                 )}
               </div>
@@ -264,9 +264,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         ? 'bg-indigo-600 text-white shadow-md'
                         : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
                     }`}
-                    title="Papar Peratus Mengikut Seksyen Kelas"
+                    title="Papar Peratus Mengikut Kelas"
                   >
-                    👥 Ikut Seksyen
+                    👥 Ikut Kelas
                   </button>
                   <button
                     type="button"
@@ -310,7 +310,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {activeSession?.className ? (
                       <div className="col-span-2 sm:col-span-4 p-2.5 rounded-xl border bg-indigo-950/60 border-indigo-500/50 flex items-center justify-between">
                         <div>
-                          <div className="text-xs font-bold text-indigo-300">Peratus Kehadiran Seksyen {activeSession.className}</div>
+                          <div className="text-xs font-bold text-indigo-300">Peratus Kehadiran Kelas {activeSession.className}</div>
                           <div className="text-[11px] text-slate-300">
                             {activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Telah Hadir
                           </div>
@@ -360,7 +360,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {bannerStatMode === 'CLASS' ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-slate-400 font-medium">
-                  <span>{activeSession.className ? `Kemajuan Kehadiran Seksyen ${activeSession.className}` : 'Pecahan Kehadiran Mengikut Seksyen Kelas'}</span>
+                  <span>{activeSession.className ? `Kemajuan Kehadiran Kelas ${activeSession.className}` : 'Pecahan Kehadiran Mengikut Kelas'}</span>
                   <span>{activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Hadir ({activePercent}%)</span>
                 </div>
                 {activeSession.className ? (
@@ -414,7 +414,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="space-y-1 text-center sm:text-left">
             <h3 className="text-lg font-bold text-white">Tiada Sesi Kuliah / Kelas Sedang Dibuka</h3>
             <p className="text-xs text-slate-400">
-              Pilih satu subjek atau cipta sesi kuliah baharu untuk memulakan pengimbasan kehadiran pelajar mengikut seksyen.
+              Pilih satu subjek atau cipta sesi kuliah baharu untuk memulakan pengimbasan kehadiran pelajar mengikut kelas.
             </p>
           </div>
           <button
@@ -440,7 +440,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-white">{students.length}</div>
           <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-            <span>{availableClassSets.length} Seksyen Kelas</span>
+            <span>{availableClassSets.length} Kelas</span>
             <ArrowUpRight className="w-3 h-3 text-indigo-400" />
           </div>
         </div>
@@ -496,7 +496,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </h3>
             </div>
             <p className="text-xs text-slate-400">
-              Analisis kadar kehadiran (%) terperinci mengikut seksyen kelas masing-masing bagi pemantauan pensyarah
+              Analisis kadar kehadiran (%) terperinci mengikut kelas masing-masing bagi pemantauan pensyarah
             </p>
           </div>
 
@@ -556,9 +556,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                  <span>Seksyen Paling Cemerlang:</span>
+                  <span>Kelas Paling Cemerlang:</span>
                   <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-white font-mono font-bold">
-                    Seksyen {bestClass.name}
+                    Kelas {bestClass.name}
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400">
@@ -595,18 +595,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   st.isTargeted ? 'border-indigo-500/50 shadow-md shadow-indigo-500/10' : 'border-slate-800'
                 }`}
               >
+                {/* Baris 1: Kelas */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(st.name)}`}>
-                      Seksyen {st.name}
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(st.name)}`}>
+                    Kelas {st.name}
+                  </span>
+                  {st.isTargeted && (
+                    <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded border border-indigo-500/30">
+                      Sesi Dibuka
                     </span>
-                    {st.isTargeted && (
-                      <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded">
-                        Sesi Dibuka
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}`}>
+                  )}
+                </div>
+
+                {/* Baris 2: Status Tahap Prestasi */}
+                <div className="flex items-center">
+                  <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded border ${badgeColor}`}>
                     {badgeText}
                   </span>
                 </div>
@@ -645,7 +648,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div className="flex justify-between text-[9px] text-slate-400">
                     <span>Sasaran: 80% KPM</span>
-                    <span>{st.displayRate >= 80 ? '✓ Capai KPI' : '⚠ Bawah KPI'}</span>
+                    <span>{st.displayRate >= 80 ? '✅ Capai KPI' : '❌ Bawah KPI'}</span>
                   </div>
                 </div>
               </div>
@@ -659,7 +662,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Graf Perbandingan % Kehadiran Antara Seksyen Kelas
+                Graf Perbandingan % Kehadiran Antara Kelas
               </h4>
               <span className="text-[10px] text-slate-500">Skala 0 - 100%</span>
             </div>
@@ -702,7 +705,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {detailedClassStats.map((st, idx) => (
                   <div key={`summary-row-${st.name}-${idx}`} className="flex items-center justify-between text-xs py-1 border-b border-slate-800/60 last:border-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-200">Seksyen {st.name}</span>
+                      <span className="font-semibold text-slate-200">Kelas {st.name}</span>
                       <span className="text-[10px] text-slate-500">({st.totalStudents} Pelajar)</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -735,8 +738,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-2 rounded-2xl bg-slate-900/80 border border-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-white">Senarai Subjek & Agihan Seksyen Pensyarah</h3>
-              <p className="text-xs text-slate-400">Subjek akademik KPM Bandar Penawar dan seksyen yang diajar</p>
+              <h3 className="text-base font-bold text-white">Senarai Subjek & Agihan Kelas Pensyarah</h3>
+              <p className="text-xs text-slate-400">Subjek akademik KPM Bandar Penawar dan kelas yang diajar</p>
             </div>
             <button
               onClick={onGoToActivities}
@@ -755,7 +758,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {sub.code}
                   </span>
                   <span className="text-[10px] font-semibold text-slate-400">
-                    {sub.sections.length} Seksyen Terlibat
+                    {sub.sections.length} Kelas Terlibat
                   </span>
                 </div>
                 <div className="text-xs font-bold text-white truncate">{sub.name}</div>
@@ -791,7 +794,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
-                placeholder="Cari nama, ID, atau seksyen..."
+                placeholder="Cari nama, ID, atau kelas..."
                 value={searchSimulate}
                 onChange={(e) => setSearchSimulate(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"

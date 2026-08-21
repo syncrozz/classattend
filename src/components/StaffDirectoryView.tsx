@@ -20,6 +20,10 @@ import {
   downloadCSV
 } from '../utils/csvHelper';
 import {
+  generateWhatsAppWarningLink,
+  formatWhatsAppPhone
+} from '../utils/whatsappHelper';
+import {
   Search,
   Plus,
   Download,
@@ -332,7 +336,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                             : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
                         }`}
                       >
-                        <span>{setName === 'ALL' ? 'Semua Pelajar' : `Seksyen ${setName}`}</span>
+                        <span>{setName === 'ALL' ? 'Semua Pelajar' : `Kelas ${setName}`}</span>
                         <span className="ml-1.5 text-[10px] opacity-80">({count})</span>
                       </button>
                     );
@@ -387,7 +391,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       setIsBatchPrintOpen(true);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
-                    title="Cetak Kad ID / Kod QR mengikut Kategori Seksyen Kelas atau Semua Pelajar"
+                    title="Cetak Kad ID / Kod QR mengikut Kategori Kelas atau Semua Pelajar"
                   >
                     <Printer className="w-3.5 h-3.5" />
                     <span>Cetak Kad ID (QR)</span>
@@ -542,9 +546,28 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           <span className="truncate">{student.email || `${student.studentId.toLowerCase()}@bpenawar.kpm.edu.my`}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span>{student.phone || 'Tiada telefon'}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 truncate">
+                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="truncate">{student.phone || 'Tiada telefon'}</span>
+                          </div>
+                          {student.phone && (
+                            <a
+                              href={generateWhatsAppWarningLink({
+                                student,
+                                className: student.className,
+                                presentCount: stats.present,
+                                totalSessions: stats.total,
+                                rate: stats.rate
+                              })}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold transition-all shrink-0 cursor-pointer"
+                              title={`Buka WhatsApp untuk hubungi ${student.name}`}
+                            >
+                              <span>WA</span>
+                            </a>
+                          )}
                         </div>
                       </div>
 
@@ -805,7 +828,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       {/* Assigned Sections & Subjects */}
                       <div className="space-y-2 text-xs">
                         <div>
-                          <span className="text-[11px] font-semibold text-slate-400">Seksyen Kelas Ditugaskan:</span>
+                          <span className="text-[11px] font-semibold text-slate-400">Kelas Ditugaskan:</span>
                           <div className="flex flex-wrap gap-1.5 mt-1">
                             {Array.from(new Set<string>(lec.assignedSections || lec.assignedClasses || [])).map((sec, secIdx) => (
                               <span
@@ -938,7 +961,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300">Seksyen Kelas</label>
+                  <label className="text-xs font-semibold text-slate-300">Kelas</label>
                   <input
                     type="text"
                     placeholder="DIA_4A, DIA_4B"
@@ -1071,7 +1094,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
             {/* Batch Filter & Print Format Selector */}
             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs no-print">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-300">Pilih Seksyen Kelas:</span>
+                <span className="font-semibold text-slate-300">Pilih Kelas:</span>
                 <select
                   value={batchPrintCategory}
                   onChange={(e) => setBatchPrintCategory(e.target.value)}
@@ -1186,7 +1209,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300">Seksyen Kelas *</label>
+                  <label className="text-xs font-semibold text-slate-300">Kelas *</label>
                   <select
                     value={newSet}
                     onChange={(e) => setNewSet(e.target.value)}

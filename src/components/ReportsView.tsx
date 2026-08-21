@@ -15,6 +15,9 @@ import {
   downloadCSV
 } from '../utils/csvHelper';
 import {
+  generateWhatsAppWarningLink
+} from '../utils/whatsappHelper';
+import {
   Download,
   Printer,
   Search,
@@ -169,11 +172,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Export Class Specific CSV
   const handleExportClassCSV = () => {
-    const headers = 'Bil,No_Pelajar,Nama_Pelajar,Seksyen_Kelas,Jumlah_Sesi_Hadir,Jumlah_Sesi_Keseluruhan,Peratus_Kehadiran\n';
+    const headers = 'Bil,No_Pelajar,Nama_Pelajar,Kelas,Jumlah_Sesi_Hadir,Jumlah_Sesi_Keseluruhan,Peratus_Kehadiran\n';
     const rows = selectedClassStudentStats.map((item, idx) =>
       `${idx + 1},"${item.student.studentId}","${item.student.name}","${item.student.className}",${item.present},${item.total},${item.rate}%`
     ).join('\n');
-    downloadCSV(headers + rows, `Laporan_Kehadiran_Seksyen_${selectedClassSection}.csv`);
+    downloadCSV(headers + rows, `Laporan_Kehadiran_Kelas_${selectedClassSection}.csv`);
   };
 
   // Student-Centric list calculations
@@ -205,7 +208,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Laporan & Analitik Kehadiran Kelas</h2>
             <p className="text-xs text-slate-400">
-              Analisis peratus kehadiran mengikut seksyen kelas masing-masing, sesi kuliah, dan profil pelajar
+              Analisis peratus kehadiran mengikut kelas masing-masing, sesi kuliah, dan profil pelajar
             </p>
           </div>
 
@@ -254,14 +257,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             {reportPerspective === 'CLASS' && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-semibold">Pilih Seksyen:</span>
+                <span className="text-xs text-slate-400 font-semibold">Pilih Kelas:</span>
                 <select
                   value={selectedClassSection}
                   onChange={(e) => setSelectedClassSection(e.target.value)}
                   className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
                 >
                   {uniqueClasses.map((cls) => (
-                    <option key={cls} value={cls}>Seksyen {cls}</option>
+                    <option key={cls} value={cls}>Kelas {cls}</option>
                   ))}
                 </select>
               </div>
@@ -276,7 +279,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               >
                 {sessions.map((s) => {
                   const subjectDetail = s.subjectCode ? `[${s.subjectCode}] ` : '';
-                  const classDetail = s.className ? ` (Seksyen ${s.className})` : '';
+                  const classDetail = s.className ? ` (${s.className})` : '';
                   const statusPrefix = s.status === 'OPEN' ? '🟢 ' : '🔵 ';
 
                   return (
@@ -294,9 +297,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 onChange={(e) => setFilterSet(e.target.value)}
                 className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
-                <option value="ALL">Semua Seksyen Kelas</option>
+                <option value="ALL">Semua Kelas</option>
                 {uniqueClasses.map((cls) => (
-                  <option key={cls} value={cls}>Seksyen {cls}</option>
+                  <option key={cls} value={cls}>Kelas {cls}</option>
                 ))}
               </select>
             )}
@@ -330,7 +333,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <button
                 onClick={handleExportClassCSV}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title="Eksport Fail CSV Seksyen Ini"
+                title="Eksport Fail CSV Kelas Ini"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Eksport CSV Kelas</span>
@@ -379,16 +382,23 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
                   }`}
                 >
+                  {/* Baris 1: Nama Kelas */}
                   <div className="flex items-center justify-between">
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(cls.name)}`}>
-                      Seksyen {cls.name}
+                      Kelas {cls.name}
                     </span>
+                  </div>
+
+                  {/* Baris 2: Status KPI */}
+                  <div className="flex items-center">
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                        isHigh ? 'bg-emerald-500/20 text-emerald-400' : isMedium ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/20 text-amber-400'
+                      className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded border ${
+                        cls.rate >= 80
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                       }`}
                     >
-                      {cls.rate >= 80 ? '✓ KPI Dipenuhi' : '⚠ Perlu Tindakan'}
+                      {cls.rate >= 80 ? '✅ KPI Dipenuhi' : '❌ Perlu Surat Amaran'}
                     </span>
                   </div>
 
@@ -423,7 +433,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <div className="p-4 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(selectedClassSection)}`}>
-                  Seksyen {selectedClassSection}
+                  Kelas {selectedClassSection}
                 </span>
                 <span className="text-xs font-bold text-white">
                   Senarai Terperinci Pelajar ({selectedClassStudentStats.length} Pelajar)
@@ -450,7 +460,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   {selectedClassStudentStats.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-500">
-                        Tiada pelajar ditemui untuk seksyen {selectedClassSection}.
+                        Tiada pelajar ditemui untuk kelas {selectedClassSection}.
                       </td>
                     </tr>
                   ) : (
@@ -481,14 +491,46 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                           </td>
                           <td className="py-3 px-4 text-center">
                             {item.rate >= 80 ? (
-                              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                                LULUS KPI
+                              <span
+                                className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
+                                title="Lulus KPI (≥ 80%)"
+                              >
+                                ✅
                               </span>
-                            ) : (
-                              <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded">
-                                PERLU SURAT AMARAN
-                              </span>
-                            )}
+                            ) : (() => {
+                              const waUrl = generateWhatsAppWarningLink({
+                                student: item.student,
+                                className: selectedClassSection,
+                                presentCount: item.present,
+                                totalSessions: item.total,
+                                rate: item.rate,
+                                courseCode: targetClassSessions[0]?.subjectCode,
+                                courseName: targetClassSessions[0]?.sessionName,
+                                lecturerName: targetClassSessions[0]?.lecturerName
+                              });
+
+                              return waUrl ? (
+                                <a
+                                  href={waUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 hover:border-rose-400 shadow-sm hover:scale-105 transition-all cursor-pointer group"
+                                  title={`❌ Perlu Surat Amaran (< 80%). Klik untuk buka WhatsApp & hantar rekod amaran kehadiran rasmi kepada ${item.student.name} (${item.student.phone})`}
+                                >
+                                  <span>❌</span>
+                                  <span className="text-[10px] font-semibold text-rose-300 group-hover:text-white underline-offset-2 group-hover:underline">
+                                    WhatsApp
+                                  </span>
+                                </a>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm"
+                                  title="Perlu Surat Amaran (< 80%) - No. telefon belum didaftarkan"
+                                >
+                                  ❌
+                                </span>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );
@@ -530,7 +572,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     )}
                     {currentSession.className && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
-                        Seksyen {currentSession.className}
+                        Kelas {currentSession.className}
                       </span>
                     )}
                   </div>
@@ -572,7 +614,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
             {/* Set Comparison Bar Chart */}
             <div className="lg:col-span-2 rounded-2xl bg-slate-900/80 border border-slate-800 p-5 space-y-2">
-              <h3 className="text-sm font-bold text-white">Analitik Kehadiran Mengikut Seksyen Kelas (%)</h3>
+              <h3 className="text-sm font-bold text-white">Analitik Kehadiran Mengikut Kelas (%)</h3>
               <div className="h-44 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={setPerformanceData}>
@@ -611,7 +653,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     <th className="py-3 px-4">Bil</th>
                     <th className="py-3 px-4">No. Pelajar</th>
                     <th className="py-3 px-4">Nama Penuh Pelajar</th>
-                    <th className="py-3 px-4">Seksyen Kelas</th>
+                    <th className="py-3 px-4">Kelas</th>
                     <th className="py-3 px-4">Status Kehadiran</th>
                     <th className="py-3 px-4">Masa Imbasan</th>
                     <th className="py-3 px-4">Kaedah</th>
@@ -645,12 +687,39 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>HADIR</span>
                               </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 text-[10px] font-semibold border border-rose-500/30">
-                                <XCircle className="w-3 h-3" />
-                                <span>TIDAK HADIR</span>
-                              </span>
-                            )}
+                            ) : (() => {
+                              const sessionWaUrl = generateWhatsAppWarningLink({
+                                student: st,
+                                sessionName: currentSession.sessionName,
+                                sessionDate: currentSession.date,
+                                sessionTime: currentSession.startTime ? `${currentSession.startTime} - ${currentSession.endTime}` : undefined,
+                                courseCode: currentSession.subjectCode,
+                                courseName: currentSession.sessionName,
+                                className: currentSession.className || st.className,
+                                lecturerName: currentSession.lecturerName
+                              });
+
+                              return sessionWaUrl ? (
+                                <a
+                                  href={sessionWaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 hover:border-rose-400 text-[10px] font-bold transition-all cursor-pointer group"
+                                  title={`Tidak Hadir Sesi Ini. Klik untuk hubungi ${st.name} via WhatsApp (${st.phone})`}
+                                >
+                                  <XCircle className="w-3 h-3 text-rose-400" />
+                                  <span>TIDAK HADIR</span>
+                                  <span className="text-[9px] px-1 rounded bg-rose-950/80 text-rose-300 group-hover:text-white underline-offset-2 group-hover:underline">
+                                    WhatsApp
+                                  </span>
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 text-[10px] font-semibold border border-rose-500/30">
+                                  <XCircle className="w-3 h-3" />
+                                  <span>TIDAK HADIR</span>
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
                             {rec ? new Date(rec.timestamp).toLocaleTimeString('ms-MY') : '-'}
@@ -685,9 +754,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <tr>
                     <th className="py-3 px-4">No. Pelajar</th>
                     <th className="py-3 px-4">Nama Pelajar</th>
-                    <th className="py-3 px-4">Seksyen</th>
+                    <th className="py-3 px-4">Kelas</th>
                     <th className="py-3 px-4 text-center">Kehadiran Kelas Keseluruhan</th>
                     <th className="py-3 px-4">Sesi Hadir / Jumlah</th>
+                    <th className="py-3 px-4 text-center">Status KPI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -715,6 +785,46 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-400">
                         {item.present} / {item.total}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {item.rate >= 80 ? (
+                          <span
+                            className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
+                            title="Lulus KPI (≥ 80%)"
+                          >
+                            ✅
+                          </span>
+                        ) : (() => {
+                          const waUrl = generateWhatsAppWarningLink({
+                            student: item.student,
+                            className: item.student.className,
+                            presentCount: item.present,
+                            totalSessions: item.total,
+                            rate: item.rate
+                          });
+
+                          return waUrl ? (
+                            <a
+                              href={waUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 hover:border-rose-400 shadow-sm hover:scale-105 transition-all cursor-pointer group"
+                              title={`❌ Perlu Surat Amaran (< 80%). Klik untuk buka WhatsApp & hantar rekod amaran kehadiran rasmi kepada ${item.student.name} (${item.student.phone})`}
+                            >
+                              <span>❌</span>
+                              <span className="text-[10px] font-semibold text-rose-300 group-hover:text-white underline-offset-2 group-hover:underline">
+                                WhatsApp
+                              </span>
+                            </a>
+                          ) : (
+                            <span
+                              className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm"
+                              title="Perlu Surat Amaran (< 80%) - No. telefon belum didaftarkan"
+                            >
+                              ❌
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

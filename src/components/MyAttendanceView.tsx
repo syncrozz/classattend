@@ -100,7 +100,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                     PORTAL KEHADIRAN KELAS
                   </span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getClassBadgeColor(currentStudent.className)}`}>
-                    Seksyen {currentStudent.className}
+                    Kelas {currentStudent.className}
                   </span>
                 </div>
 
@@ -145,7 +145,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                   <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                     Kadar Kehadiran Kelas Keseluruhan
                   </h3>
-                  <p className="text-xs text-slate-500">Merangkumi semua kuliah & tutorial mengikut seksyen {currentStudent.className}</p>
+                  <p className="text-xs text-slate-500">Merangkumi semua kuliah & tutorial mengikut kelas {currentStudent.className}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-3xl sm:text-4xl font-black text-emerald-400">
@@ -187,7 +187,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               </div>
 
               {subjectStats.length === 0 ? (
-                <p className="text-xs text-slate-500 py-2">Tiada data subjek untuk seksyen ini.</p>
+                <p className="text-xs text-slate-500 py-2">Tiada data subjek untuk kelas ini.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   {subjectStats.map((s) => (
@@ -236,7 +236,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
             <div className="space-y-0.5">
               <div className="text-sm font-bold text-white">{currentStudent.name}</div>
               <div className="text-xs font-mono font-bold text-indigo-400">{currentStudent.studentId}</div>
-              <div className="text-[10px] text-slate-400">Seksyen {currentStudent.className}</div>
+              <div className="text-[10px] text-slate-400">Kelas {currentStudent.className}</div>
             </div>
 
             <button

@@ -4,7 +4,7 @@ import { Student, AttendanceRecord, AttendanceSession, Lecturer } from '../types
  * Generate standard CSV template for lecturer to download and fill in (Students)
  */
 export const generateClassTemplateCSV = (sampleClassName: string = 'DIA_4A'): string => {
-  const headers = ['Bil', 'No_Pelajar', 'Nama_Pelajar', 'Kelas_Seksyen', 'No_Telefon', 'Email', 'Program'];
+  const headers = ['Bil', 'No_Pelajar', 'Nama_Pelajar', 'Kelas', 'No_Telefon', 'Email', 'Program'];
   const sampleRows = [
     [1, 'PDA-2502-001', 'NUR AISYAH BINTI ABDUL RAZAK', sampleClassName, '601110571550', 'aisyah.razak@bpenawar.kpm.edu.my', 'Diploma Perakaunan'],
     [2, 'PDA-2502-002', 'MUHAMMAD RAIYAN DARWISY BIN MOHD ZALANI', sampleClassName, '60122187981', 'raiyan.mohd@bpenawar.kpm.edu.my', 'Diploma Perakaunan'],
@@ -23,7 +23,7 @@ export const generateClassTemplateCSV = (sampleClassName: string = 'DIA_4A'): st
  * Generate standard CSV template for Lecturers list (Senarai Pensyarah)
  */
 export const generateLecturerTemplateCSV = (): string => {
-  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'Kelas_Seksyen', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
+  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
   const sampleRows = [
     [
       1,
@@ -76,7 +76,7 @@ export const generateLecturerTemplateCSV = (): string => {
 };
 
 export const exportLecturersToCSV = (lecturers: Lecturer[]): string => {
-  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'PIN_4Digit', 'Kelas_Seksyen', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
+  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'PIN_4Digit', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
   const rows = lecturers.map((l, idx) => [
     idx + 1,
     `"${l.name.replace(/"/g, '""')}"`,
@@ -166,7 +166,7 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
 };
 
 export const exportStudentsToCSV = (students: Student[]): string => {
-  const headers = ['Bil', 'No_Pelajar', 'Nama_Pelajar', 'Kelas_Seksyen', 'No_Telefon', 'Email', 'Program'];
+  const headers = ['Bil', 'No_Pelajar', 'Nama_Pelajar', 'Kelas', 'No_Telefon', 'Email', 'Program'];
   const rows = students.map((s, idx) => [
     idx + 1,
     `"${s.studentId || s.id}"`,
@@ -189,7 +189,7 @@ export const exportSessionAttendanceToCSV = (
     'Bil',
     'No_Pelajar',
     'Nama_Pelajar',
-    'Kelas_Seksyen',
+    'Kelas',
     'Kod_Subjek',
     'Nama_Subjek',
     'Pensyarah',

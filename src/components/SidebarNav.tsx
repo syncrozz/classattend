@@ -145,7 +145,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <span>KPM Bandar Penawar</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Sistem Khusus Kehadiran Kelas & Subjek mengikut Pensyarah & Seksyen.
+            Sistem Khusus Kehadiran Kelas & Subjek mengikut Pensyarah & Kelas.
           </p>
         </div>
       </div>

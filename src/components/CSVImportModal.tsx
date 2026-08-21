@@ -168,7 +168,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             <p className="text-xs text-slate-400">
               {importMode === 'STUDENT'
                 ? 'Muat turun templat rasmi, isi maklumat kelas, dan muat naik semula'
-                : 'Muat turun templat pensyarah (Emel, No IC, Seksyen) untuk padanan akses'}
+                : 'Muat turun templat pensyarah (Emel, No IC, Kelas) untuk padanan akses'}
             </p>
           </div>
           <button
@@ -262,8 +262,8 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 <span className="font-semibold text-slate-300">Format Lajur Templat CSV:</span>
                 <div className="text-[11px] font-mono text-slate-400 mt-0.5">
                   {importMode === 'STUDENT'
-                    ? 'Bil, No_Pelajar, Nama_Pelajar, Kelas_Seksyen, No_Telefon, Email, Program'
-                    : 'Bil, Nama_Pensyarah, Email_KPM, No_IC, Kelas_Seksyen, Subjek_Diajar, Jabatan'}
+                    ? 'Bil, No_Pelajar, Nama_Pelajar, Kelas, No_Telefon, Email, Program'
+                    : 'Bil, Nama_Pensyarah, Email_KPM, No_IC, Kelas, Subjek_Diajar, Jabatan'}
                 </div>
               </div>
               <button
@@ -305,7 +305,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             {importMode === 'STUDENT' && (
               <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div>
-                  <span className="text-slate-300 font-semibold">Tentukan Kelas / Seksyen:</span>
+                  <span className="text-slate-300 font-semibold">Tentukan Kelas:</span>
                   <p className="text-[11px] text-slate-400">Pilih jika ingin menetapkan semua pelajar dalam fail ini ke kelas tertentu</p>
                 </div>
                 <select
@@ -330,7 +330,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                     <tr>
                       <th className="py-2.5 px-3">No. Pelajar</th>
                       <th className="py-2.5 px-3">Nama Pelajar</th>
-                      <th className="py-2.5 px-3">Kelas / Seksyen</th>
+                      <th className="py-2.5 px-3">Kelas</th>
                       <th className="py-2.5 px-3">Telefon</th>
                     </tr>
                   </thead>
@@ -357,7 +357,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                       <th className="py-2.5 px-3">Emel KPM</th>
                       <th className="py-2.5 px-3">No. IC</th>
                       <th className="py-2.5 px-3">PIN (4-Digit)</th>
-                      <th className="py-2.5 px-3">Seksyen Kelas</th>
+                      <th className="py-2.5 px-3">Kelas</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">

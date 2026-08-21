@@ -498,7 +498,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             {currentSession ? currentSession.sessionName : 'Sila Pilih Sesi'}
             {currentSession?.className && (
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                Seksyen {currentSession.className}
+                Kelas {currentSession.className}
               </span>
             )}
           </h2>
@@ -530,7 +530,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               ) : (
                 allSessions.map((ses) => {
                   const subDetail = ses.subjectCode ? ` [${ses.subjectCode}]` : '';
-                  const classDetail = ses.className ? ` (Seksyen ${ses.className})` : '';
+                  const classDetail = ses.className ? ` (${ses.className})` : '';
                   const statusPrefix = ses.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
 
                   return (
