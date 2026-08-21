@@ -264,9 +264,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             >
               Semua Seksyen Kelas
             </button>
-            {availableClassSections.map((sec) => (
+            {availableClassSections.map((sec, secIdx) => (
               <button
-                key={sec}
+                key={`filter-sec-${sec}-${secIdx}`}
                 onClick={() => setSelectedClassFilter(sec)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
                   selectedClassFilter === sec
@@ -317,9 +317,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                         {subject.code}
                       </span>
-                      {subject.sections.map((sec) => (
+                      {Array.from(new Set<string>(subject.sections || [])).map((sec, secIdx) => (
                         <span
-                          key={sec}
+                          key={`${subject.id}-sec-${sec}-${secIdx}`}
                           className={`text-[10px] px-2 py-0.5 rounded border font-bold ${getClassBadgeColor(sec)}`}
                         >
                           {sec}
@@ -572,11 +572,11 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   Seksyen Kelas Terlibat:
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {availableClassSections.map((sec) => {
+                  {availableClassSections.map((sec, secIdx) => {
                     const isSelected = newSubSections.includes(sec);
                     return (
                       <button
-                        key={sec}
+                        key={`new-sub-sec-${sec}-${secIdx}`}
                         type="button"
                         onClick={() => toggleSectionSelect(sec)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${

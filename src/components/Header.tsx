@@ -23,6 +23,7 @@ interface HeaderProps {
   soundEnabled: boolean;
   isAdmin: boolean;
   currentRole: UserRole;
+  onGoHome: () => void;
   onRoleChange: (role: UserRole) => void;
   onToggleSound: (enabled: boolean) => void;
   onResetData: () => void;
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   soundEnabled,
   isAdmin,
   currentRole,
+  onGoHome,
   onRoleChange,
   onToggleSound,
   onResetData,
@@ -44,31 +46,38 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAdminMode,
   onLogoutLecturer
 }) => {
+  const isPrivileged = Boolean(activeLecturer || isAdmin);
+
   return (
     <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Brand & Title */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-indigo-500/20 ring-1 ring-white/20 bg-slate-900 flex items-center justify-center shrink-0">
+        {/* Brand & Title - Set as trigger to display default homepage view */}
+        <div
+          id="header-brand-trigger"
+          onClick={onGoHome}
+          className="flex items-center gap-3 cursor-pointer group select-none transition-all p-1.5 -ml-1.5 rounded-2xl hover:bg-slate-800/60 active:scale-[0.98]"
+          title="Klik untuk kembali ke Halaman Utama (Dashboard)"
+        >
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-indigo-500/20 ring-1 ring-white/20 bg-slate-900 flex items-center justify-center shrink-0 group-hover:ring-indigo-400/50 transition-all">
             <img
               src={OFFICIAL_STUDENT_ATTEND_ICON}
               alt="Class Attend Logo"
-              className="w-full h-full object-contain"
+              className="w-full h-full object-contain group-hover:scale-105 transition-transform"
               referrerPolicy="no-referrer"
             />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold tracking-tight">
-                <span className="text-white">CLASS</span>
-                <span className="text-blue-500">ATTEND</span>
+                <span className="text-white group-hover:text-indigo-200 transition-colors">CLASS</span>
+                <span className="text-blue-500 group-hover:text-blue-400 transition-colors">ATTEND</span>
               </h1>
               <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 tracking-wider">
                 KPM Bandar Penawar
               </span>
             </div>
-            <p className="text-xs text-slate-400 hidden sm:block">
-              Sistem Kehadiran Pelajar Mengikut Kelas, Subjek & Seksyen Pensyarah
+            <p className="text-xs text-slate-400 hidden sm:block group-hover:text-slate-300 transition-colors">
+              Sistem Kehadiran Pelajar Mengikut Kelas & Subjek
             </p>
           </div>
         </div>

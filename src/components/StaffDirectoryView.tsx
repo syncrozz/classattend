@@ -320,11 +320,11 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 {/* Set Tabs */}
                 <div className="flex items-center gap-1.5 overflow-x-auto w-full pb-1 no-scrollbar">
-                  {sets.map((setName) => {
+                  {sets.map((setName, setIdx) => {
                     const count = setName === 'ALL' ? students.length : students.filter((s) => s.className === setName).length;
                     return (
                       <button
-                        key={setName}
+                        key={`set-tab-${setName}-${setIdx}`}
                         onClick={() => setSelectedSet(setName)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
                           selectedSet === setName
@@ -765,9 +765,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         <div>
                           <span className="text-[11px] font-semibold text-slate-400">Seksyen Kelas Ditugaskan:</span>
                           <div className="flex flex-wrap gap-1.5 mt-1">
-                            {(lec.assignedSections || lec.assignedClasses || []).map((sec) => (
+                            {Array.from(new Set<string>(lec.assignedSections || lec.assignedClasses || [])).map((sec, secIdx) => (
                               <span
-                                key={sec}
+                                key={`lec-${lec.id}-sec-${sec}-${secIdx}`}
                                 className="px-2 py-0.5 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-[11px] font-mono font-bold"
                               >
                                 {sec}
@@ -1035,8 +1035,8 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   onChange={(e) => setBatchPrintCategory(e.target.value)}
                   className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-indigo-500"
                 >
-                  {sets.map((s) => (
-                    <option key={s} value={s}>
+                  {sets.map((s, sIdx) => (
+                    <option key={`batch-print-set-${s}-${sIdx}`} value={s}>
                       {s === 'ALL' ? 'Semua Kelas' : s}
                     </option>
                   ))}

@@ -363,14 +363,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         <div className="space-y-6">
           {/* Class Section Overview Tiles */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {classSummaryStats.map((cls) => {
+            {classSummaryStats.map((cls, clsIdx) => {
               const isSelected = cls.name === selectedClassSection;
               const isHigh = cls.rate >= 90;
               const isMedium = cls.rate >= 75 && cls.rate < 90;
 
               return (
                 <button
-                  key={cls.name}
+                  key={`report-cls-tile-${cls.name}-${clsIdx}`}
                   type="button"
                   onClick={() => setSelectedClassSection(cls.name)}
                   className={`p-4 rounded-xl text-left transition-all cursor-pointer space-y-2 border ${

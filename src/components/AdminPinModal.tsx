@@ -1,18 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Lock,
   ShieldAlert,
   ShieldCheck,
-  KeyRound,
   Check,
   X,
-  Sparkles,
   UserCheck,
   Mail,
-  CreditCard,
   UserPlus,
-  ArrowRight,
-  BookOpen,
   Info,
   Shield
 } from 'lucide-react';
@@ -26,6 +21,8 @@ interface LecturerAuthModalProps {
   onSuccess: (lecturer?: Lecturer) => void;
   actionTitle?: string;
 }
+
+const SAVED_EMAIL_KEY = 'classattend_saved_lecturer_email';
 
 export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   isOpen,
@@ -48,30 +45,51 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   const [regRole, setRegRole] = useState<'ADMIN' | 'LECTURER'>('LECTURER');
   const [regSuccessMsg, setRegSuccessMsg] = useState<string | null>(null);
 
-  const registeredLecturers = attendanceEngine.getLecturers();
+  // Input refs for automatic auto-focusing
+  const adminPinInputRef = useRef<HTMLInputElement>(null);
+  const lecturerPinInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      // 1. Retrieve saved email from last login for this device
+      const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY);
       const active = attendanceEngine.getActiveLecturer();
-      if (active) {
-        setEmail(active.email);
-      } else if (registeredLecturers.length > 0) {
-        setEmail(registeredLecturers[0].email);
-      }
+      const initialEmail = active?.email || savedEmail || '';
+
+      setEmail(initialEmail);
       setPin('');
       setAdminPin('');
       setErrorMessage(null);
       setShake(false);
       setRegSuccessMsg(null);
+
+      // 2. Auto-focus the input field immediately
+      const timer = setTimeout(() => {
+        if (activeTab === 'ADMIN_PIN') {
+          adminPinInputRef.current?.focus();
+        } else if (activeTab === 'LOGIN') {
+          // If email is already saved/filled, jump directly to PIN input for ultra-fast typing
+          if (initialEmail.trim() !== '') {
+            lecturerPinInputRef.current?.focus();
+          } else {
+            emailInputRef.current?.focus();
+          }
+        }
+      }, 70);
+
+      return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
 
-  const handleQuickSelectLecturer = (lec: Lecturer) => {
-    setEmail(lec.email);
-    setPin('');
+  const handleEmailChange = (newEmail: string) => {
+    setEmail(newEmail);
     setErrorMessage(null);
+    if (newEmail.trim()) {
+      localStorage.setItem(SAVED_EMAIL_KEY, newEmail.trim());
+    }
   };
 
   const handleVerify = (e?: React.FormEvent) => {
@@ -80,6 +98,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
     if (activeTab === 'ADMIN_PIN') {
       if (adminPin.length !== 4) {
         setErrorMessage('Sila masukkan 4-digit PIN keselamatan pentadbir.');
+        adminPinInputRef.current?.focus();
         return;
       }
       const res = attendanceEngine.verifyAdminPin(adminPin);
@@ -92,24 +111,33 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
         soundService.playError();
         setErrorMessage(res.message);
         setShake(true);
-        setTimeout(() => setShake(false), 500);
+        setAdminPin('');
+        setTimeout(() => {
+          setShake(false);
+          adminPinInputRef.current?.focus();
+        }, 400);
       }
       return;
     }
 
     // Lecturer verification tab
-    if (!email) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
       setErrorMessage('Sila masukkan emel pensyarah anda.');
+      emailInputRef.current?.focus();
       return;
     }
 
     if (pin.length !== 4) {
       setErrorMessage('Sila masukkan 4-digit PIN keselamatan.');
+      lecturerPinInputRef.current?.focus();
       return;
     }
 
-    const result = attendanceEngine.verifyLecturer(email, pin);
+    const result = attendanceEngine.verifyLecturer(cleanEmail, pin);
     if (result.success && result.lecturer) {
+      // Save last login email to device localStorage
+      localStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
       soundService.playSuccess();
       setErrorMessage(null);
       onSuccess(result.lecturer);
@@ -118,7 +146,66 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       soundService.playError();
       setErrorMessage(result.message);
       setShake(true);
-      setTimeout(() => setShake(false), 500);
+      setPin('');
+      setTimeout(() => {
+        setShake(false);
+        lecturerPinInputRef.current?.focus();
+      }, 400);
+    }
+  };
+
+  const handleAdminPinChange = (val: string) => {
+    const numeric = val.replace(/[^0-9]/g, '').slice(0, 4);
+    setAdminPin(numeric);
+    setErrorMessage(null);
+
+    // If 4 digits entered, automatically verify
+    if (numeric.length === 4) {
+      const res = attendanceEngine.verifyAdminPin(numeric);
+      if (res.success && res.lecturer) {
+        soundService.playSuccess();
+        setErrorMessage(null);
+        onSuccess(res.lecturer);
+        onClose();
+      } else {
+        soundService.playError();
+        setErrorMessage(res.message);
+        setShake(true);
+        setTimeout(() => {
+          setShake(false);
+          setAdminPin('');
+          adminPinInputRef.current?.focus();
+        }, 400);
+      }
+    }
+  };
+
+  const handleLecturerPinChange = (val: string) => {
+    const numeric = val.replace(/[^0-9]/g, '').slice(0, 4);
+    setPin(numeric);
+    setErrorMessage(null);
+
+    // If 4 digits entered and email exists, automatically verify
+    const cleanEmail = email.trim().toLowerCase();
+    if (numeric.length === 4 && cleanEmail) {
+      const res = attendanceEngine.verifyLecturer(cleanEmail, numeric);
+      if (res.success && res.lecturer) {
+        // Save last login email to device localStorage
+        localStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
+        soundService.playSuccess();
+        setErrorMessage(null);
+        onSuccess(res.lecturer);
+        onClose();
+      } else {
+        soundService.playError();
+        setErrorMessage(res.message);
+        setShake(true);
+        setTimeout(() => {
+          setShake(false);
+          setPin('');
+          lecturerPinInputRef.current?.focus();
+        }, 400);
+      }
     }
   };
 
@@ -158,6 +245,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       soundService.playSuccess();
       setRegSuccessMsg(res.message);
       setEmail(cleanEmail);
+      localStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
       setPin(cleanIC.slice(-4));
       setTimeout(() => {
         setActiveTab('LOGIN');
@@ -167,33 +255,6 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       setErrorMessage(res.message);
     }
   };
-
-  const handleKeyPress = (num: string) => {
-    if (activeTab === 'ADMIN_PIN') {
-      if (adminPin.length < 4) {
-        const next = adminPin + num;
-        setAdminPin(next);
-        setErrorMessage(null);
-      }
-    } else {
-      if (pin.length < 4) {
-        const next = pin + num;
-        setPin(next);
-        setErrorMessage(null);
-      }
-    }
-  };
-
-  const handleBackspace = () => {
-    if (activeTab === 'ADMIN_PIN') {
-      setAdminPin(adminPin.slice(0, -1));
-    } else {
-      setPin(pin.slice(0, -1));
-    }
-    setErrorMessage(null);
-  };
-
-  const activePinValue = activeTab === 'ADMIN_PIN' ? adminPin : pin;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
@@ -268,29 +329,56 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
           </button>
         </div>
 
+        {/* TAB 1: ADMIN PIN */}
         {activeTab === 'ADMIN_PIN' && (
-          <div className="space-y-4">
+          <form onSubmit={handleVerify} className="space-y-4">
             <div className="p-3 bg-slate-800/80 rounded-2xl border border-slate-700/60 text-xs space-y-1.5 text-center">
               <div className="flex items-center justify-center gap-1.5 text-indigo-300 font-semibold">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
                 <span>Pengesahan Akses Pentadbir Sistem</span>
               </div>
               <p className="text-slate-300 text-[11px]">
-                Sila masukkan 4-digit PIN keselamatan pentadbir untuk membuka akses pengurusan data master & pensyarah.
+                Taip 4-digit PIN keselamatan pentadbir untuk membuka akses pengurusan data master & pensyarah.
               </p>
             </div>
 
-            {/* PIN Display */}
-            <div className="space-y-2 text-center">
-              <div className="flex justify-center items-center space-x-3 my-2">
+            {/* Ready-to-type 4-Digit Input Element */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-300 block text-center uppercase tracking-wider">
+                Masukkan 4-Digit PIN Keselamatan
+              </label>
+
+              {/* Interactive Click-to-focus 4-box display */}
+              <div
+                onClick={() => adminPinInputRef.current?.focus()}
+                className="relative flex justify-center items-center space-x-3 my-3 cursor-text"
+              >
+                {/* Hidden input ready for immediate typing without clicking */}
+                <input
+                  ref={adminPinInputRef}
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={adminPin}
+                  onChange={(e) => handleAdminPinChange(e.target.value)}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-text"
+                  aria-label="4 Digit PIN Pentadbir"
+                />
+
                 {[0, 1, 2, 3].map((index) => {
                   const hasDigit = adminPin.length > index;
+                  const isCurrent = adminPin.length === index;
                   return (
                     <div
                       key={index}
-                      className={`w-11 h-12 rounded-xl border flex items-center justify-center font-mono font-bold text-2xl transition-all ${
+                      className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center font-mono font-bold text-2xl transition-all ${
                         hasDigit
-                          ? 'border-indigo-500 bg-indigo-950/80 text-indigo-300 shadow-inner'
+                          ? 'border-indigo-500 bg-indigo-950/90 text-indigo-300 shadow-lg shadow-indigo-500/20 scale-105'
+                          : isCurrent
+                          ? 'border-indigo-400/80 bg-slate-800 ring-2 ring-indigo-500/40 animate-pulse text-indigo-400'
                           : 'border-slate-700 bg-slate-800/50 text-slate-600'
                       }`}
                     >
@@ -300,47 +388,16 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 })}
               </div>
 
+              <p className="text-[11px] text-center text-slate-400">
+                Ruang input sedia untuk ditaip terus menggunakan papan kekunci anda.
+              </p>
+
               {errorMessage && (
                 <div className="text-rose-400 text-xs font-medium flex items-center justify-center space-x-1.5 bg-rose-950/60 border border-rose-500/30 p-2.5 rounded-xl">
                   <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
                   <span className="text-left text-[11px]">{errorMessage}</span>
                 </div>
               )}
-            </div>
-
-            {/* Keypad */}
-            <div className="grid grid-cols-3 gap-2">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => handleKeyPress(num)}
-                  className="py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-base rounded-xl transition-colors cursor-pointer shadow-sm"
-                >
-                  {num}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setAdminPin('')}
-                className="py-2.5 bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
-              >
-                Padam
-              </button>
-              <button
-                type="button"
-                onClick={() => handleKeyPress('0')}
-                className="py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-base rounded-xl transition-colors cursor-pointer shadow-sm"
-              >
-                0
-              </button>
-              <button
-                type="button"
-                onClick={handleBackspace}
-                className="py-2.5 bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
-              >
-                ⌫
-              </button>
             </div>
 
             {/* Form Actions */}
@@ -350,53 +407,27 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 onClick={() => {
                   setAdminPin('');
                   setErrorMessage(null);
+                  adminPinInputRef.current?.focus();
                 }}
                 className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-2.5 rounded-xl border border-slate-700 cursor-pointer"
               >
-                Reset
+                Padam
               </button>
               <button
-                type="button"
-                onClick={handleVerify}
+                type="submit"
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/30 cursor-pointer flex items-center justify-center space-x-1.5"
               >
                 <Check className="w-4 h-4" />
                 <span>Sahkan PIN Admin</span>
               </button>
             </div>
-          </div>
+          </form>
         )}
 
+        {/* TAB 2: PENSYARAH LOGIN */}
         {activeTab === 'LOGIN' && (
-          <div className="space-y-4">
-            {/* Quick Lecturer Selector */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Pilih atau Masukkan Emel Pensyarah
-              </label>
-              <div className="grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto p-1 bg-slate-950/40 rounded-xl border border-slate-800/60">
-                {registeredLecturers.map((lec) => {
-                  const isSelected = email.toLowerCase() === lec.email.toLowerCase();
-                  return (
-                    <button
-                      key={lec.id}
-                      type="button"
-                      onClick={() => handleQuickSelectLecturer(lec)}
-                      className={`text-left p-2 rounded-xl border transition-all text-xs cursor-pointer ${
-                        isSelected
-                          ? 'bg-indigo-950/70 border-indigo-500 text-indigo-200 ring-1 ring-indigo-500/50'
-                          : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800 hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="font-semibold truncate text-[11px]">{lec.name}</div>
-                      <div className="text-[10px] text-slate-400 truncate font-mono">{lec.email}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Email Input */}
+          <form onSubmit={handleVerify} className="space-y-4">
+            {/* Email Input with Last Login Memory */}
             <div className="space-y-1">
               <label className="text-[11px] font-medium text-slate-300 flex items-center justify-between">
                 <span>Emel Rasmi Kolej</span>
@@ -405,20 +436,43 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
+                  ref={emailInputRef}
                   type="email"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setErrorMessage(null);
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      lecturerPinInputRef.current?.focus();
+                    }
                   }}
                   placeholder="contoh: nama@bpenawar.kpm.edu.my"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>
+              {email && (
+                <div className="flex justify-between items-center text-[10px] text-slate-400 px-1 pt-0.5">
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Emel disimpan untuk peranti ini</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('');
+                      localStorage.removeItem(SAVED_EMAIL_KEY);
+                      emailInputRef.current?.focus();
+                    }}
+                    className="text-slate-400 hover:text-rose-300 underline cursor-pointer"
+                  >
+                    Tukar emel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Security Note */}
-            <div className="p-3 bg-slate-800/80 rounded-2xl border border-slate-700/60 text-xs space-y-1">
+            <div className="p-2.5 bg-slate-800/80 rounded-2xl border border-slate-700/60 text-xs space-y-1">
               <div className="flex items-center gap-1.5 text-indigo-300 font-semibold">
                 <Info className="w-4 h-4 shrink-0" />
                 <span>Kombinasi Emel & 4-Digit Keselamatan</span>
@@ -428,17 +482,41 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               </p>
             </div>
 
-            {/* PIN Display */}
-            <div className="space-y-2 text-center">
-              <div className="flex justify-center items-center space-x-3 my-1">
+            {/* Ready-to-type 4-Digit PIN Element */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-300 block text-center uppercase tracking-wider">
+                Taip 4-Digit PIN Keselamatan (4 Digit Terakhir IC)
+              </label>
+
+              <div
+                onClick={() => lecturerPinInputRef.current?.focus()}
+                className="relative flex justify-center items-center space-x-3 my-2 cursor-text"
+              >
+                <input
+                  ref={lecturerPinInputRef}
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => handleLecturerPinChange(e.target.value)}
+                  autoFocus={Boolean(email)}
+                  autoComplete="one-time-code"
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-text"
+                  aria-label="4 Digit PIN Pensyarah"
+                />
+
                 {[0, 1, 2, 3].map((index) => {
                   const hasDigit = pin.length > index;
+                  const isCurrent = pin.length === index;
                   return (
                     <div
                       key={index}
-                      className={`w-11 h-12 rounded-xl border flex items-center justify-center font-mono font-bold text-2xl transition-all ${
+                      className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center font-mono font-bold text-2xl transition-all ${
                         hasDigit
-                          ? 'border-indigo-500 bg-indigo-950/80 text-indigo-300 shadow-inner'
+                          ? 'border-indigo-500 bg-indigo-950/90 text-indigo-300 shadow-lg shadow-indigo-500/20 scale-105'
+                          : isCurrent
+                          ? 'border-indigo-400/80 bg-slate-800 ring-2 ring-indigo-500/40 animate-pulse text-indigo-400'
                           : 'border-slate-700 bg-slate-800/50 text-slate-600'
                       }`}
                     >
@@ -448,47 +526,16 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 })}
               </div>
 
+              <p className="text-[11px] text-center text-slate-400">
+                Sedia untuk ditaip terus (autofokus aktif).
+              </p>
+
               {errorMessage && (
                 <div className="text-rose-400 text-xs font-medium flex items-center justify-center space-x-1.5 bg-rose-950/60 border border-rose-500/30 p-2.5 rounded-xl">
                   <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
                   <span className="text-left text-[11px]">{errorMessage}</span>
                 </div>
               )}
-            </div>
-
-            {/* On-screen Keypad */}
-            <div className="grid grid-cols-3 gap-2">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => handleKeyPress(num)}
-                  className="py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-base rounded-xl transition-colors cursor-pointer shadow-sm"
-                >
-                  {num}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setPin('')}
-                className="py-2.5 bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
-              >
-                Padam
-              </button>
-              <button
-                type="button"
-                onClick={() => handleKeyPress('0')}
-                className="py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-base rounded-xl transition-colors cursor-pointer shadow-sm"
-              >
-                0
-              </button>
-              <button
-                type="button"
-                onClick={handleBackspace}
-                className="py-2.5 bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
-              >
-                ⌫
-              </button>
             </div>
 
             {/* Form Actions */}
@@ -498,23 +545,24 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 onClick={() => {
                   setPin('');
                   setErrorMessage(null);
+                  lecturerPinInputRef.current?.focus();
                 }}
                 className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-2.5 rounded-xl border border-slate-700 cursor-pointer"
               >
-                Reset
+                Padam
               </button>
               <button
-                type="button"
-                onClick={handleVerify}
+                type="submit"
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/30 cursor-pointer flex items-center justify-center space-x-1.5"
               >
                 <Check className="w-4 h-4" />
                 <span>Sahkan Pensyarah</span>
               </button>
             </div>
-          </div>
+          </form>
         )}
 
+        {/* TAB 3: REGISTER NEW LECTURER */}
         {activeTab === 'REGISTER' && (
           <form onSubmit={handleRegisterLecturer} className="space-y-3">
             {regSuccessMsg && (

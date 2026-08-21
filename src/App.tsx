@@ -42,7 +42,10 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Admin Mode & Modal States
-  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    const active = attendanceEngine.getActiveLecturer();
+    return Boolean(active);
+  });
   const [isAdminPinModalOpen, setIsAdminPinModalOpen] = useState<boolean>(false);
   const [adminActionTitle, setAdminActionTitle] = useState<string>('Sila Sahkan Akses Admin / Pensyarah');
   const [isCSVModalOpen, setIsCSVModalOpen] = useState<boolean>(false);
@@ -81,7 +84,11 @@ export default function App() {
     const unsubRecords = attendanceEngine.subscribeRecords((data) => setAttendanceRecords(data));
 
     // Update active lecturer from engine
-    setActiveLecturer(attendanceEngine.getActiveLecturer());
+    const currentActive = attendanceEngine.getActiveLecturer();
+    setActiveLecturer(currentActive);
+    if (currentActive) {
+      setIsAdmin(true);
+    }
 
     return () => {
       unsubStudents();
@@ -96,22 +103,20 @@ export default function App() {
 
   // Toggle Admin / Lecturer Auth Mode
   const handleToggleAdminMode = () => {
-    if (isAdmin && activeLecturer) {
+    if (isAdmin || activeLecturer) {
       setAdminActionTitle('Tukar / Sahkan Identiti Pensyarah');
       setIsAdminPinModalOpen(true);
-    } else if (isAdmin) {
-      setIsAdmin(false);
-      soundService.playSuccess();
     } else {
       setAdminActionTitle('Pengesahan Identiti Pensyarah (@bpenawar.kpm.edu.my)');
       setIsAdminPinModalOpen(true);
     }
   };
 
-  // Logout Lecturer
+  // Logout Lecturer / Switch to Regular User Mode
   const handleLogoutLecturer = () => {
     attendanceEngine.logoutLecturer();
     setActiveLecturer(null);
+    setIsAdmin(false);
     soundService.playClick();
   };
 
@@ -253,6 +258,7 @@ export default function App() {
         soundEnabled={soundEnabled}
         isAdmin={isAdmin}
         currentRole={currentRole}
+        onGoHome={() => setActiveTab('dashboard')}
         onRoleChange={(role) => setCurrentRole(role)}
         onToggleSound={(enabled) => setSoundEnabled(enabled)}
         onResetData={handleResetData}

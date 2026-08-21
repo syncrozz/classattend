@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 import {
@@ -30,8 +30,45 @@ import {
   Clock,
   ArrowRight,
   ShieldAlert,
-  GraduationCap
+  GraduationCap,
+  Gauge,
+  SlidersHorizontal,
+  Info
 } from 'lucide-react';
+
+export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
+
+interface PaceConfig {
+  label: string;
+  fps: number;
+  cooldownMs: number;
+  sameCodeGraceMs: number;
+  desc: string;
+}
+
+const PACE_CONFIGS: Record<ScanPaceMode, PaceConfig> = {
+  RELAXED: {
+    label: 'Santai (Sangat Selesa)',
+    fps: 4,
+    cooldownMs: 3500,
+    sameCodeGraceMs: 5000,
+    desc: '3.5 saat jeda • Paling sesuai untuk beri masa pelajar alihkan kad QR tanpa ralat pendua'
+  },
+  BALANCED: {
+    label: 'Sederhana (Standard)',
+    fps: 5,
+    cooldownMs: 2500,
+    sameCodeGraceMs: 4000,
+    desc: '2.5 saat jeda • Kelajuan seimbang untuk barisan sederhana'
+  },
+  FAST: {
+    label: 'Pantas (Laju)',
+    fps: 8,
+    cooldownMs: 1500,
+    sameCodeGraceMs: 2500,
+    desc: '1.5 saat jeda • Imbasan pantas berterusan'
+  }
+};
 
 interface ScannerViewProps {
   activeSession: AttendanceSession | null;
@@ -64,11 +101,42 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [manualInput, setManualInput] = useState<string>('');
   const [cooldown, setCooldown] = useState<boolean>(false);
+  const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState<number>(0);
   const [statsMode, setStatsMode] = useState<'CLASS' | 'OVERALL'>('CLASS');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
+  const [scanPace, setScanPace] = useState<ScanPaceMode>('RELAXED');
+  const [showPaceSettings, setShowPaceSettings] = useState<boolean>(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const qrRegionId = 'qr-reader-studentattend';
+
+  // Refs to prevent React stale closures inside Html5Qrcode callbacks
+  const scanPaceRef = useRef<ScanPaceMode>(scanPace);
+  const lastScannedDataRef = useRef<string>('');
+  const lastScanTimeRef = useRef<number>(0);
+  const isProcessingRef = useRef<boolean>(false);
+  const cooldownTimerRef = useRef<any>(null);
+  const countdownIntervalRef = useRef<any>(null);
+  const selectedSessionIdRef = useRef<string>(selectedSessionId);
+  const onProcessScanRef = useRef(onProcessScan);
+  const soundEnabledRef = useRef(soundEnabled);
+
+  // Sync refs with latest state/props
+  useEffect(() => {
+    scanPaceRef.current = scanPace;
+  }, [scanPace]);
+
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    onProcessScanRef.current = onProcessScan;
+  }, [onProcessScan]);
+
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
   // Ensure selectedSessionId defaults to activeSession when changed
   useEffect(() => {
@@ -139,18 +207,95 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     return student?.className === selectedClassFilter;
   });
 
+  // Core scan execution with smart duplicate protection and dynamic cooldown
+  const handleScannedData = useCallback((dataString: string, method: AttendanceMethod = 'CAMERA_SCAN') => {
+    const now = Date.now();
+    const pace = PACE_CONFIGS[scanPaceRef.current];
+
+    // 1. SMART DUPLICATE PROTECTION:
+    // If the exact same QR code was scanned within the sameCodeGraceMs window (e.g. 5 seconds),
+    // silently ignore it. This prevents the camera from triggering duplicate errors while the student is lowering or moving the card away!
+    if (
+      lastScannedDataRef.current === dataString &&
+      now - lastScanTimeRef.current < pace.sameCodeGraceMs
+    ) {
+      return;
+    }
+
+    // 2. GENERAL PACE THROTTLE:
+    // If the scanner is currently within the general cooldown period (e.g. 3.5 seconds), ignore incoming frames
+    if (isProcessingRef.current || (now - lastScanTimeRef.current < pace.cooldownMs && lastScanTimeRef.current > 0)) {
+      return;
+    }
+
+    // Lock processing
+    isProcessingRef.current = true;
+    lastScannedDataRef.current = dataString;
+    lastScanTimeRef.current = now;
+
+    // Trigger visual cooldown & countdown timer
+    setCooldown(true);
+    const totalCooldownSec = Math.round(pace.cooldownMs / 1000);
+    setCooldownSecondsLeft(totalCooldownSec);
+
+    // Clear previous timers
+    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    let remaining = totalCooldownSec;
+    countdownIntervalRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(countdownIntervalRef.current);
+        setCooldownSecondsLeft(0);
+      } else {
+        setCooldownSecondsLeft(remaining);
+      }
+    }, 1000);
+
+    cooldownTimerRef.current = setTimeout(() => {
+      isProcessingRef.current = false;
+      setCooldown(false);
+      setCooldownSecondsLeft(0);
+    }, pace.cooldownMs);
+
+    // Process scan via attendanceEngine
+    const result = onProcessScanRef.current(dataString, method, selectedSessionIdRef.current);
+    setScanResult(result);
+
+    // Audio & Visual feedback
+    if (result.success) {
+      if (soundEnabledRef.current) soundService.playSuccess();
+      try {
+        confetti({
+          particleCount: 40,
+          spread: 60,
+          origin: { y: 0.8 },
+          colors: ['#6366f1', '#10b981', '#38bdf8']
+        });
+      } catch (e) {}
+    } else if (result.isDuplicate) {
+      if (soundEnabledRef.current) soundService.playDuplicate();
+    } else {
+      if (soundEnabledRef.current) soundService.playError();
+    }
+  }, []);
+
   // Start Camera
   const startCamera = async () => {
+    soundService.unlockAudio();
     setCameraError(null);
     try {
       if (!html5QrCodeRef.current) {
         html5QrCodeRef.current = new Html5Qrcode(qrRegionId);
       }
 
+      const activeConfig = PACE_CONFIGS[scanPaceRef.current];
+
       await html5QrCodeRef.current.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
+          fps: activeConfig.fps, // Configurable smooth camera FPS (default 4-5 fps instead of 10)
           qrbox: { width: 260, height: 260 },
           aspectRatio: 1.0
         },
@@ -182,40 +327,47 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     }
   };
 
+  // Restart camera when user changes FPS pace if camera is running
+  const handlePaceChange = async (newPace: ScanPaceMode) => {
+    setScanPace(newPace);
+    scanPaceRef.current = newPace;
+
+    // Reset current throttling
+    isProcessingRef.current = false;
+    setCooldown(false);
+    setCooldownSecondsLeft(0);
+
+    if (isCameraActive && html5QrCodeRef.current) {
+      try {
+        await html5QrCodeRef.current.stop();
+        const activeConfig = PACE_CONFIGS[newPace];
+        await html5QrCodeRef.current.start(
+          { facingMode: 'environment' },
+          {
+            fps: activeConfig.fps,
+            qrbox: { width: 260, height: 260 },
+            aspectRatio: 1.0
+          },
+          (decodedText) => {
+            handleScannedData(decodedText, 'CAMERA_SCAN');
+          },
+          () => {}
+        );
+      } catch (e) {
+        console.warn('Restart camera error on pace change:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
         html5QrCodeRef.current.stop().catch(console.warn);
       }
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     };
   }, []);
-
-  // Handle Scan Data with cooldown throttling
-  const handleScannedData = (dataString: string, method: AttendanceMethod = 'CAMERA_SCAN') => {
-    if (cooldown) return;
-
-    setCooldown(true);
-    setTimeout(() => setCooldown(false), 2200);
-
-    const result = onProcessScan(dataString, method, currentSession?.id);
-    setScanResult(result);
-
-    if (result.success) {
-      if (soundEnabled) soundService.playSuccess();
-      try {
-        confetti({
-          particleCount: 40,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ['#6366f1', '#10b981', '#38bdf8']
-        });
-      } catch (e) {}
-    } else if (result.isDuplicate) {
-      if (soundEnabled) soundService.playDuplicate();
-    } else {
-      if (soundEnabled) soundService.playError();
-    }
-  };
 
   // Manual code entry / student selection
   const handleManualSubmit = (e: React.FormEvent) => {
@@ -264,7 +416,22 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Scan Pace / Speed Preset Selector */}
+            <div className="flex items-center bg-slate-950 rounded-lg border border-slate-800 p-0.5">
+              <button
+                type="button"
+                onClick={() => setShowPaceSettings(!showPaceSettings)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  showPaceSettings ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white'
+                }`}
+                title="Tetapan Kelajuan & Jeda Imbasan"
+              >
+                <Gauge className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Pace: {PACE_CONFIGS[scanPace].label.split(' ')[0]}</span>
+              </button>
+            </div>
+
             <button
               onClick={() => onToggleSound(!soundEnabled)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
@@ -277,6 +444,53 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Scan Pace Selector Dropdown / Info Panel */}
+        {showPaceSettings && (
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/30 space-y-2.5 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+                <span>Kawalan Kelajuan Imbasan (Pace & Anti-Duplicate Protection)</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Pilih kelajuan yang paling selesa
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(Object.keys(PACE_CONFIGS) as ScanPaceMode[]).map((mode) => {
+                const cfg = PACE_CONFIGS[mode];
+                const isSelected = scanPace === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handlePaceChange(mode)}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
+                        : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold">{cfg.label}</span>
+                      {isSelected && <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500 text-white font-extrabold">AKTIF</span>}
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-snug">{cfg.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-start gap-1.5 text-[11px] text-emerald-400/90 pt-1">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-400" />
+              <span>
+                <strong>Perlindungan Pintar Kad Sama:</strong> Setiap kod QR yang berjaya diimbas tidak akan mencetuskan ralat pendua selama <strong>5 saat</strong> untuk memberi masa yang cukup kepada pelajar mengalihkan kad/telefon.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Row 2: Selected Session Details */}
         <div className="space-y-1.5">
@@ -336,7 +550,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 <Camera className="w-4 h-4 text-indigo-400" />
                 <h3 className="text-sm font-bold text-white">Kamera Pengimbas QR</h3>
               </div>
-              <div>
+              <div className="flex items-center gap-2">
                 {!isCameraActive ? (
                   <button
                     id="scanner-btn-start-camera"
@@ -360,7 +574,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             </div>
 
             {/* Video Viewport Container */}
-            <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 min-h-[300px] flex items-center justify-center">
+            <div className={`relative rounded-xl overflow-hidden bg-slate-950 border transition-all min-h-[300px] flex items-center justify-center ${
+              cooldown ? 'border-emerald-500/40' : 'border-slate-800'
+            }`}>
               <div id={qrRegionId} className="w-full max-w-sm"></div>
 
               {!isCameraActive && (
@@ -370,7 +586,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                   </div>
                   <h4 className="text-sm font-bold text-white mb-1">Kamera Belum Diaktifkan</h4>
                   <p className="text-xs text-slate-400 max-w-xs mb-4">
-                    Halakan kamera peranti ke Kod QR Pelajar (contoh format: <code className="text-indigo-300">STUDENT|PDA-2502-005</code>) untuk merekod kehadiran secara automatik.
+                    Halakan kamera peranti ke Kod QR Pelajar (contoh format: <code className="text-indigo-300">CLASSATTEND|PDA-2502-005</code>) untuk merekod kehadiran secara automatik.
                   </p>
                   <button
                     onClick={startCamera}
@@ -381,9 +597,18 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 </div>
               )}
 
-              {cooldown && (
-                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-indigo-500/90 text-white text-[10px] font-bold animate-pulse shadow-lg">
-                  Memproses...
+              {/* Cooldown Status Overlay */}
+              {isCameraActive && cooldown && (
+                <div className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600/90 backdrop-blur-md text-white text-[11px] font-bold shadow-lg animate-pulse border border-emerald-400/40">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Kad Direkod • Sedia dalam {cooldownSecondsLeft}s</span>
+                </div>
+              )}
+
+              {/* Ready Indicator */}
+              {isCameraActive && !cooldown && (
+                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold">
+                  🟢 Sedia Mengimbas
                 </div>
               )}
             </div>
@@ -598,171 +823,135 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                             percentage >= 80 ? 'bg-emerald-400' : percentage >= 50 ? 'bg-indigo-400' : 'bg-amber-400'
                           }`}
                           style={{ width: `${percentage}%` }}
-                        ></div>
+                        />
                       </div>
                     </div>
                   ) : (
                     /* Sesi Terbuka Pelbagai Kelas (Perhimpunan / Aktiviti Kolej) */
                     <div className="grid grid-cols-2 gap-2">
-                      {classStats.map((cls) => {
+                      {classStats.map((cls, clsIdx) => {
                         const isSelectedFilter = selectedClassFilter === cls.className;
                         return (
                           <div
-                            key={cls.className}
+                            key={`scanner-stat-${cls.className}-${clsIdx}`}
                             onClick={() => setSelectedClassFilter(isSelectedFilter ? 'ALL' : cls.className)}
                             className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
                               isSelectedFilter
-                                ? 'bg-slate-800 border-indigo-400'
-                                : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                                ? 'bg-indigo-950/60 border-indigo-500/60 shadow-sm'
+                                : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
                             }`}
-                            title={`Klik untuk tapis senarai kelas ${cls.className}`}
                           >
                             <div className="flex items-center justify-between mb-1">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${getClassBadgeColor(cls.className)}`}>
-                                {cls.className}
+                              <span className={`text-[11px] font-bold px-1.5 py-0.2 rounded border ${getClassBadgeColor(cls.className)}`}>
+                                Set {cls.className}
                               </span>
-                              <span className="text-xs font-black text-white">
-                                {cls.rate}%
-                              </span>
+                              <span className="text-xs font-black text-white">{cls.rate}%</span>
                             </div>
-
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
-                              <span>{cls.present} / {cls.total} Hadir</span>
+                            <div className="text-[10px] text-slate-400">
+                              {cls.present}/{cls.total} Hadir
                             </div>
-
-                            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden mt-1.5">
                               <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                  cls.rate >= 80 ? 'bg-emerald-400' : cls.rate >= 50 ? 'bg-indigo-400' : 'bg-amber-400'
-                                }`}
+                                className="h-full bg-indigo-500 rounded-full"
                                 style={{ width: `${cls.rate}%` }}
-                              ></div>
+                              />
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   )}
-                  {!currentSession?.className && (
-                    <p className="text-[10px] text-slate-500 text-center">
-                      💡 Klik mana-mana kotak kelas di atas untuk tapis senarai imbasan di bawah.
-                    </p>
-                  )}
                 </div>
               ) : (
-                /* STATS DISPLAY 2: OVERALL (OPTION) */
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2 pt-2">
+                /* STATS DISPLAY 2: OVERALL */
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-white">
-                        {currentSession?.className ? `Peratus Kehadiran Set ${currentSession.className}` : 'Peratus Keseluruhan Sesi'}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {matchingPresentRecords.length} daripada {targetStudents.length} Pelajar
-                      </div>
-                    </div>
-                    <div className="text-2xl font-black text-emerald-400">{percentage}%</div>
+                    <span className="text-xs font-semibold text-slate-300">Peratus Keseluruhan Pelajar</span>
+                    <span className="text-lg font-black text-emerald-400">
+                      {students.length > 0 ? Math.round((sessionRecords.length / students.length) * 100) : 0}%
+                    </span>
                   </div>
                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                     <div
-                      className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${percentage}%` }}
-                    ></div>
+                      className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${students.length > 0 ? (sessionRecords.length / students.length) * 100 : 0}%`
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>{sessionRecords.length} Hadir Sesi</span>
+                    <span>Jumlah: {students.length} Pelajar</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Class Filter Badges & Scan Stream Header */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            {/* LIVE FEED LIST */}
+            <div className="flex-1 flex flex-col min-h-[220px]">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-300">
-                  Senarai Pelajar Hadir ({filteredSessionRecords.length})
+                  Log Terkini ({filteredSessionRecords.length})
                 </span>
                 {selectedClassFilter !== 'ALL' && (
                   <button
                     onClick={() => setSelectedClassFilter('ALL')}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                    className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
                   >
-                    Set Semula Tapis (Semua)
+                    Reset Penapis
                   </button>
                 )}
               </div>
 
-              {/* Filter Pills */}
-              <div className="flex flex-wrap gap-1">
-                <button
-                  onClick={() => setSelectedClassFilter('ALL')}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    selectedClassFilter === 'ALL'
-                      ? 'bg-slate-700 text-white'
-                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  Semua ({sessionRecords.length})
-                </button>
-                {availableClasses.map((cls) => {
-                  const count = sessionRecords.filter((r) => {
-                    const st = students.find((s) => s.id === r.studentId);
-                    return st?.className === cls;
-                  }).length;
-
-                  return (
-                    <button
-                      key={cls}
-                      onClick={() => setSelectedClassFilter(cls)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                        selectedClassFilter === cls
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                      }`}
-                    >
-                      {cls} ({count})
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* List of checked in students for this session */}
-            <div className="flex-1 overflow-y-auto max-h-[380px] space-y-2 pr-1">
               {filteredSessionRecords.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 text-xs">
-                  {selectedClassFilter !== 'ALL'
-                    ? `Belum ada pelajar dari kelas ${selectedClassFilter} yang mengimbas kehadiran.`
-                    : 'Belum ada pelajar yang mengimbas kehadiran bagi sesi ini.'}
+                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                  <Users className="w-8 h-8 mb-2 opacity-30" />
+                  <p className="text-xs font-medium">Belum ada rekod kehadiran bagi sesi ini.</p>
+                  <p className="text-[10px] text-slate-600 mt-1">Imbas kod QR pelajar untuk memulakan.</p>
                 </div>
               ) : (
-                filteredSessionRecords.map((record) => {
-                  const student = students.find((s) => s.id === record.studentId);
-                  return (
-                    <div
-                      key={record.id}
-                      className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${student ? getStudentColor(student.id) : 'bg-slate-800'}`}>
-                          {student ? getInitials(student.name) : 'ST'}
-                        </div>
-                        <div className="truncate">
-                          <div className="text-xs font-semibold text-white truncate">
-                            {student ? student.name : record.studentId}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {student?.studentId} • <span className="font-bold text-slate-300">{student?.className}</span>
-                          </div>
-                        </div>
-                      </div>
+                <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                  {filteredSessionRecords.map((rec) => {
+                    const student = students.find((s) => s.id === rec.studentId);
+                    if (!student) return null;
 
-                      <div className="text-right shrink-0">
-                        <div className="text-[11px] font-bold text-emerald-400">
-                          {new Date(record.timestamp).toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' })}
+                    return (
+                      <div
+                        key={rec.id}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition-all text-xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${getStudentColor(student.id)}`}>
+                            {getInitials(student.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-white truncate">{student.name}</div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                              <span>{student.studentId}</span>
+                              <span>•</span>
+                              <span className={`px-1 py-0.2 rounded border font-semibold ${getClassBadgeColor(student.className)}`}>
+                                {student.className}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-[9px] text-slate-500 uppercase">{record.method}</span>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-[10px] font-mono text-emerald-400 font-semibold">
+                            {new Date(rec.timestamp).toLocaleTimeString('ms-MY', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
+                          </div>
+                          <div className="text-[9px] text-slate-500">
+                            {rec.method === 'CAMERA_SCAN' ? 'Imbasan QR' : 'Manual'}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>

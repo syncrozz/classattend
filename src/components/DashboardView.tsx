@@ -320,9 +320,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </div>
                       </div>
                     ) : (
-                      detailedClassStats.map((st) => (
+                      detailedClassStats.map((st, idx) => (
                         <div
-                          key={st.name}
+                          key={`banner-stat-${st.name}-${idx}`}
                           className="p-2 rounded-xl border bg-slate-900/90 border-slate-800 flex items-center justify-between"
                         >
                           <div>
@@ -374,8 +374,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {detailedClassStats.map((st) => (
-                      <div key={st.name} className="space-y-1">
+                    {detailedClassStats.map((st, idx) => (
+                      <div key={`progress-bar-${st.name}-${idx}`} className="space-y-1">
                         <div className="flex justify-between text-[10px]">
                           <span className="font-semibold text-slate-300">{st.name}</span>
                           <span className="font-bold text-white">{st.activeRate}%</span>
@@ -575,7 +575,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Visual Cards Grid for Each Class */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {detailedClassStats.map((st) => {
+          {detailedClassStats.map((st, idx) => {
             const isHigh = st.displayRate >= 90;
             const isMedium = st.displayRate >= 75 && st.displayRate < 90;
             const isLow = st.displayRate < 75;
@@ -590,7 +590,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             return (
               <div
-                key={st.name}
+                key={`detailed-card-${st.name}-${idx}`}
                 className={`p-4 rounded-xl bg-slate-950/70 border transition-all hover:border-slate-700 space-y-3 ${
                   st.isTargeted ? 'border-indigo-500/50 shadow-md shadow-indigo-500/10' : 'border-slate-800'
                 }`}
@@ -699,8 +699,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Ringkasan Prestasi Kelas
               </h4>
               <div className="space-y-2.5">
-                {detailedClassStats.map((st) => (
-                  <div key={st.name} className="flex items-center justify-between text-xs py-1 border-b border-slate-800/60 last:border-0">
+                {detailedClassStats.map((st, idx) => (
+                  <div key={`summary-row-${st.name}-${idx}`} className="flex items-center justify-between text-xs py-1 border-b border-slate-800/60 last:border-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-slate-200">Seksyen {st.name}</span>
                       <span className="text-[10px] text-slate-500">({st.totalStudents} Pelajar)</span>
@@ -764,8 +764,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span>{sub.lecturerName || 'Pensyarah Kursus'}</span>
                 </div>
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {sub.sections.map((sec) => (
-                    <span key={sec} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
+                  {Array.from(new Set<string>(sub.sections || [])).map((sec, secIdx) => (
+                    <span key={`dash-sub-${sub.id}-sec-${sec}-${secIdx}`} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
                       {sec}
                     </span>
                   ))}
