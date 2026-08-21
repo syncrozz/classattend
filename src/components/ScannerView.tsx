@@ -509,7 +509,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             </p>
           )}
           <p className="text-xs text-slate-400">
-            {currentSession?.location} • {currentSession?.lecturerName ? `Pensyarah: ${currentSession.lecturerName}` : (currentSession?.organizer || 'Pensyarah Kursus')}
+            {currentSession?.lecturerName ? `Pensyarah: ${currentSession.lecturerName}` : (currentSession?.organizer || 'Pensyarah Kursus')}
           </p>
         </div>
 
@@ -525,17 +525,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               onChange={(e) => setSelectedSessionId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs sm:text-sm font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-inner"
             >
-              {allSessions.map((ses) => {
-                const subDetail = ses.subjectCode ? ` [${ses.subjectCode}]` : '';
-                const classDetail = ses.className ? ` (Seksyen ${ses.className})` : '';
-                const statusPrefix = ses.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
+              {allSessions.length === 0 ? (
+                <option value="">-- Tiada sesi kuliah dijumpai (Sila cipta sesi di Pengurusan Kelas) --</option>
+              ) : (
+                allSessions.map((ses) => {
+                  const subDetail = ses.subjectCode ? ` [${ses.subjectCode}]` : '';
+                  const classDetail = ses.className ? ` (Seksyen ${ses.className})` : '';
+                  const statusPrefix = ses.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
 
-                return (
-                  <option key={ses.id} value={ses.id}>
-                    {statusPrefix}{ses.sessionName}{subDetail}{classDetail}
-                  </option>
-                );
-              })}
+                  return (
+                    <option key={ses.id} value={ses.id}>
+                      {statusPrefix}{ses.sessionName}{subDetail}{classDetail}
+                    </option>
+                  );
+                })
+              )}
             </select>
           </div>
         </div>

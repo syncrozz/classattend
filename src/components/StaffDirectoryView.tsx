@@ -674,8 +674,50 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
             </div>
 
             {filteredLecturers.length === 0 ? (
-              <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 text-slate-500 text-xs">
-                Tiada rekod pensyarah dijumpai. Anda boleh memuat turun templat CSV dan mengimport senarai pensyarah rasmi.
+              <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-8 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">Tiada Rekod Pensyarah Didaftarkan</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Pangkalan data pensyarah kini bersih daripada data demo. Anda boleh mendaftar pensyarah secara manual atau memuat naik senarai melalui fail CSV rasmi.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!activeLecturer) {
+                        onRequestAdminAccess('Daftar Pensyarah Baharu');
+                      } else {
+                        setIsAddLecturerOpen(true);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Daftar Pensyarah Baharu</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
+                        return;
+                      }
+                      if (onOpenLecturerCSVImport) {
+                        onOpenLecturerCSVImport();
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Muat Naik Fail CSV</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">

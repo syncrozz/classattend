@@ -16,7 +16,6 @@ import {
   QrCode,
   CheckCircle2,
   XCircle,
-  MapPin,
   Printer,
   X,
   BookOpen,
@@ -333,11 +332,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                             <span>Pensyarah: {session.lecturerName}</span>
                           </span>
                         )}
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-slate-500" />
-                          <span>{session.location || 'Bilik Kuliah'}</span>
-                        </span>
-                        <span>{session.date} • {session.startTime} - {session.endTime}</span>
+                        <span>{session.date} {session.startTime ? `• ${session.startTime} - ${session.endTime}` : ''}</span>
                       </div>
                     </div>
 

@@ -13,7 +13,6 @@ import {
   Plus,
   QrCode,
   Clock,
-  MapPin,
   Users,
   CheckCircle2,
   XCircle,
@@ -49,6 +48,8 @@ interface ClassManagementViewProps {
   onRequestAdminAccess: (actionName?: string) => void;
 }
 
+const CLASS_SECTIONS = ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+
 export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   subjects,
   sessions,
@@ -63,7 +64,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onOpenScannerForSession,
   onRequestAdminAccess
 }) => {
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modal States
@@ -77,26 +77,23 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   const [newSubName, setNewSubName] = useState<string>('');
   const [newSubLecturer, setNewSubLecturer] = useState<string>(activeLecturer?.name || 'EN. KHAIRI BIN ABDUL RAHMAN');
   const [newSubSections, setNewSubSections] = useState<string[]>(['DIA_4A', 'DIA_4B']);
-  const [newSubLocation, setNewSubLocation] = useState<string>('Bilik Kuliah 204');
   const [newSubDesc, setNewSubDesc] = useState<string>('');
 
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
   const [newSessionClass, setNewSessionClass] = useState<string>('DIA_4A');
-  const [newSessionLocation, setNewSessionLocation] = useState<string>('Bilik Kuliah 204');
 
   // Filtered Subjects
   const filteredSubjects = subjects.filter((sub) => {
-    const matchesClass =
-      selectedClassFilter === 'ALL' || (sub.sections && sub.sections.includes(selectedClassFilter));
-    const matchesSearch =
-      sub.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.lecturerName.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesClass && matchesSearch;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      sub.code.toLowerCase().includes(q) ||
+      sub.name.toLowerCase().includes(q) ||
+      (sub.lecturerName && sub.lecturerName.toLowerCase().includes(q)) ||
+      (sub.sections && sub.sections.some((sec) => sec.toLowerCase().includes(q)))
+    );
   });
-
-  const availableClassSections = ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
 
   // Handle Submit New Subject
   const handleSubmitSubject = (e: React.FormEvent) => {
@@ -111,7 +108,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       lecturerName: newSubLecturer.trim() || activeLecturer?.name || 'Pensyarah',
       department: 'Jabatan Perakaunan & Kewangan',
       sections: newSubSections.length > 0 ? newSubSections : ['DIA_4A'],
-      location: newSubLocation.trim() || 'Bilik Kuliah',
       description: newSubDesc.trim(),
       status: 'ACTIVE',
       createdAt: new Date().toISOString()
@@ -133,7 +129,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       const nextWeekNum = existingSubSessions.length + 1;
       setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
       setNewSessionClass(sub.sections[0] || 'DIA_4A');
-      setNewSessionLocation(sub.location || 'Bilik Kuliah');
     }
     setIsCreateSessionOpen(true);
   };
@@ -159,7 +154,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       endTime: '',
       status: 'OPEN',
       attendanceMethod: 'QR',
-      location: newSessionLocation.trim() || parentSub?.location || 'Bilik Kuliah',
       organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
       lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
       className: newSessionClass,
@@ -212,7 +206,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
       <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -226,14 +220,26 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               )}
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight mt-1">
-              Subjek, Seksyen Kelas & Sesi Kuliah
+              Subjek & Sesi Kuliah
             </h2>
             <p className="text-xs text-slate-400">
-              Urus subjek pensyarah, bahagikan mengikut seksyen kelas (DIA_4A, DIA_4B), dan buka sesi imbasan mingguan.
+              Urus subjek pensyarah, seksyen kelas yang diajar, dan buka sesi imbasan mingguan.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            {/* Search Box */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Cari kod atau nama subjek..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <button
               id="btn-create-new-subject"
               onClick={() => {
@@ -242,53 +248,11 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 }
                 setIsCreateSubjectOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>Daftar Subjek Baharu</span>
             </button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-col md:flex-row items-center gap-3 pt-2">
-          {/* Class Section Filter Buttons */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full pb-1 no-scrollbar">
-            <button
-              onClick={() => setSelectedClassFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
-                selectedClassFilter === 'ALL'
-                  ? 'bg-indigo-600 text-white font-semibold'
-                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              Semua Seksyen Kelas
-            </button>
-            {availableClassSections.map((sec, secIdx) => (
-              <button
-                key={`filter-sec-${sec}-${secIdx}`}
-                onClick={() => setSelectedClassFilter(sec)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
-                  selectedClassFilter === sec
-                    ? 'bg-indigo-600 text-white font-semibold'
-                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                }`}
-              >
-                Kelas {sec}
-              </button>
-            ))}
-          </div>
-
-          {/* Search Box */}
-          <div className="relative w-full md:w-64 shrink-0">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Cari kod subjek atau nama..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-            />
           </div>
         </div>
       </div>
@@ -296,8 +260,27 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       {/* SUBJECTS LIST WITH NESTED SESSIONS */}
       <div className="space-y-4">
         {filteredSubjects.length === 0 ? (
-          <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 text-slate-400 text-xs">
-            Tiada subjek ditemui bagi kriteria carian atau seksyen yang dipilih. Klik "Daftar Subjek Baharu" untuk menambah subjek diajar.
+          <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center space-y-3">
+            <BookOpen className="w-10 h-10 text-indigo-500/40" />
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-white">Belum Ada Subjek Didaftarkan</h4>
+              <p className="text-xs text-slate-400 max-w-md">
+                Semua data demo telah dibersihkan. Anda kini boleh mendaftarkan subjek dan membuka sesi kuliah sebenar.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (!isAdmin) {
+                  onRequestAdminAccess('Pendaftaran Subjek Baharu');
+                  return;
+                }
+                setIsCreateSubjectOpen(true);
+              }}
+              className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-lg shadow-indigo-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Daftar Subjek Baharu</span>
+            </button>
           </div>
         ) : (
           filteredSubjects.map((subject) => {
@@ -342,10 +325,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <span className="flex items-center gap-1 text-slate-300">
                         <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
                         <span>Pensyarah: <strong className="text-white">{subject.lecturerName}</strong></span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{subject.location || 'Bilik Kuliah'}</span>
                       </span>
                       <span className="flex items-center gap-1 text-indigo-300">
                         <BookMarked className="w-3.5 h-3.5 text-indigo-400" />
@@ -430,7 +409,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
                                 <div className="text-xs text-slate-400 space-y-0.5 pt-0.5">
                                   <div className="text-[11px] text-slate-300">
-                                    Lokasi: {session.location || 'Bilik Kuliah'} • Pensyarah: {session.lecturerName || subject.lecturerName}
+                                    Pensyarah: {session.lecturerName || subject.lecturerName}
                                   </div>
                                 </div>
                               </div>
@@ -572,7 +551,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   Seksyen Kelas Terlibat:
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {availableClassSections.map((sec, secIdx) => {
+                  {CLASS_SECTIONS.map((sec, secIdx) => {
                     const isSelected = newSubSections.includes(sec);
                     return (
                       <button
@@ -590,17 +569,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     );
                   })}
                 </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Bilik Kuliah / Makmal</label>
-                <input
-                  type="text"
-                  placeholder="cth: Bilik Kuliah 204 / Makmal Komputer 2"
-                  value={newSubLocation}
-                  onChange={(e) => setNewSubLocation(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
               </div>
 
               <div>
@@ -666,31 +634,18 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300">Seksyen Kelas Sasaran *</label>
-                  <select
-                    value={newSessionClass}
-                    onChange={(e) => setNewSessionClass(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="DIA_4A">Kelas DIA_4A</option>
-                    <option value="DIA_4B">Kelas DIA_4B</option>
-                    <option value="DIA_4C">Kelas DIA_4C</option>
-                    <option value="DIA_4D">Kelas DIA_4D</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300">Lokasi Kelas</label>
-                  <input
-                    type="text"
-                    placeholder="Bilik Kuliah 204"
-                    value={newSessionLocation}
-                    onChange={(e) => setNewSessionLocation(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300">Seksyen Kelas Sasaran *</label>
+                <select
+                  value={newSessionClass}
+                  onChange={(e) => setNewSessionClass(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="DIA_4A">Kelas DIA_4A</option>
+                  <option value="DIA_4B">Kelas DIA_4B</option>
+                  <option value="DIA_4C">Kelas DIA_4C</option>
+                  <option value="DIA_4D">Kelas DIA_4D</option>
+                </select>
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">

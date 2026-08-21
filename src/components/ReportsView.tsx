@@ -502,6 +502,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       )}
 
       {/* PERSPECTIVE 2: SESSION-CENTRIC */}
+      {reportPerspective === 'SESSION' && !currentSession && (
+        <div className="text-center py-16 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center space-y-3">
+          <BookOpen className="w-10 h-10 text-indigo-500/40" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-white">Tiada Sesi Kuliah Direkodkan</h4>
+            <p className="text-xs text-slate-400 max-w-md">
+              Sistem kini bersih daripada data demo. Sila cipta subjek dan sesi kuliah di tab "Pengurusan Kelas" untuk mula merekod dan melihat laporan kehadiran.
+            </p>
+          </div>
+        </div>
+      )}
+
       {reportPerspective === 'SESSION' && currentSession && (
         <div className="space-y-6 printable-report-container">
           {/* Summary KPIs & Set Chart */}
@@ -554,8 +566,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </div>
 
               <div className="text-xs text-slate-400 space-y-1 pt-1 border-t border-slate-800/80">
-                <div>📍 Lokasi: <strong className="text-slate-300">{currentSession.location || 'Bilik Kuliah'}</strong></div>
-                <div>🕒 Masa: <strong className="text-slate-300">{currentSession.date} ({currentSession.startTime} - {currentSession.endTime})</strong></div>
+                <div>🕒 Masa & Tarikh: <strong className="text-slate-300">{currentSession.date} {currentSession.startTime ? `(${currentSession.startTime} - ${currentSession.endTime})` : ''}</strong></div>
               </div>
             </div>
 

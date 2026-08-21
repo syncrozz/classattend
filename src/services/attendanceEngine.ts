@@ -26,14 +26,19 @@ import {
 } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
-  STUDENTS: 'classattend_students_v3',
-  LECTURERS: 'classattend_lecturers_v3',
-  SUBJECTS: 'classattend_subjects_v3',
-  SESSIONS: 'classattend_sessions_v3',
-  RECORDS: 'classattend_records_v3',
-  ACTIVE_LECTURER: 'classattend_active_lecturer_v3',
-  INITIALIZED: 'classattend_initialized_v3'
+  STUDENTS: 'classattend_students_v5',
+  LECTURERS: 'classattend_lecturers_v5',
+  SUBJECTS: 'classattend_subjects_v5',
+  SESSIONS: 'classattend_sessions_v5',
+  RECORDS: 'classattend_records_v5',
+  ACTIVE_LECTURER: 'classattend_active_lecturer_v5',
+  INITIALIZED: 'classattend_initialized_v5'
 };
+
+const DUMMY_SESSION_IDS = ['SES-CLS-MPU2163-01', 'SES-CLS-ACC2103-01', 'SES-CLS-MGT2013-01', 'SES-CLS-TAX3013-01'];
+const DUMMY_RECORD_PREFIXES = ['REC-MPU-', 'REC-ACC-', 'REC-TAX-'];
+const DUMMY_SUBJECT_IDS = ['SUB-MPU2163', 'SUB-ACC2103', 'SUB-MGT2013', 'SUB-TAX3013'];
+const DUMMY_LECTURER_IDS = ['LEC-KHAIRI', 'LEC-ROHANI', 'LEC-FAIZAL', 'LEC-IZZATI'];
 
 class AttendanceEngine {
   private students: Student[] = [];
@@ -62,30 +67,90 @@ class AttendanceEngine {
         const storedActiveLecturer = localStorage.getItem(STORAGE_KEYS.ACTIVE_LECTURER);
 
         this.students = storedStudents ? JSON.parse(storedStudents) : INITIAL_STUDENTS;
-        this.lecturers = storedLecturers ? JSON.parse(storedLecturers) : INITIAL_LECTURERS;
-        this.subjects = storedSubjects ? JSON.parse(storedSubjects) : INITIAL_SUBJECTS;
-        this.sessions = storedSessions ? JSON.parse(storedSessions) : INITIAL_SESSIONS;
-        this.attendanceRecords = storedRecords ? JSON.parse(storedRecords) : INITIAL_ATTENDANCE_RECORDS;
+        this.lecturers = storedLecturers
+          ? JSON.parse(storedLecturers).filter((l: Lecturer) => !DUMMY_LECTURER_IDS.includes(l.id))
+          : [];
+        this.subjects = storedSubjects ? JSON.parse(storedSubjects) : [];
+        this.sessions = storedSessions ? JSON.parse(storedSessions) : [];
+        this.attendanceRecords = storedRecords ? JSON.parse(storedRecords) : [];
         this.activeLecturer = storedActiveLecturer ? JSON.parse(storedActiveLecturer) : null;
       } catch (e) {
-        console.warn('Error reading from localStorage, resetting to default ClassAttend data', e);
+        console.warn('Error reading from localStorage, resetting to clean ClassAttend data', e);
         this.resetToDefaultData();
       }
     } else {
       this.resetToDefaultData();
     }
 
+    // Clean any legacy dummy data
+    this.cleanLegacyDummyData();
+
     if (db) {
       this.isFirestoreConnected = true;
     }
   }
 
+  public cleanLegacyDummyData() {
+    // Filter out dummy sessions and records from memory and local storage
+    this.sessions = this.sessions.filter((s) => !DUMMY_SESSION_IDS.includes(s.id));
+    this.attendanceRecords = this.attendanceRecords.filter(
+      (r) => !DUMMY_RECORD_PREFIXES.some((prefix) => r.id.startsWith(prefix)) && !DUMMY_SESSION_IDS.includes(r.sessionId)
+    );
+    this.subjects = this.subjects.filter((sub) => !DUMMY_SUBJECT_IDS.includes(sub.id));
+    this.lecturers = this.lecturers.filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
+
+    this.saveSessionsLocally();
+    this.saveRecordsLocally();
+    this.saveSubjectsLocally();
+    this.saveLecturersLocally();
+
+    // Also delete dummy documents from Firestore if present
+    if (db) {
+      DUMMY_SESSION_IDS.forEach((id) => deleteDoc(doc(db!, 'sessions', id)).catch(() => {}));
+      DUMMY_SUBJECT_IDS.forEach((id) => deleteDoc(doc(db!, 'subjects', id)).catch(() => {}));
+      DUMMY_LECTURER_IDS.forEach((id) => deleteDoc(doc(db!, 'lecturers', id)).catch(() => {}));
+      ['REC-MPU-01', 'REC-MPU-02', 'REC-MPU-03', 'REC-MPU-04', 'REC-MPU-05', 'REC-MPU-06',
+       'REC-ACC-01', 'REC-ACC-02', 'REC-ACC-03', 'REC-ACC-04',
+       'REC-TAX-01', 'REC-TAX-02', 'REC-TAX-03', 'REC-TAX-04'].forEach((id) => {
+        deleteDoc(doc(db!, 'attendance_records', id)).catch(() => {});
+      });
+    }
+  }
+
+  public clearAllDummyData() {
+    this.sessions = [];
+    this.attendanceRecords = [];
+    this.subjects = [];
+    this.lecturers = [];
+    this.saveSessionsLocally();
+    this.saveRecordsLocally();
+    this.saveSubjectsLocally();
+    this.saveLecturersLocally();
+
+    if (db) {
+      try {
+        const batch = writeBatch(db);
+        DUMMY_SESSION_IDS.forEach((id) => batch.delete(doc(db!, 'sessions', id)));
+        DUMMY_SUBJECT_IDS.forEach((id) => batch.delete(doc(db!, 'subjects', id)));
+        DUMMY_LECTURER_IDS.forEach((id) => batch.delete(doc(db!, 'lecturers', id)));
+        ['REC-MPU-01', 'REC-MPU-02', 'REC-MPU-03', 'REC-MPU-04', 'REC-MPU-05', 'REC-MPU-06',
+         'REC-ACC-01', 'REC-ACC-02', 'REC-ACC-03', 'REC-ACC-04',
+         'REC-TAX-01', 'REC-TAX-02', 'REC-TAX-03', 'REC-TAX-04'].forEach((id) => {
+          batch.delete(doc(db!, 'attendance_records', id));
+        });
+        batch.commit().catch(console.warn);
+      } catch (err) {
+        console.warn('Clear dummy data notice:', err);
+      }
+    }
+  }
+
   public resetToDefaultData() {
     this.students = [...INITIAL_STUDENTS];
-    this.lecturers = [...INITIAL_LECTURERS];
-    this.subjects = [...INITIAL_SUBJECTS];
-    this.sessions = [...INITIAL_SESSIONS];
-    this.attendanceRecords = [...INITIAL_ATTENDANCE_RECORDS];
+    this.lecturers = [];
+    this.subjects = [];
+    this.sessions = [];
+    this.attendanceRecords = [];
     this.activeLecturer = null;
 
     this.saveStudentsLocally();
@@ -177,7 +242,9 @@ class AttendanceEngine {
         q,
         (snapshot) => {
           if (!snapshot.empty) {
-            const data = snapshot.docs.map((docSnap) => docSnap.data() as Lecturer);
+            const data = snapshot.docs
+              .map((docSnap) => docSnap.data() as Lecturer)
+              .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
             this.lecturers = data;
             this.saveLecturersLocally();
             callback(this.lecturers);
@@ -208,7 +275,9 @@ class AttendanceEngine {
         q,
         (snapshot) => {
           if (!snapshot.empty) {
-            const data = snapshot.docs.map((docSnap) => docSnap.data() as Subject);
+            const data = snapshot.docs
+              .map((docSnap) => docSnap.data() as Subject)
+              .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
             this.subjects = data;
             this.saveSubjectsLocally();
             callback(this.subjects);
@@ -239,7 +308,9 @@ class AttendanceEngine {
         q,
         (snapshot) => {
           if (!snapshot.empty) {
-            const data = snapshot.docs.map((docSnap) => docSnap.data() as AttendanceSession);
+            const data = snapshot.docs
+              .map((docSnap) => docSnap.data() as AttendanceSession)
+              .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
             this.sessions = data;
             this.saveSessionsLocally();
             callback(this.sessions);
@@ -271,7 +342,13 @@ class AttendanceEngine {
         q,
         (snapshot) => {
           if (!snapshot.empty) {
-            const data = snapshot.docs.map((docSnap) => docSnap.data() as AttendanceRecord);
+            const data = snapshot.docs
+              .map((docSnap) => docSnap.data() as AttendanceRecord)
+              .filter(
+                (rec) =>
+                  !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
+                  !DUMMY_SESSION_IDS.includes(rec.sessionId)
+              );
             this.attendanceRecords = data;
             this.saveRecordsLocally();
             callback(this.attendanceRecords);
