@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Subject,
   AttendanceSession,
   AttendanceRecord,
   Lecturer,
+  Student,
   EventStatus
 } from '../types';
 import { getClassBadgeColor } from '../utils/studentUtils';
@@ -29,7 +30,9 @@ import {
   Layers,
   UserCheck,
   User,
-  BookMarked
+  BookMarked,
+  AlertTriangle,
+  Upload
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 
@@ -37,6 +40,8 @@ interface ClassManagementViewProps {
   subjects: Subject[];
   sessions: AttendanceSession[];
   attendanceRecords: AttendanceRecord[];
+  students?: Student[];
+  lecturers?: Lecturer[];
   activeLecturer: Lecturer | null;
   isAdmin: boolean;
   onSetSessionStatus: (sessionId: string, newStatus: EventStatus) => void;
@@ -46,14 +51,16 @@ interface ClassManagementViewProps {
   onDeleteSubject?: (subjectId: string) => void;
   onOpenScannerForSession: (sessionId: string) => void;
   onRequestAdminAccess: (actionName?: string) => void;
+  onOpenCSVImport?: () => void;
+  onNavigateToStudents?: () => void;
 }
-
-const CLASS_SECTIONS = ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
 
 export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   subjects,
   sessions,
   attendanceRecords,
+  students: propStudents,
+  lecturers: propLecturers,
   activeLecturer,
   isAdmin,
   onSetSessionStatus,
@@ -62,9 +69,38 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onDeleteSession,
   onDeleteSubject,
   onOpenScannerForSession,
-  onRequestAdminAccess
+  onRequestAdminAccess,
+  onOpenCSVImport,
+  onNavigateToStudents
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Lecturers list from props or engine
+  const availableLecturers = propLecturers && propLecturers.length > 0
+    ? propLecturers
+    : attendanceEngine.getLecturers();
+
+  // Students list from props or engine
+  const availableStudents = propStudents && propStudents.length > 0
+    ? propStudents
+    : attendanceEngine.getStudents();
+
+  // Calculate student count per class to strictly only allow classes with student data
+  const studentCountByClass = useMemo(() => {
+    const counts: Record<string, number> = {};
+    availableStudents.forEach((s) => {
+      const cls = (s.className || '').trim().toUpperCase();
+      if (cls) {
+        counts[cls] = (counts[cls] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [availableStudents]);
+
+  // ONLY classes that actually have student data in database
+  const classesWithData = useMemo(() => {
+    return Object.keys(studentCountByClass).sort();
+  }, [studentCountByClass]);
 
   // Modal States
   const [isCreateSubjectOpen, setIsCreateSubjectOpen] = useState<boolean>(false);
@@ -75,13 +111,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   // New Subject Form State
   const [newSubCode, setNewSubCode] = useState<string>('');
   const [newSubName, setNewSubName] = useState<string>('');
-  const [newSubLecturer, setNewSubLecturer] = useState<string>(activeLecturer?.name || 'EN. KHAIRI BIN ABDUL RAHMAN');
-  const [newSubSections, setNewSubSections] = useState<string[]>(['DIA_4A', 'DIA_4B']);
+  const [newSubLecturer, setNewSubLecturer] = useState<string>(
+    activeLecturer?.name || (availableLecturers[0]?.name) || 'PENSYARAH'
+  );
+  const [newSubSections, setNewSubSections] = useState<string[]>([]);
   const [newSubDesc, setNewSubDesc] = useState<string>('');
 
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
-  const [newSessionClass, setNewSessionClass] = useState<string>('DIA_4A');
+  const [newSessionClass, setNewSessionClass] = useState<string>('');
 
   // Filtered Subjects
   const filteredSubjects = subjects.filter((sub) => {
@@ -100,14 +138,26 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     e.preventDefault();
     if (!newSubCode.trim() || !newSubName.trim()) return;
 
+    if (classesWithData.length === 0) {
+      alert('Tiada data kelas pelajar. Sila muat naik fail CSV data pelajar terlebih dahulu.');
+      return;
+    }
+
+    if (newSubSections.length === 0) {
+      alert('Sila pilih sekurang-kurangnya satu kelas yang mengambil subjek ini.');
+      return;
+    }
+
+    const matchedLec = availableLecturers.find((l) => l.name === newSubLecturer) || activeLecturer;
+
     const newSub: Subject = {
       id: `SUB-${newSubCode.trim().toUpperCase().replace(/\s+/g, '')}`,
       code: newSubCode.trim().toUpperCase(),
       name: newSubName.trim(),
-      lecturerId: activeLecturer?.id || 'LEC-001',
-      lecturerName: newSubLecturer.trim() || activeLecturer?.name || 'Pensyarah',
-      department: 'Jabatan Perakaunan & Kewangan',
-      sections: newSubSections.length > 0 ? newSubSections : ['DIA_4A'],
+      lecturerId: matchedLec?.id || activeLecturer?.id || 'LEC-001',
+      lecturerName: newSubLecturer.trim() || matchedLec?.name || activeLecturer?.name || 'Pensyarah',
+      department: matchedLec?.department || 'Jabatan Perakaunan & Kewangan',
+      sections: newSubSections,
       description: newSubDesc.trim(),
       status: 'ACTIVE',
       createdAt: new Date().toISOString()
@@ -118,6 +168,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setNewSubCode('');
     setNewSubName('');
     setNewSubDesc('');
+    setNewSubSections(classesWithData.slice(0, 1));
   };
 
   // Open Create Session modal for specific subject
@@ -128,7 +179,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       const existingSubSessions = sessions.filter((s) => s.subjectId === subId || s.activityId === subId);
       const nextWeekNum = existingSubSessions.length + 1;
       setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
-      setNewSessionClass(sub.sections[0] || 'DIA_4A');
+      const validClass = (sub.sections || []).find((sec) => classesWithData.includes(sec)) || sub.sections[0] || classesWithData[0] || 'ALL';
+      setNewSessionClass(validClass);
     }
     setIsCreateSessionOpen(true);
   };
@@ -202,6 +254,16 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     }
   };
 
+  const handleOpenCreateSubjectModal = () => {
+    if (activeLecturer) {
+      setNewSubLecturer(activeLecturer.name);
+    }
+    if (classesWithData.length > 0 && newSubSections.length === 0) {
+      setNewSubSections(classesWithData.slice(0, 1));
+    }
+    setIsCreateSubjectOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
@@ -242,12 +304,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
             <button
               id="btn-create-new-subject"
-              onClick={() => {
-                if (activeLecturer) {
-                  setNewSubLecturer(activeLecturer.name);
-                }
-                setIsCreateSubjectOpen(true);
-              }}
+              onClick={handleOpenCreateSubjectModal}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4" />
@@ -265,22 +322,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             <div className="space-y-1">
               <h4 className="text-sm font-bold text-white">Belum Ada Subjek Didaftarkan</h4>
               <p className="text-xs text-slate-400 max-w-md">
-                Semua data demo telah dibersihkan. Anda kini boleh mendaftarkan subjek dan membuka sesi kuliah sebenar.
+                Gunakan butang <strong>"Daftar Subjek Baharu"</strong> di bahagian atas untuk mula mendaftarkan subjek dan membuka sesi kuliah.
               </p>
             </div>
-            <button
-              onClick={() => {
-                if (!isAdmin) {
-                  onRequestAdminAccess('Pendaftaran Subjek Baharu');
-                  return;
-                }
-                setIsCreateSubjectOpen(true);
-              }}
-              className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-lg shadow-indigo-600/20"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Daftar Subjek Baharu</span>
-            </button>
           </div>
         ) : (
           filteredSubjects.map((subject) => {
@@ -295,7 +339,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               >
                 {/* Subject Header */}
                 <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                         {subject.code}
@@ -333,37 +377,55 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Action Buttons for Subject */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      id={`btn-add-session-${subject.id}`}
-                      onClick={() => handleOpenAddSession(subject.id)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer shadow-sm"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Buka Sesi Kelas</span>
-                    </button>
-
+                  {/* Subject Header Right Actions: Delete Subject */}
+                  <div className="flex items-center gap-2 self-start md:self-center shrink-0">
                     <button
                       id={`btn-delete-subject-${subject.id}`}
                       onClick={() => handleDeleteSubjectClick(subject)}
-                      className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 transition-all cursor-pointer"
-                      title="Padam Subjek"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-medium transition-all cursor-pointer"
+                      title="Padam Maklumat Subjek Ini"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
+                      <span>Padam Subjek</span>
                     </button>
                   </div>
                 </div>
 
                 {/* SESSIONS SUB-LIST */}
                 <div className="p-4 sm:p-5 bg-slate-950/40 space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Sesi Kehadiran Kelas Mingguan Bagi Subjek Ini:
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Sesi Kehadiran Kelas Mingguan
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                        {subjectSessions.length} Sesi
+                      </span>
+                    </div>
+
+                    {/* Moved 'Buka Sesi Kelas' here directly with the session list */}
+                    <button
+                      id={`btn-add-session-${subject.id}`}
+                      onClick={() => handleOpenAddSession(subject.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Buka Sesi Kelas</span>
+                    </button>
                   </div>
 
                   {subjectSessions.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center text-xs text-slate-500">
-                      Belum ada sesi kelas dibuka bagi subjek ini. Klik "Buka Sesi Kelas" untuk menjana sesi kuliah mingguan.
+                    <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2.5">
+                      <p className="text-xs text-slate-400">
+                        Belum ada sesi kuliah mingguan dibuka bagi subjek ini.
+                      </p>
+                      <button
+                        onClick={() => handleOpenAddSession(subject.id)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Buka Sesi Kelas Pertama</span>
+                      </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -535,40 +597,97 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300">Pensyarah Mengajar</label>
-                <input
-                  type="text"
-                  placeholder="Nama Pensyarah"
+                <label className="text-xs font-semibold text-slate-300">Pensyarah Mengajar *</label>
+                <select
                   value={newSubLecturer}
                   onChange={(e) => setNewSubLecturer(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {availableLecturers.map((lec) => (
+                    <option key={lec.id} value={lec.name}>
+                      {lec.name} {lec.role === 'ADMIN' ? '(Pentadbir)' : ''} - {lec.department || 'Pensyarah'}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Dipilih terus daripada senarai pensyarah berdaftar dalam pangkalan data.
+                </p>
               </div>
 
-              {/* Section Toggles */}
+              {/* Section Toggles (Only classes with actual student data in database) */}
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                  Kelas Terlibat:
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {CLASS_SECTIONS.map((sec, secIdx) => {
-                    const isSelected = newSubSections.includes(sec);
-                    return (
+                {classesWithData.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <div className="text-xs font-bold text-amber-300">
+                          Tiada Data Kelas Pelajar Dijumpai
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-slate-300">
+                          Sebelum mendaftarkan subjek baharu, pensyarah/pentadbir perlu memuat naik senarai data pelajar mengikut kelas terlebih dahulu melalui fail CSV di tab <strong>Pangkalan Data</strong>.
+                        </p>
+                      </div>
+                    </div>
+                    {onOpenCSVImport && (
                       <button
-                        key={`new-sub-sec-${sec}-${secIdx}`}
                         type="button"
-                        onClick={() => toggleSectionSelect(sec)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-700'
-                        }`}
+                        onClick={() => {
+                          setIsCreateSubjectOpen(false);
+                          onOpenCSVImport();
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
                       >
-                        {sec}
+                        <Upload className="w-4 h-4" />
+                        <span>Muat Naik CSV Data Pelajar Sekarang</span>
                       </button>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Kelas Terlibat (Mempunyai Data Pelajar) *
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {newSubSections.length} kelas dipilih
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {classesWithData.map((sec) => {
+                        const isSelected = newSubSections.includes(sec);
+                        const count = studentCountByClass[sec] || 0;
+                        return (
+                          <button
+                            key={`new-sub-sec-${sec}`}
+                            type="button"
+                            onClick={() => toggleSectionSelect(sec)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/50'
+                                : 'bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <span>Kelas {sec}</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
+                                isSelected
+                                  ? 'bg-indigo-900/80 text-indigo-100'
+                                  : 'bg-slate-800 text-emerald-400'
+                              }`}
+                            >
+                              {count} Pelajar
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                      <span>💡 Hanya kelas yang mempunyai senarai data pelajar berdaftar dipaparkan.</span>
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -592,7 +711,12 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  disabled={classesWithData.length === 0 || newSubSections.length === 0}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all ${
+                    classesWithData.length === 0 || newSubSections.length === 0
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 cursor-pointer'
+                  }`}
                 >
                   Daftar Subjek
                 </button>
@@ -639,12 +763,18 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 <select
                   value={newSessionClass}
                   onChange={(e) => setNewSessionClass(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
                 >
-                  <option value="DIA_4A">Kelas DIA_4A</option>
-                  <option value="DIA_4B">Kelas DIA_4B</option>
-                  <option value="DIA_4C">Kelas DIA_4C</option>
-                  <option value="DIA_4D">Kelas DIA_4D</option>
+                  {/* Prioritize sections assigned to selected subject, then all available sections with student data */}
+                  {Array.from(new Set([
+                    ...(subjects.find((s) => s.id === selectedSubjectId)?.sections || []),
+                    ...classesWithData
+                  ])).map((sec) => (
+                    <option key={`session-target-class-${sec}`} value={sec}>
+                      Kelas {sec} {studentCountByClass[sec] ? `(${studentCountByClass[sec]} Pelajar)` : ''}
+                    </option>
+                  ))}
+                  <option value="ALL">Semua Kelas (Gabungan)</option>
                 </select>
               </div>
 

@@ -76,6 +76,14 @@ export const getCategoryBadgeColor = (cat?: ActivityCategory | string): string =
 
 export const getClassBadgeColor = (className?: string): string => {
   switch (className) {
+    case 'DIA_3A':
+      return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+    case 'DIA_3B':
+      return 'bg-teal-500/10 text-teal-300 border-teal-500/30';
+    case 'DIA_3C':
+      return 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30';
+    case 'DIA_3D':
+      return 'bg-sky-500/10 text-sky-300 border-sky-500/30';
     case 'DIA_4A':
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
     case 'DIA_4B':

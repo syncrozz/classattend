@@ -754,48 +754,51 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         {/* RIGHT COLUMN: LIVE SESSION ATTENDANCE STREAM & CLASS STATS (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4 flex flex-col h-full">
-            {/* Header with Stats Mode Switcher */}
-            <div className="flex flex-col gap-2.5 border-b border-slate-800 pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                    <span>Statistik Kehadiran Sesi</span>
-                    {currentSession?.className && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
-                        Set {currentSession.className}
-                      </span>
-                    )}
+            {/* Header with Stats Mode Switcher - 2 Rows, 1 Column */}
+            <div className="flex flex-col gap-3 border-b border-slate-800 pb-3.5">
+              {/* Row 1: Title and Summary */}
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-bold text-white tracking-tight">
+                    Statistik Kehadiran Sesi
                   </h3>
-                  <p className="text-[11px] text-slate-400">
-                    {matchingPresentRecords.length} daripada {targetStudents.length} Pelajar {currentSession?.className ? 'Kelas ' : ''}Direkod Hadir
-                  </p>
+                  {currentSession?.className && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold shrink-0">
+                      Set {currentSession.className}
+                    </span>
+                  )}
                 </div>
+                <p className="text-[11px] text-slate-400">
+                  <span className="text-emerald-400 font-semibold">{matchingPresentRecords.length}</span> daripada <span className="text-white font-semibold">{targetStudents.length}</span> pelajar {currentSession?.className ? `Kelas ${currentSession.className} ` : ''}direkod hadir
+                </p>
+              </div>
 
-                {/* Option Toggle: By Class (Primary) vs Overall */}
-                <div className="flex items-center p-0.5 bg-slate-950 rounded-lg border border-slate-800 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setStatsMode('CLASS')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      statsMode === 'CLASS'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    👥 Ikut Kelas (Utama)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatsMode('OVERALL')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      statsMode === 'OVERALL'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    🌐 Keseluruhan
-                  </button>
-                </div>
+              {/* Row 2: Option Toggle - Full Width 2-item Segmented Pill */}
+              <div className="grid grid-cols-2 p-1 bg-slate-950/90 rounded-xl border border-slate-800/90 shadow-inner gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStatsMode('CLASS')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    statsMode === 'CLASS'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                  }`}
+                >
+                  <span>👥</span>
+                  <span>Ikut Kelas (Utama)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatsMode('OVERALL')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    statsMode === 'OVERALL'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                  }`}
+                >
+                  <span>🌐</span>
+                  <span>Keseluruhan</span>
+                </button>
               </div>
 
               {/* STATS DISPLAY 1: BY CLASS (PRIMARY) */}

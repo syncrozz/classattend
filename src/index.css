@@ -86,7 +86,7 @@
     overflow: visible !important;
   }
 
-  /* Single ID Card */
+  /* Single ID Card - Strict 9:16 Aspect Ratio */
   .printable-id-card {
     background: #ffffff !important;
     background-color: #ffffff !important;
@@ -94,12 +94,17 @@
     border: 2px solid #0f172a !important;
     border-radius: 16px !important;
     box-shadow: none !important;
-    padding: 24px !important;
-    max-width: 350px !important;
-    margin: 30px auto !important;
+    padding: 20px 16px !important;
+    max-width: 270px !important;
+    width: 100% !important;
+    aspect-ratio: 9 / 16 !important;
+    margin: 20px auto !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    align-items: center !important;
     text-align: center !important;
     box-sizing: border-box !important;
   }
@@ -111,11 +116,11 @@
   .printable-id-card .qr-code-wrapper {
     background: #ffffff !important;
     background-color: #ffffff !important;
-    padding: 12px !important;
+    padding: 10px !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 12px !important;
     display: inline-block !important;
-    margin: 12px auto !important;
+    margin: auto !important;
   }
 
   .printable-id-card .badge-student-set {
@@ -177,7 +182,7 @@
     color: #0f172a !important;
     border: 2px solid #334155 !important;
     border-radius: 12px !important;
-    padding: 14px !important;
+    padding: 14px 10px !important;
     text-align: center !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -186,7 +191,11 @@
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    min-height: 200px !important;
+    align-items: center !important;
+    aspect-ratio: 9 / 16 !important;
+    width: 100% !important;
+    max-width: 240px !important;
+    margin: 0 auto !important;
     box-sizing: border-box !important;
   }
 
@@ -197,11 +206,11 @@
   .printable-batch-id-card .qr-code-wrapper {
     background: #ffffff !important;
     background-color: #ffffff !important;
-    padding: 8px !important;
+    padding: 6px !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 8px !important;
     display: inline-block !important;
-    margin: 6px auto !important;
+    margin: auto !important;
   }
 
   .printable-batch-label {

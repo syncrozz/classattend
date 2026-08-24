@@ -6,7 +6,6 @@ import {
   VolumeX,
   ShieldCheck,
   ShieldAlert,
-  RotateCcw,
   Sparkles,
   UserCheck,
   GraduationCap,
@@ -26,7 +25,6 @@ interface HeaderProps {
   onGoHome: () => void;
   onRoleChange: (role: UserRole) => void;
   onToggleSound: (enabled: boolean) => void;
-  onResetData: () => void;
   onOpenScanner: () => void;
   onToggleAdminMode: () => void;
   onLogoutLecturer: () => void;
@@ -41,7 +39,6 @@ export const Header: React.FC<HeaderProps> = ({
   onGoHome,
   onRoleChange,
   onToggleSound,
-  onResetData,
   onOpenScanner,
   onToggleAdminMode,
   onLogoutLecturer
@@ -66,19 +63,16 @@ export const Header: React.FC<HeaderProps> = ({
               referrerPolicy="no-referrer"
             />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-tight">
+          <div className="flex flex-col justify-center">
+            <div className="flex flex-col items-start gap-0.5">
+              <h1 className="text-lg font-extrabold tracking-tight leading-none">
                 <span className="text-white group-hover:text-indigo-200 transition-colors">CLASS</span>
                 <span className="text-blue-500 group-hover:text-blue-400 transition-colors">ATTEND</span>
               </h1>
-              <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 tracking-wider">
+              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 tracking-wider mt-0.5 inline-flex items-center">
                 KPM Bandar Penawar
               </span>
             </div>
-            <p className="text-xs text-slate-400 hidden sm:block group-hover:text-slate-300 transition-colors">
-              Sistem Kehadiran Pelajar Mengikut Kelas & Subjek
-            </p>
           </div>
         </div>
 
@@ -110,25 +104,39 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Lecturer Identity Card */}
-          {activeLecturer ? (
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-indigo-950/60 border border-indigo-500/40 text-xs">
-              <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[11px] font-bold">
-                {activeLecturer.name.charAt(0)}
+          {/* Lecturer / Admin Identity Card (Turns green when active) */}
+          {activeLecturer || isAdmin ? (
+            <div
+              id="header-lecturer-indicator"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-500/60 text-xs shadow-lg shadow-emerald-950/40 transition-all"
+            >
+              <div className="relative flex items-center justify-center shrink-0">
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
+                  {activeLecturer ? activeLecturer.name.charAt(0) : 'A'}
+                </div>
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
               </div>
               <div className="hidden md:block text-left">
-                <div className="text-white font-semibold text-[11px] leading-tight truncate max-w-[140px]">
-                  {activeLecturer.name}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-white font-semibold text-[11px] leading-tight truncate max-w-[130px]">
+                    {activeLecturer ? activeLecturer.name : 'Pentadbir (Admin)'}
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 uppercase">
+                    {isAdmin ? 'ADMIN' : 'PENSYARAH'}
+                  </span>
                 </div>
-                <div className="text-[10px] text-indigo-300 font-mono leading-tight truncate max-w-[140px]">
-                  {activeLecturer.email}
+                <div className="text-[10px] text-emerald-300 font-mono leading-tight truncate max-w-[140px]">
+                  {activeLecturer ? activeLecturer.email : 'admin@bpenawar.kpm.edu.my'}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onLogoutLecturer}
                 title="Tukar Pensyarah / Log Keluar"
-                className="p-1 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                className="p-1 text-emerald-400/80 hover:text-rose-400 transition-colors cursor-pointer ml-0.5"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
@@ -140,7 +148,6 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-all cursor-pointer"
               title="Pengesahan Emel Pensyarah (@bpenawar.kpm.edu.my) & PIN No. IC"
             >
-              <UserCheck className="w-4 h-4 text-indigo-400" />
               <span>Sahkan Pensyarah</span>
             </button>
           )}
@@ -167,16 +174,6 @@ export const Header: React.FC<HeaderProps> = ({
             title={soundEnabled ? 'Bunyi Diaktifkan' : 'Bunyi Dimatikan'}
           >
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-
-          {/* Reset Demo Data Button */}
-          <button
-            id="header-btn-reset-demo"
-            onClick={onResetData}
-            className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition-all cursor-pointer"
-            title="Set Semula Data Sampel Kelas (95 Pelajar)"
-          >
-            <RotateCcw className="w-4 h-4" />
           </button>
         </div>
       </div>

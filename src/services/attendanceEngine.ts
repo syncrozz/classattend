@@ -66,7 +66,14 @@ class AttendanceEngine {
         const storedRecords = localStorage.getItem(STORAGE_KEYS.RECORDS);
         const storedActiveLecturer = localStorage.getItem(STORAGE_KEYS.ACTIVE_LECTURER);
 
-        this.students = storedStudents ? JSON.parse(storedStudents) : INITIAL_STUDENTS;
+        if (storedStudents) {
+          const parsed = JSON.parse(storedStudents);
+          const existingIds = new Set(parsed.map((s: Student) => s.id));
+          const missingStudents = INITIAL_STUDENTS.filter((s) => !existingIds.has(s.id));
+          this.students = [...parsed, ...missingStudents];
+        } else {
+          this.students = INITIAL_STUDENTS;
+        }
         this.lecturers = storedLecturers
           ? JSON.parse(storedLecturers).filter((l: Lecturer) => !DUMMY_LECTURER_IDS.includes(l.id))
           : [];

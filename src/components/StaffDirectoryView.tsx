@@ -42,7 +42,8 @@ import {
   Key,
   Eye,
   EyeOff,
-  CheckCircle2
+  CheckCircle2,
+  Filter
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 
@@ -104,20 +105,15 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
   // Modal States
   const [selectedStudentForQR, setSelectedStudentForQR] = useState<Student | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBatchPrintOpen, setIsBatchPrintOpen] = useState<boolean>(false);
   const [batchPrintCategory, setBatchPrintCategory] = useState<string>('ALL');
   const [batchPrintFormat, setBatchPrintFormat] = useState<'CARDS' | 'LABELS' | 'LABELS_4'>('LABELS_4');
 
-  // New Student Form State
-  const [newStudentId, setNewStudentId] = useState<string>('');
-  const [newName, setNewName] = useState<string>('');
-  const [newSet, setNewSet] = useState<string>('DIA_4A');
-  const [newPhone, setNewPhone] = useState<string>('');
-  const [newEmail, setNewEmail] = useState<string>('');
-
-  // Dynamically extract all available classes
-  const uniqueClasses = Array.from(new Set(students.map((s) => s.className).filter(Boolean))).sort();
+  // Dynamically extract all available classes including standard cohorts
+  const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+  const uniqueClasses = Array.from(
+    new Set([...DEFAULT_CLASSES, ...students.map((s) => s.className).filter(Boolean)])
+  ).sort();
   const sets = ['ALL', ...uniqueClasses];
 
   // Students for batch printing
@@ -240,28 +236,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     soundService.playSuccess();
   };
 
-  const handleCreateStudent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStudentId || !newName) return;
-
-    const student: Student = {
-      id: newStudentId.trim().toUpperCase(),
-      studentId: newStudentId.trim().toUpperCase(),
-      name: newName.trim().toUpperCase(),
-      className: newSet,
-      phone: newPhone.trim(),
-      email: newEmail.trim() || `${newStudentId.trim().toLowerCase()}@bpenawar.kpm.edu.my`,
-      department: 'Diploma Perakaunan'
-    };
-
-    onAddStudent(student);
-    setIsAddModalOpen(false);
-    setNewStudentId('');
-    setNewName('');
-    setNewPhone('');
-    setNewEmail('');
-  };
-
   const isAnyPrintModalOpen = Boolean(selectedStudentForQR || isBatchPrintOpen);
 
   return (
@@ -273,7 +247,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2.5">
-                <h2 className="text-xl font-bold text-white tracking-tight">Pangkalan Data & Pengurusan Akses</h2>
+                <h2 className="text-xl font-bold text-white tracking-tight">Pangkalan Data</h2>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
                   KPM Bandar Penawar
                 </span>
@@ -320,46 +294,23 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
           {/* Sub-header Controls: STUDENTS TAB */}
           {activeMainTab === 'STUDENTS' && (
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <div className="space-y-3.5 pt-3 border-t border-slate-800/80">
+              {/* Row 1: Search Box and Primary Action Buttons */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                {/* Set Tabs */}
-                <div className="flex items-center gap-1.5 overflow-x-auto w-full pb-1 no-scrollbar">
-                  {sets.map((setName, setIdx) => {
-                    const count = setName === 'ALL' ? students.length : students.filter((s) => s.className === setName).length;
-                    return (
-                      <button
-                        key={`set-tab-${setName}-${setIdx}`}
-                        onClick={() => setSelectedSet(setName)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
-                          selectedSet === setName
-                            ? 'bg-indigo-600 text-white font-bold'
-                            : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                        }`}
-                      >
-                        <span>{setName === 'ALL' ? 'Semua Pelajar' : `Kelas ${setName}`}</span>
-                        <span className="ml-1.5 text-[10px] opacity-80">({count})</span>
-                      </button>
-                    );
-                  })}
+                {/* Search Box */}
+                <div className="relative w-full sm:w-80 lg:w-96">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama, No. Pelajar, e-mel..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
                 </div>
 
                 {/* Actions for Students */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    id="btn-add-student"
-                    onClick={() => {
-                      if (!activeLecturer) {
-                        onRequestAdminAccess('Tambah Pelajar Baharu');
-                      } else {
-                        setIsAddModalOpen(true);
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Pelajar</span>
-                  </button>
-
                   <button
                     id="btn-import-csv"
                     onClick={() => {
@@ -369,7 +320,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         onOpenCSVImport();
                       }
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5" />
                     <span>Import CSV Pelajar</span>
@@ -378,7 +329,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   <button
                     id="btn-export-csv"
                     onClick={handleExportCSV}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Eksport CSV</span>
@@ -390,7 +341,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       setBatchPrintCategory(selectedSet);
                       setIsBatchPrintOpen(true);
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
                     title="Cetak Kad ID / Kod QR mengikut Kategori Kelas atau Semua Pelajar"
                   >
                     <Printer className="w-3.5 h-3.5" />
@@ -399,101 +350,114 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 </div>
               </div>
 
-              {/* Search Box */}
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Cari nama, No. Pelajar, e-mel..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
+              {/* Row 2: Dedicated Class Filter Tabs */}
+              <div className="flex items-center gap-2 pt-1 overflow-x-auto w-full pb-1 no-scrollbar">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-indigo-400" />
+                  Kelas:
+                </span>
+                {sets.map((setName, setIdx) => {
+                  const count = setName === 'ALL' ? students.length : students.filter((s) => s.className === setName).length;
+                  return (
+                    <button
+                      key={`set-tab-${setName}-${setIdx}`}
+                      onClick={() => setSelectedSet(setName)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                        selectedSet === setName
+                          ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20'
+                          : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800'
+                      }`}
+                    >
+                      <span>{setName === 'ALL' ? 'Semua Pelajar' : `Kelas ${setName}`}</span>
+                      <span className="ml-1.5 text-[10px] opacity-80">({count})</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Sub-header Controls: LECTURERS TAB */}
           {activeMainTab === 'LECTURERS' && (
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              {/* Row 1: Header Text Info */}
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300">
-                  <ShieldCheck className="w-4 h-4" />
+            <div className="space-y-3.5 pt-3 border-t border-slate-800/80">
+              {/* Row 1: Search Box and Primary Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Search Box */}
+                <div className="relative w-full sm:w-80 lg:w-96">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama pensyarah, e-mel @bpenawar, No IC, subjek..."
+                    value={lecturerSearch}
+                    onChange={(e) => setLecturerSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
                 </div>
-                <div>
-                  <h3 className="text-xs font-bold text-white">Padanan Akses Pensyarah Melalui CSV</h3>
-                  <p className="text-[11px] text-slate-400">
-                    Muat turun templat CSV, isikan senarai pensyarah, dan import kembali untuk penetapan kebenaran.
-                  </p>
+
+                {/* Actions for Lecturers */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleDownloadLecturerTemplate}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-600/40 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                    title="Muat turun templat fail CSV pensyarah rasmi"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>1. Muat Turun Templat CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
+                        return;
+                      }
+                      if (onOpenLecturerCSVImport) {
+                        onOpenLecturerCSVImport();
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                    title="Import fail CSV senarai pensyarah"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>2. Import CSV Pensyarah</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportLecturersCSV}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Eksport CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Akses Admin Diperlukan untuk Menambah Pensyarah');
+                        return;
+                      }
+                      setIsAddLecturerOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Pensyarah</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Row 2: Action Buttons (Muat Turun Templat, Import, Eksport, Tambah Pensyarah) on separate row */}
-              <div className="flex flex-wrap items-center gap-2 w-full pt-1">
-                <button
-                  type="button"
-                  onClick={handleDownloadLecturerTemplate}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-600/40 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Muat Turun Templat CSV Pensyarah</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
-                      onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
-                      return;
-                    }
-                    if (onOpenLecturerCSVImport) {
-                      onOpenLecturerCSVImport();
-                    } else {
-                      onOpenCSVImport();
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Import CSV Pensyarah</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportLecturersCSV}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Eksport CSV Pensyarah</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
-                      onRequestAdminAccess('Akses Admin Diperlukan untuk Menambah Pensyarah');
-                      return;
-                    }
-                    setIsAddLecturerOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tambah Pensyarah</span>
-                </button>
-              </div>
-
-              {/* Row 3: Search Box for Lecturers */}
-              <div className="relative w-full sm:w-80 pt-1">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Cari nama pensyarah, e-mel @bpenawar, No IC, subjek..."
-                  value={lecturerSearch}
-                  onChange={(e) => setLecturerSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                />
+              {/* Row 2: Info Banner */}
+              <div className="flex items-center gap-2 pt-1 text-xs text-slate-400 bg-slate-950/50 px-3.5 py-2 rounded-xl border border-slate-800/60">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-[11px] leading-relaxed text-slate-300">
+                  <strong className="text-white">Padanan Akses Pensyarah:</strong> Isikan e-mel rasmi (<code className="text-emerald-300 font-mono">@bpenawar.kpm.edu.my</code>) &amp; No. Kad Pengenalan / PIN dalam templat CSV untuk kebenaran log masuk dan capaian Pentadbir.
+                </span>
               </div>
             </div>
           )}
@@ -516,8 +480,8 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       key={student.id}
                       className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3 shadow-md"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center space-x-3">
+                      <div className="flex items-start justify-between gap-2.5 min-w-0">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
                           <div
                             className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getStudentColor(
                               student.name
@@ -525,14 +489,19 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           >
                             {getInitials(student.name)}
                           </div>
-                          <div className="min-w-0">
-                            <h4 className="font-bold text-sm text-white truncate">{student.name}</h4>
-                            <p className="text-xs font-mono text-indigo-400 font-semibold">{student.studentId}</p>
+                          <div className="min-w-0 flex-1">
+                            <h4
+                              className="font-bold text-xs sm:text-sm text-white line-clamp-2 leading-snug break-words"
+                              title={student.name}
+                            >
+                              {student.name}
+                            </h4>
+                            <p className="text-[11px] font-mono text-indigo-400 font-semibold truncate mt-0.5">{student.studentId}</p>
                           </div>
                         </div>
 
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${getClassBadgeColor(
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${getClassBadgeColor(
                             student.className
                           )}`}
                         >
@@ -598,19 +567,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setSelectedStudentForQR(student)}
-                          className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="flex-1 py-1.5 px-3 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <QrCode className="w-3.5 h-3.5" />
-                          <span>Kad QR</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => onQuickSimulateScan(student.id)}
-                          className="py-1.5 px-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                          title="Simulasi Imbasan Kehadiran Segera"
-                        >
-                          <span>Imbas</span>
+                          <span>Kad QR Pelajar</span>
                         </button>
 
                         {isAdmin && (
@@ -639,63 +599,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
         {/* ===================== VIEW 2: LECTURERS GRID ===================== */}
         {activeMainTab === 'LECTURERS' && (
           <div className="space-y-4">
-            {/* Dedicated Admin CSV Space for Lecturers */}
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/40 shadow-xl space-y-4">
-              {/* Row 1: Header Text Info */}
-              <div className="space-y-1.5 border-b border-slate-800/80 pb-3">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Ruang Memuat Turun & Memuat Naik Templat CSV Pensyarah</span>
-                </div>
-                <h3 className="text-sm sm:text-base font-bold text-white">
-                  Pusat Data Pensyarah (Padanan E-mel Rasmi & No. Kad Pengenalan / PIN)
-                </h3>
-                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
-                  Muat turun templat rasmi, isikan maklumat e-mel (<code className="text-emerald-300 font-mono">@bpenawar.kpm.edu.my</code>) dan No. Kad Pengenalan pensyarah, kemudian muat naik semula. Pemasukan data ini dikunci untuk capaian Pentadbir (Admin) sahaja.
-                </p>
-              </div>
-
-              {/* Row 2: CSV Action Buttons on separate row */}
-              <div className="flex flex-wrap items-center gap-2.5 pt-0.5">
-                <button
-                  type="button"
-                  onClick={handleDownloadLecturerTemplate}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/50 text-xs font-bold shadow-sm transition-all cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>1. Muat Turun Templat CSV</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
-                      onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Pensyarah');
-                      return;
-                    }
-                    if (onOpenLecturerCSVImport) {
-                      onOpenLecturerCSVImport();
-                    } else {
-                      onOpenCSVImport();
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>2. Muat Naik CSV Pensyarah</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportLecturersCSV}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Eksport CSV</span>
-                </button>
-              </div>
-            </div>
-
             {filteredLecturers.length === 0 ? (
               <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-8 space-y-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
@@ -758,8 +661,8 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center space-x-3">
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
                           <div
                             className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white text-sm shadow-md shrink-0 ${
                               isCurrentActive
@@ -769,11 +672,13 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           >
                             {getInitials(lec.name)}
                           </div>
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-bold text-sm text-white">{lec.name}</h4>
+                              <h4 className="font-bold text-sm text-white line-clamp-2 leading-snug break-words" title={lec.name}>
+                                {lec.name}
+                              </h4>
                               <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
                                   lec.role === 'ADMIN'
                                     ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
                                     : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
@@ -782,7 +687,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                                 {lec.role || 'LECTURER'}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-400">{lec.department || 'Jabatan Pengajian'}</p>
+                            <p className="text-xs text-slate-400 truncate mt-0.5">{lec.department || 'Jabatan Pengajian'}</p>
                           </div>
                         </div>
 
@@ -1030,26 +935,26 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </button>
             </div>
 
-            {/* Printable Card Area */}
-            <div className="bg-white text-slate-950 p-6 rounded-2xl shadow-inner border-2 border-indigo-600 space-y-4 flex flex-col items-center">
-              <div className="text-center">
+            {/* Printable Card Area - Strict 9:16 Aspect Ratio */}
+            <div className="bg-white text-slate-950 p-5 rounded-2xl shadow-inner border-2 border-indigo-600 flex flex-col items-center justify-between text-center aspect-[9/16] w-full max-w-[280px] mx-auto printable-id-card">
+              <div className="text-center w-full pt-1">
                 <p className="text-[10px] font-bold tracking-widest text-indigo-700 uppercase">KPM BANDAR PENAWAR</p>
                 <h4 className="font-extrabold text-sm tracking-tight text-slate-900">KAD KEHADIRAN KELAS</h4>
               </div>
 
-              <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+              <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm my-auto">
                 <QRCodeSVG
                   value={`STUDENT|${selectedStudentForQR.studentId}`}
-                  size={160}
+                  size={150}
                   level="H"
                   includeMargin={true}
                 />
               </div>
 
-              <div className="text-center space-y-1">
-                <h3 className="font-black text-sm text-slate-900 leading-tight">{selectedStudentForQR.name}</h3>
+              <div className="text-center space-y-1 w-full pb-1">
+                <h3 className="font-black text-sm text-slate-900 leading-tight line-clamp-2">{selectedStudentForQR.name}</h3>
                 <p className="text-xs font-mono font-bold text-indigo-700">{selectedStudentForQR.studentId}</p>
-                <span className="inline-block px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-700">
+                <span className="inline-block px-2.5 py-0.5 bg-slate-100 rounded-md text-[10px] font-bold text-slate-700 border border-slate-200">
                   {selectedStudentForQR.className} - DIPLOMA PERAKAUNAN
                 </span>
               </div>
@@ -1129,138 +1034,43 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </button>
             </div>
 
-            {/* Printable Cards Grid */}
+            {/* Printable Cards Grid - Strict 9:16 Aspect Ratio */}
             <div
               className={`grid ${
-                batchPrintFormat === 'LABELS_4' ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'
-              } gap-4 max-h-[65vh] overflow-y-auto p-2 bg-slate-950/60 rounded-2xl border border-slate-800`}
+                batchPrintFormat === 'LABELS_4' ? 'grid-cols-2 md:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'
+              } gap-4 max-h-[65vh] overflow-y-auto p-3 bg-slate-950/60 rounded-2xl border border-slate-800 ${
+                batchPrintFormat === 'LABELS_4' ? 'printable-batch-sheet-cards' : 'printable-batch-sheet-labels'
+              }`}
             >
               {batchPrintStudents.map((student) => (
                 <div
                   key={student.id}
-                  className="bg-white text-slate-950 p-4 rounded-xl border-2 border-indigo-600 flex flex-col items-center justify-between text-center space-y-2 shadow-sm"
+                  className="bg-white text-slate-950 p-3.5 sm:p-4 rounded-xl border-2 border-indigo-600 flex flex-col items-center justify-between text-center shadow-sm aspect-[9/16] w-full max-w-[240px] mx-auto printable-batch-id-card box-border"
                 >
-                  <div className="text-center w-full">
-                    <p className="text-[9px] font-bold tracking-widest text-indigo-700 uppercase">KPM BANDAR PENAWAR</p>
-                    <h4 className="font-extrabold text-xs tracking-tight text-slate-900">KAD KEHADIRAN KELAS</h4>
+                  <div className="text-center w-full pt-0.5">
+                    <p className="text-[8.5px] font-bold tracking-widest text-indigo-700 uppercase">KPM BANDAR PENAWAR</p>
+                    <h4 className="font-extrabold text-[11px] sm:text-xs tracking-tight text-slate-900">KAD KEHADIRAN KELAS</h4>
                   </div>
 
-                  <div className="p-2 bg-white border border-slate-200 rounded-lg">
+                  <div className="p-2 bg-white border border-slate-200 rounded-lg my-auto shadow-2xl qr-code-wrapper">
                     <QRCodeSVG
                       value={`STUDENT|${student.studentId}`}
-                      size={batchPrintFormat === 'LABELS_4' ? 120 : 95}
+                      size={batchPrintFormat === 'LABELS_4' ? 125 : 100}
                       level="H"
                       includeMargin={true}
                     />
                   </div>
 
-                  <div className="w-full">
-                    <h3 className="font-bold text-xs text-slate-900 leading-tight truncate">{student.name}</h3>
+                  <div className="w-full space-y-0.5 pb-0.5">
+                    <h3 className="font-extrabold text-xs text-slate-900 leading-tight line-clamp-2" title={student.name}>{student.name}</h3>
                     <p className="text-[11px] font-mono font-bold text-indigo-700">{student.studentId}</p>
-                    <span className="inline-block px-1.5 py-0.2 bg-slate-100 rounded text-[9px] font-bold text-slate-700">
-                      {student.className}
+                    <span className="inline-block px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-700 border border-slate-200">
+                      Kelas {student.className}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===================== MODAL: TAMBAH PELAJAR ===================== */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-white">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-sm">Daftar Pelajar Baharu</h3>
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateStudent} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300">No. Pelajar / ID Pelajar *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: PDA-2502-099"
-                  value={newStudentId}
-                  onChange={(e) => setNewStudentId(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Nama Penuh Pelajar *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: MUHAMMAD HARITH BIN KAMARUL"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300">Kelas *</label>
-                  <select
-                    value={newSet}
-                    onChange={(e) => setNewSet(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="DIA_4A">DIA_4A</option>
-                    <option value="DIA_4B">DIA_4B</option>
-                    <option value="DIA_4C">DIA_4C</option>
-                    <option value="DIA_4D">DIA_4D</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300">No. Telefon</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 60123456789"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300">E-mel Rasmi (Tak Wajib)</label>
-                <input
-                  type="email"
-                  placeholder="Contoh: harith@bpenawar.kpm.edu.my"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-all cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                >
-                  Simpan Pelajar
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

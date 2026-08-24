@@ -384,9 +384,9 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               </button>
             </div>
 
-            {/* ID Card Front */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 shadow-xl space-y-4 printable-id-card">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            {/* ID Card Front - Strict 9:16 Aspect Ratio */}
+            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 shadow-xl flex flex-col justify-between items-center text-center aspect-[9/16] w-full max-w-[280px] mx-auto printable-id-card">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 w-full">
                 <div className="flex items-center gap-2">
                   <GraduationCap className="w-4 h-4 text-indigo-400" />
                   <div className="text-left">
@@ -400,17 +400,17 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               </div>
 
               {/* QR Code */}
-              <div className="p-4 rounded-xl bg-white inline-block shadow-lg mx-auto qr-code-wrapper">
+              <div className="p-3 bg-white rounded-xl inline-block shadow-lg mx-auto my-auto qr-code-wrapper">
                 <QRCodeSVG
                   value={`STUDENT|${currentStudent.studentId}`}
-                  size={160}
+                  size={150}
                   level="H"
                   includeMargin={false}
                 />
               </div>
 
-              <div className="space-y-1">
-                <h4 className="text-sm font-extrabold text-white">
+              <div className="space-y-1 w-full pb-1">
+                <h4 className="text-sm font-extrabold text-white line-clamp-2">
                   {currentStudent.name}
                 </h4>
                 <div className="text-xs font-mono font-bold text-indigo-400 student-id-text">

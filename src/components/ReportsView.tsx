@@ -56,16 +56,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 }) => {
   const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT'>('CLASS');
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0]?.id || '');
-  const [selectedClassSection, setSelectedClassSection] = useState<string>('DIA_4A');
+  const [selectedClassSection, setSelectedClassSection] = useState<string>('DIA_3A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const currentSession = sessions.find((s) => s.id === selectedSessionId) || sessions[0];
 
-  // Extract unique classes dynamically
+  // Extract unique classes dynamically including standard cohorts
+  const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
   const uniqueClasses: string[] = Array.from(
-    new Set(students.map((s) => s.className).filter(Boolean) as string[])
+    new Set([...DEFAULT_CLASSES, ...students.map((s) => s.className).filter(Boolean)])
   ).sort();
 
   // Records for current session

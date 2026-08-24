@@ -5,6 +5,18 @@ export const INITIAL_LECTURERS: Lecturer[] = [];
 export const INITIAL_SUBJECTS: Subject[] = [];
 
 export const INITIAL_STUDENTS: Student[] = [
+  // DIA_3A (20 students)
+  { id: 'PDA-2402-001', studentId: 'PDA-2402-001', name: 'AHMAD DANIAL BIN MOHD ROSLI', className: 'DIA_3A', phone: '60123456701', email: 'danial.rosli@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-002', studentId: 'PDA-2402-002', name: 'NUR ALYA BATRISYIA BINTI KHAIRUL', className: 'DIA_3A', phone: '60139876502', email: 'alya.khairul@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-003', studentId: 'PDA-2402-003', name: 'MUHAMMAD HARITH BIN KAMARUL', className: 'DIA_3A', phone: '60178901203', email: 'harith.kamarul@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-004', studentId: 'PDA-2402-004', name: 'SITI NUR FARHANA BINTI ZAINAL', className: 'DIA_3A', phone: '601112345604', email: 'farhana.zainal@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-005', studentId: 'PDA-2402-005', name: 'NURUL IMAN BINTI ABDULLAH', className: 'DIA_3A', phone: '60145678905', email: 'iman.abdullah@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-006', studentId: 'PDA-2402-006', name: 'MUHAMMAD ZULFAQAR BIN ZULKIFLI', className: 'DIA_3A', phone: '60198765406', email: 'zulfaqar@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-007', studentId: 'PDA-2402-007', name: 'NUR SYAZWANI BINTI AZMAN', className: 'DIA_3A', phone: '60167890107', email: 'syazwani.azman@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-008', studentId: 'PDA-2402-008', name: 'FARIS AIMAN BIN MOHAMAD NASIR', className: 'DIA_3A', phone: '60134567808', email: 'faris.nasir@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-009', studentId: 'PDA-2402-009', name: 'NUR AINA MAISARAH BINTI HASBULLAH', className: 'DIA_3A', phone: '60178912309', email: 'aina.hasbullah@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+  { id: 'PDA-2402-010', studentId: 'PDA-2402-010', name: 'MUHAMMAD AFIQ BIN SHAHRIL', className: 'DIA_3A', phone: '601123456710', email: 'afiq.shahril@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
+
   // DIA_4B (24 students)
   { id: 'PDA-2502-005', studentId: 'PDA-2502-005', name: 'MUHAMMAD AIMAN BIN MUHAMMAD ARIFF', className: 'DIA_4B', phone: '60166982011', email: 'aiman.ariff@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },
   { id: 'PDA-2502-018', studentId: 'PDA-2502-018', name: 'FATIN ZAFIRA BINTI MOHD FADHLI', className: 'DIA_4B', phone: '60136353712', email: 'zafira.mohd@bpenawar.kpm.edu.my', department: 'Diploma Perakaunan' },

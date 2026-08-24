@@ -103,12 +103,10 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       }
       const res = attendanceEngine.verifyAdminPin(adminPin);
       if (res.success && res.lecturer) {
-        soundService.playSuccess();
         setErrorMessage(null);
         onSuccess(res.lecturer);
         onClose();
       } else {
-        soundService.playError();
         setErrorMessage(res.message);
         setShake(true);
         setAdminPin('');
@@ -138,12 +136,10 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
     if (result.success && result.lecturer) {
       // Save last login email to device localStorage
       localStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
-      soundService.playSuccess();
       setErrorMessage(null);
       onSuccess(result.lecturer);
       onClose();
     } else {
-      soundService.playError();
       setErrorMessage(result.message);
       setShake(true);
       setPin('');
@@ -163,12 +159,10 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
     if (numeric.length === 4) {
       const res = attendanceEngine.verifyAdminPin(numeric);
       if (res.success && res.lecturer) {
-        soundService.playSuccess();
         setErrorMessage(null);
         onSuccess(res.lecturer);
         onClose();
       } else {
-        soundService.playError();
         setErrorMessage(res.message);
         setShake(true);
         setTimeout(() => {
@@ -192,12 +186,10 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       if (res.success && res.lecturer) {
         // Save last login email to device localStorage
         localStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
-        soundService.playSuccess();
         setErrorMessage(null);
         onSuccess(res.lecturer);
         onClose();
       } else {
-        soundService.playError();
         setErrorMessage(res.message);
         setShake(true);
         setTimeout(() => {

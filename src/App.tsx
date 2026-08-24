@@ -261,7 +261,6 @@ export default function App() {
         onGoHome={() => setActiveTab('dashboard')}
         onRoleChange={(role) => setCurrentRole(role)}
         onToggleSound={(enabled) => setSoundEnabled(enabled)}
-        onResetData={handleResetData}
         onOpenScanner={() => setActiveTab('scanner')}
         onToggleAdminMode={handleToggleAdminMode}
         onLogoutLecturer={handleLogoutLecturer}
@@ -317,6 +316,8 @@ export default function App() {
               subjects={subjects}
               sessions={sessions}
               attendanceRecords={attendanceRecords}
+              students={students}
+              lecturers={lecturers}
               activeLecturer={activeLecturer}
               isAdmin={isAdmin}
               onSetSessionStatus={handleSetSessionStatus}
@@ -329,6 +330,8 @@ export default function App() {
                 setActiveTab('scanner');
               }}
               onRequestAdminAccess={handleRequestAdminAccess}
+              onOpenCSVImport={() => setIsCSVModalOpen(true)}
+              onNavigateToStudents={() => setActiveTab('students')}
             />
           )}
 

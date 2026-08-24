@@ -141,31 +141,31 @@ class SoundService {
     }
   }
 
-  // Error Tone (✕ TIADA SESI / QR TIDAK SAH) - Low loud alert
+  // Error Tone (✕ TIADA SESI / QR TIDAK SAH) - Gentle low soft alert (no harsh buzzer)
   public playError() {
     if (!this.enabled) return;
     const ctx = this.getContext();
     if (!ctx) return;
 
     try {
-      this.triggerVibrate([250]);
+      this.triggerVibrate([100]);
       const now = ctx.currentTime;
       const targetNode = this.compressor || ctx.destination;
 
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(260, now);
-      osc.frequency.linearRampToValueAtTime(130, now + 0.28);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.18);
 
-      gain.gain.setValueAtTime(0.85, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
       osc.connect(gain);
       gain.connect(targetNode);
       osc.start(now);
-      osc.stop(now + 0.28);
+      osc.stop(now + 0.18);
     } catch {
       // ignore
     }

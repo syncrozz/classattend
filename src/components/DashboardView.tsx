@@ -104,7 +104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     new Set(students.map((s) => s.className).filter(Boolean))
   ) as string[]).sort();
 
-  const classList = availableClassSets.length > 0 ? availableClassSets : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+  const classList = availableClassSets.length > 0 ? availableClassSets : ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
 
   // Filter sessions by selected subject
   const filteredSessions = selectedSubjectFilter === 'ALL'
@@ -867,7 +867,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-indigo-400" />
-            <h3 className="text-base font-bold text-white">Log Transaksi Kehadiran Terkini</h3>
+            <h3 className="text-base font-bold text-white">Log Kehadiran Terkini</h3>
           </div>
           <button
             onClick={onGoToReports}

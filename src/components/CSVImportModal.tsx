@@ -314,6 +314,10 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-indigo-500"
                 >
                   <option value="KEKAL">Gunakan Kelas Dari Fail CSV</option>
+                  <option value="DIA_3A">Tetapkan ke DIA_3A</option>
+                  <option value="DIA_3B">Tetapkan ke DIA_3B</option>
+                  <option value="DIA_3C">Tetapkan ke DIA_3C</option>
+                  <option value="DIA_3D">Tetapkan ke DIA_3D</option>
                   <option value="DIA_4A">Tetapkan ke DIA_4A</option>
                   <option value="DIA_4B">Tetapkan ke DIA_4B</option>
                   <option value="DIA_4C">Tetapkan ke DIA_4C</option>
