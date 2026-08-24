@@ -194,7 +194,7 @@ export default function App() {
   };
 
   // Import CSV Students
-  const handleImportStudents = (newStudentsList: Student[], replaceAll: boolean = true) => {
+  const handleImportStudents = async (newStudentsList: Student[], replaceAll: boolean = true) => {
     let finalList: Student[] = [];
 
     if (replaceAll) {
@@ -205,7 +205,7 @@ export default function App() {
       finalList = Array.from(existingMap.values());
     }
 
-    attendanceEngine.saveStudentsList(finalList, replaceAll);
+    await attendanceEngine.saveStudentsList(finalList, replaceAll);
     setStudents(attendanceEngine.getStudents());
     soundService.playSuccess();
   };

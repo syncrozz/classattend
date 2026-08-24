@@ -44,8 +44,11 @@ import {
   EyeOff,
   CheckCircle2,
   Filter,
-  Lock
+  Lock,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
+import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
 
 interface StudentDirectoryViewProps {
@@ -109,6 +112,37 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   const [isBatchPrintOpen, setIsBatchPrintOpen] = useState<boolean>(false);
   const [batchPrintCategory, setBatchPrintCategory] = useState<string>('ALL');
   const [batchPrintFormat, setBatchPrintFormat] = useState<'CARDS' | 'LABELS' | 'LABELS_4'>('LABELS_4');
+  const [isCleaningRedundant, setIsCleaningRedundant] = useState<boolean>(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+
+  const handleCleanRedundantData = async () => {
+    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+      onRequestAdminAccess('Bersihkan Rekod Redundant Pelajar');
+      return;
+    }
+
+    if (!window.confirm('Adakah anda pasti untuk mengimbas dan membersihkan sebarang rekod pelajar bertindih / redundant dalam pangkalan data?')) {
+      return;
+    }
+
+    setIsCleaningRedundant(true);
+    try {
+      const result = await attendanceEngine.cleanupRedundantStudents();
+      soundService.playSuccess();
+      if (result.removedCount > 0) {
+        setCleanupMessage(`Berjaya membersihkan ${result.removedCount} rekod bertindih. Jumlah pelajar terkini: ${result.finalCount} orang.`);
+      } else {
+        setCleanupMessage(`Tiada rekod bertindih ditemui. Pangkalan data bersih dengan ${result.finalCount} pelajar.`);
+      }
+      setTimeout(() => setCleanupMessage(null), 6000);
+    } catch (err) {
+      soundService.playError();
+      setCleanupMessage('Ralat semasa membersihkan data bertindih.');
+      setTimeout(() => setCleanupMessage(null), 4000);
+    } finally {
+      setIsCleaningRedundant(false);
+    }
+  };
 
   // Dynamically extract all available classes including standard cohorts
   const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
@@ -361,8 +395,36 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <Printer className="w-3.5 h-3.5" />
                     <span>Cetak Kad ID (QR)</span>
                   </button>
+
+                  {(isAdmin || (activeLecturer && activeLecturer.role === 'ADMIN')) && (
+                    <button
+                      id="btn-clean-redundant-students"
+                      onClick={handleCleanRedundantData}
+                      disabled={isCleaningRedundant}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                      title="Imbas dan bersihkan rekod bertindih / redundant pelajar (Hanya Admin)"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCleaningRedundant ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+                      <span>{isCleaningRedundant ? 'Sedang Bersihkan...' : 'Bersihkan Redundant'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {cleanupMessage && (
+                <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{cleanupMessage}</span>
+                  </div>
+                  <button
+                    onClick={() => setCleanupMessage(null)}
+                    className="text-slate-400 hover:text-white p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Row 2: Dedicated Class Filter Tabs */}
               <div className="flex items-center gap-2 pt-1 overflow-x-auto w-full pb-1 no-scrollbar">

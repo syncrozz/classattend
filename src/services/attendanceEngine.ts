@@ -22,7 +22,8 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
-  writeBatch
+  writeBatch,
+  getDocs
 } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
@@ -644,7 +645,7 @@ class AttendanceEngine {
   }
 
   // --- Mutation Methods ---
-  public saveStudentsList(students: Student[], replaceAll: boolean = true) {
+  public async saveStudentsList(students: Student[], replaceAll: boolean = true) {
     // Strictly deduplicate by base studentId so no student has 2 records / 2 QR codes
     const dedupedMap = new Map<string, Student>();
     students.forEach((s) => {
@@ -660,32 +661,94 @@ class AttendanceEngine {
     });
 
     const cleanStudents = Array.from(dedupedMap.values());
-    const oldStudents = [...this.students];
-
     this.students = cleanStudents;
     this.saveStudentsLocally();
 
     if (db) {
       try {
-        const batch = writeBatch(db);
         if (replaceAll) {
+          // 1. Fetch all currently existing student documents in Firestore and delete those not in new set
+          const snapshot = await getDocs(collection(db, 'students'));
           const newIds = new Set(cleanStudents.map((s) => s.id));
-          oldStudents.forEach((oldS) => {
-            if (!newIds.has(oldS.id)) {
-              deleteDoc(doc(db!, 'students', oldS.id)).catch(() => {});
+          const deleteBatch = writeBatch(db);
+          let deleteCount = 0;
+
+          snapshot.docs.forEach((docSnap) => {
+            if (!newIds.has(docSnap.id)) {
+              deleteBatch.delete(doc(db!, 'students', docSnap.id));
+              deleteCount++;
             }
           });
+
+          if (deleteCount > 0) {
+            await deleteBatch.commit();
+          }
         }
+
+        // 2. Write/Upsert current students
+        const insertBatch = writeBatch(db);
         cleanStudents.forEach((student) => {
-          batch.set(doc(db!, 'students', student.id), sanitizeForFirestore(student), { merge: true });
+          insertBatch.set(doc(db!, 'students', student.id), sanitizeForFirestore(student), { merge: true });
         });
-        batch.commit().catch((err) => {
-          console.warn('Error batch-saving students list to Firestore:', err?.message || err);
-        });
+        await insertBatch.commit();
       } catch (err) {
-        console.warn('Batch students write notice:', err);
+        console.warn('Firestore students save/replace error:', err);
       }
     }
+  }
+
+  /**
+   * Admin Utility: Automatically detect and clean any redundant or duplicate student entries
+   */
+  public async cleanupRedundantStudents(): Promise<{ removedCount: number; finalCount: number }> {
+    const originalCount = this.students.length;
+    const dedupedMap = new Map<string, Student>();
+
+    // Deduplicate in-memory
+    this.students.forEach((s) => {
+      const key = (s.studentId || s.id).trim().toUpperCase();
+      const baseId = key.replace(/-\d+$/, '');
+      if (!dedupedMap.has(baseId)) {
+        dedupedMap.set(baseId, {
+          ...s,
+          id: baseId,
+          studentId: baseId,
+          name: s.name.trim().toUpperCase(),
+          className: s.className.trim().toUpperCase().replace(/\s+/g, '_')
+        });
+      }
+    });
+
+    const cleanStudents = Array.from(dedupedMap.values());
+    this.students = cleanStudents;
+    this.saveStudentsLocally();
+
+    let removedFromDb = 0;
+    if (db) {
+      try {
+        const snapshot = await getDocs(collection(db, 'students'));
+        const validIds = new Set(cleanStudents.map((s) => s.id));
+        const batch = writeBatch(db);
+
+        snapshot.docs.forEach((docSnap) => {
+          if (!validIds.has(docSnap.id)) {
+            batch.delete(doc(db!, 'students', docSnap.id));
+            removedFromDb++;
+          }
+        });
+
+        if (removedFromDb > 0) {
+          await batch.commit();
+        }
+      } catch (err) {
+        console.warn('Cleanup Firestore error:', err);
+      }
+    }
+
+    return {
+      removedCount: Math.max(originalCount - cleanStudents.length, removedFromDb),
+      finalCount: cleanStudents.length
+    };
   }
 
   public addStudent(student: Student) {
