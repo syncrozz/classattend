@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Student, Lecturer } from '../types';
 import {
-  parseStudentCSV,
+  parseStudentCSVWithReport,
   parseLecturerCSV,
   generateClassTemplateCSV,
   generateLecturerTemplateCSV,
-  downloadCSV
+  downloadCSV,
+  StudentCSVParseResult
 } from '../utils/csvHelper';
 import {
   Upload,
@@ -19,14 +20,16 @@ import {
   BookOpen,
   Sparkles,
   ShieldCheck,
-  GraduationCap
+  GraduationCap,
+  RefreshCw,
+  Layers
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 
 interface CSVImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImport: (students: Student[]) => void;
+  onImport: (students: Student[], replaceAll?: boolean) => void;
   onImportLecturers?: (lecturers: Lecturer[]) => void;
   initialMode?: 'STUDENT' | 'LECTURER';
 }
@@ -41,8 +44,10 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
   const [importMode, setImportMode] = useState<'STUDENT' | 'LECTURER'>(initialMode);
   const [dragActive, setDragActive] = useState(false);
   const [parsedStudents, setParsedStudents] = useState<Student[]>([]);
+  const [studentReport, setStudentReport] = useState<StudentCSVParseResult | null>(null);
   const [parsedLecturers, setParsedLecturers] = useState<Lecturer[]>([]);
   const [targetClass, setTargetClass] = useState<string>('KEKAL');
+  const [replaceExisting, setReplaceExisting] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
 
@@ -58,12 +63,13 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
         const text = e.target?.result as string;
 
         if (importMode === 'STUDENT') {
-          const students = parseStudentCSV(text);
-          if (students.length === 0) {
-            setError('Gagal membaca rekod pelajar daripada fail CSV. Sila pastikan format fail mematuhi templat.');
+          const report = parseStudentCSVWithReport(text);
+          if (report.students.length === 0) {
+            setError('Gagal membaca rekod pelajar daripada fail CSV. Sila pastikan format fail mempunyai sekurang-kurangnya nama atau no pelajar.');
             soundService.playError();
           } else {
-            setParsedStudents(students);
+            setParsedStudents(report.students);
+            setStudentReport(report);
             setParsedLecturers([]);
             soundService.playSuccess();
           }
@@ -75,6 +81,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
           } else {
             setParsedLecturers(lecturers);
             setParsedStudents([]);
+            setStudentReport(null);
             soundService.playSuccess();
           }
         }
@@ -121,7 +128,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
           className: targetClass
         }));
       }
-      onImport(finalStudents);
+      onImport(finalStudents, replaceExisting);
       soundService.playSuccess();
       onClose();
     } else if (importMode === 'LECTURER' && parsedLecturers.length > 0) {
@@ -167,8 +174,8 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             </h3>
             <p className="text-xs text-slate-400">
               {importMode === 'STUDENT'
-                ? 'Muat turun templat rasmi, isi maklumat kelas, dan muat naik semula'
-                : 'Muat turun templat pensyarah (Emel, No IC, Kelas) untuk padanan akses'}
+                ? 'Muat naik fail CSV untuk mengisi atau mengemas kini pangkalan data pelajar'
+                : 'Muat naik fail CSV pensyarah (Emel, No IC, Kelas) untuk padanan akses'}
             </p>
           </div>
           <button
@@ -227,10 +234,10 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             >
               <Upload className={`w-10 h-10 mb-3 ${importMode === 'STUDENT' ? 'text-indigo-400' : 'text-emerald-400'}`} />
               <h4 className="text-sm font-bold text-white mb-1">
-                Tarik & Lepaskan fail CSV {importMode === 'STUDENT' ? 'kelas' : 'pensyarah'} di sini
+                Tarik & Lepaskan fail CSV {importMode === 'STUDENT' ? 'pelajar' : 'pensyarah'} di sini
               </h4>
               <p className="text-xs text-slate-400 mb-4">
-                atau klik untuk memilih fail daripada komputer anda
+                Menyokong fail CSV dengan pemisah koma (,), koma bertindih (;), atau tab
               </p>
 
               <label className={`px-4 py-2.5 rounded-xl text-white text-xs font-semibold cursor-pointer shadow-lg transition-all flex items-center gap-2 ${
@@ -242,7 +249,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 <span>Pilih Fail CSV {importMode === 'STUDENT' ? 'Pelajar' : 'Pensyarah'}</span>
                 <input
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,text/plain"
                   onChange={handleChange}
                   className="hidden"
                 />
@@ -292,6 +299,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               <button
                 onClick={() => {
                   setParsedStudents([]);
+                  setStudentReport(null);
                   setParsedLecturers([]);
                   setFileName('');
                 }}
@@ -301,37 +309,87 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               </button>
             </div>
 
-            {/* Target Class Assignment Override for Students */}
+            {/* If duplicate IDs were automatically resolved */}
+            {importMode === 'STUDENT' && studentReport && studentReport.duplicateCount > 0 && (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>
+                  Terdapat {studentReport.duplicateCount} rekod dengan No. Pelajar pendua dalam fail ini. Semua rekod telah dikekalkan tanpa ada yang tercicir.
+                </span>
+              </div>
+            )}
+
+            {/* Target Class & Storage Mode Options */}
             {importMode === 'STUDENT' && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>
-                  <span className="text-slate-300 font-semibold">Tentukan Kelas:</span>
-                  <p className="text-[11px] text-slate-400">Pilih jika ingin menetapkan semua pelajar dalam fail ini ke kelas tertentu</p>
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Mode Replace vs Merge */}
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                    <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
+                      Kaedah Simpanan:
+                    </span>
+                    <div className="space-y-1 text-[11px]">
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-200">
+                        <input
+                          type="radio"
+                          name="importStorageMode"
+                          checked={replaceExisting}
+                          onChange={() => setReplaceExisting(true)}
+                          className="text-indigo-600 focus:ring-0"
+                        />
+                        <span>
+                          <strong>Gantikan Pangkalan Data</strong> (Jumlah jadi {parsedStudents.length} orang)
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                        <input
+                          type="radio"
+                          name="importStorageMode"
+                          checked={!replaceExisting}
+                          onChange={() => setReplaceExisting(false)}
+                          className="text-indigo-600 focus:ring-0"
+                        />
+                        <span>
+                          <strong>Gabungkan</strong> dengan senarai sedia ada
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Target Class Assignment Override */}
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col justify-between gap-1.5 text-xs">
+                    <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      Tentukan Kelas:
+                    </span>
+                    <select
+                      value={targetClass}
+                      onChange={(e) => setTargetClass(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-indigo-500 w-full"
+                    >
+                      <option value="KEKAL">Gunakan Kelas Dari Fail CSV</option>
+                      <option value="DIA_3A">Tetapkan ke DIA_3A</option>
+                      <option value="DIA_3B">Tetapkan ke DIA_3B</option>
+                      <option value="DIA_3C">Tetapkan ke DIA_3C</option>
+                      <option value="DIA_3D">Tetapkan ke DIA_3D</option>
+                      <option value="DIA_4A">Tetapkan ke DIA_4A</option>
+                      <option value="DIA_4B">Tetapkan ke DIA_4B</option>
+                      <option value="DIA_4C">Tetapkan ke DIA_4C</option>
+                      <option value="DIA_4D">Tetapkan ke DIA_4D</option>
+                    </select>
+                  </div>
                 </div>
-                <select
-                  value={targetClass}
-                  onChange={(e) => setTargetClass(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="KEKAL">Gunakan Kelas Dari Fail CSV</option>
-                  <option value="DIA_3A">Tetapkan ke DIA_3A</option>
-                  <option value="DIA_3B">Tetapkan ke DIA_3B</option>
-                  <option value="DIA_3C">Tetapkan ke DIA_3C</option>
-                  <option value="DIA_3D">Tetapkan ke DIA_3D</option>
-                  <option value="DIA_4A">Tetapkan ke DIA_4A</option>
-                  <option value="DIA_4B">Tetapkan ke DIA_4B</option>
-                  <option value="DIA_4C">Tetapkan ke DIA_4C</option>
-                  <option value="DIA_4D">Tetapkan ke DIA_4D</option>
-                </select>
               </div>
             )}
 
             {/* Table Preview */}
-            <div className="flex-1 overflow-y-auto border border-slate-800 rounded-xl bg-slate-950 max-h-56">
+            <div className="flex-1 overflow-y-auto border border-slate-800 rounded-xl bg-slate-950 max-h-52">
               {importMode === 'STUDENT' ? (
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-900 text-slate-400 text-[10px] font-bold sticky top-0 uppercase tracking-wider">
                     <tr>
+                      <th className="py-2.5 px-3">Bil</th>
                       <th className="py-2.5 px-3">No. Pelajar</th>
                       <th className="py-2.5 px-3">Nama Pelajar</th>
                       <th className="py-2.5 px-3">Kelas</th>
@@ -341,6 +399,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
                     {parsedStudents.map((s, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/50">
+                        <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
                         <td className="py-2 px-3 text-indigo-400 font-bold">{s.studentId}</td>
                         <td className="py-2 px-3 font-sans font-semibold text-white">{s.name}</td>
                         <td className="py-2 px-3">
@@ -348,7 +407,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                             {targetClass === 'KEKAL' ? s.className : targetClass}
                           </span>
                         </td>
-                        <td className="py-2 px-3 text-slate-400">{s.phone}</td>
+                        <td className="py-2 px-3 text-slate-400">{s.phone || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -357,6 +416,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-900 text-slate-400 text-[10px] font-bold sticky top-0 uppercase tracking-wider">
                     <tr>
+                      <th className="py-2.5 px-3">Bil</th>
                       <th className="py-2.5 px-3">Nama Pensyarah</th>
                       <th className="py-2.5 px-3">Emel KPM</th>
                       <th className="py-2.5 px-3">No. IC</th>
@@ -367,6 +427,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
                     {parsedLecturers.map((l, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/50">
+                        <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
                         <td className="py-2 px-3 font-sans font-semibold text-white">{l.name}</td>
                         <td className="py-2 px-3 text-emerald-400">{l.email}</td>
                         <td className="py-2 px-3 text-slate-300">{l.icNumber}</td>
@@ -416,4 +477,5 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
     </div>
   );
 };
+
 

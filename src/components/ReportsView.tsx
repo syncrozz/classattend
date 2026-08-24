@@ -3,7 +3,8 @@ import {
   Student,
   AttendanceSession,
   Subject,
-  AttendanceRecord
+  AttendanceRecord,
+  Lecturer
 } from '../types';
 import {
   getClassBadgeColor,
@@ -28,7 +29,8 @@ import {
   Award,
   Layers,
   BarChart3,
-  Users
+  Users,
+  Lock
 } from 'lucide-react';
 import {
   BarChart,
@@ -46,13 +48,19 @@ interface ReportsViewProps {
   sessions: AttendanceSession[];
   subjects?: Subject[];
   attendanceRecords: AttendanceRecord[];
+  isAdmin?: boolean;
+  activeLecturer?: Lecturer | null;
+  onRequestAdminAccess?: (actionName?: string) => void;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
   students,
   sessions,
   subjects = [],
-  attendanceRecords
+  attendanceRecords,
+  isAdmin = false,
+  activeLecturer = null,
+  onRequestAdminAccess
 }) => {
   const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT'>('CLASS');
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0]?.id || '');
@@ -123,6 +131,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   // Handle Export Session CSV
   const handleExportSessionCSV = () => {
     if (!currentSession) return;
+    if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
+      onRequestAdminAccess(`Eksport Data Laporan Kehadiran (${currentSession.sessionName})`);
+      return;
+    }
     const csvContent = exportSessionAttendanceToCSV(currentSession, students, attendanceRecords);
     downloadCSV(csvContent, `Laporan_Kehadiran_Kelas_${currentSession.sessionName.replace(/\s+/g, '_')}.csv`);
   };
@@ -173,6 +185,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Export Class Specific CSV
   const handleExportClassCSV = () => {
+    if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
+      onRequestAdminAccess(`Eksport Laporan Kehadiran Kelas ${selectedClassSection}`);
+      return;
+    }
     const headers = 'Bil,No_Pelajar,Nama_Pelajar,Kelas,Jumlah_Sesi_Hadir,Jumlah_Sesi_Keseluruhan,Peratus_Kehadiran\n';
     const rows = selectedClassStudentStats.map((item, idx) =>
       `${idx + 1},"${item.student.studentId}","${item.student.name}","${item.student.className}",${item.present},${item.total},${item.rate}%`
@@ -334,18 +350,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <button
                 onClick={handleExportClassCSV}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title="Eksport Fail CSV Kelas Ini"
+                title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV Kelas Ini'}
               >
-                <Download className="w-3.5 h-3.5" />
+                {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">Eksport CSV Kelas</span>
               </button>
             ) : (
               <button
                 onClick={handleExportSessionCSV}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title="Eksport Fail CSV"
+                title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV'}
               >
-                <Download className="w-3.5 h-3.5" />
+                {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">Eksport CSV</span>
               </button>
             )}

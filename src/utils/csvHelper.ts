@@ -6,9 +6,7 @@ import { Student, AttendanceRecord, AttendanceSession, Lecturer } from '../types
 export const generateClassTemplateCSV = (sampleClassName: string = 'DIA_4A'): string => {
   const headers = ['Bil', 'No_Pelajar', 'Nama_Pelajar', 'Kelas', 'No_Telefon', 'Email', 'Program'];
   const sampleRows = [
-    [1, 'PDA-2502-001', 'NUR AISYAH BINTI ABDUL RAZAK', sampleClassName, '601110571550', 'aisyah.razak@bpenawar.kpm.edu.my', 'Diploma Perakaunan'],
-    [2, 'PDA-2502-002', 'MUHAMMAD RAIYAN DARWISY BIN MOHD ZALANI', sampleClassName, '60122187981', 'raiyan.mohd@bpenawar.kpm.edu.my', 'Diploma Perakaunan'],
-    [3, 'PDA-2502-005', 'MUHAMMAD AIMAN BIN MUHAMMAD ARIFF', sampleClassName, '60166982011', 'aiman.ariff@bpenawar.kpm.edu.my', 'Diploma Perakaunan']
+    [1, 'PDA-2502-001', 'NUR AISYAH BINTI ABDUL RAZAK', sampleClassName, '601110571550', 'aisyah.razak@bpenawar.kpm.edu.my', 'Diploma Perakaunan']
   ];
 
   const content = [
@@ -34,36 +32,6 @@ export const generateLecturerTemplateCSV = (): string => {
       'MPU 2163 - Pengajian Malaysia 2, QMT 2023 - Statistik Perniagaan',
       'Pengajian Am',
       'ADMIN'
-    ],
-    [
-      2,
-      'PN. SITI ROHANI BINTI AHMAD',
-      'rohani@bpenawar.kpm.edu.my',
-      '880520-01-5214',
-      'DIA_4A, DIA_4C',
-      'ACC 2103 - Perakaunan Kewangan 2',
-      'Perakaunan',
-      'LECTURER'
-    ],
-    [
-      3,
-      'EN. MOHD FAIZAL BIN HARUN',
-      'faizal@bpenawar.kpm.edu.my',
-      '840912-08-5432',
-      'DIA_4B, DIA_4D',
-      'MGT 2013 - Prinsip Pengurusan',
-      'Pengurusan Perniagaan',
-      'LECTURER'
-    ],
-    [
-      4,
-      'PN. NURUL IZZATI BINTI ISMAIL',
-      'izzati@bpenawar.kpm.edu.my',
-      '910304-01-6128',
-      'DIA_4C, DIA_4D',
-      'QMT 2023 - Statistik Perniagaan',
-      'Sains Kuantitatif',
-      'LECTURER'
     ]
   ];
 
@@ -232,61 +200,26 @@ export const exportSessionAttendanceToCSV = (
   return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 };
 
-export const parseStudentCSV = (csvText: string): Student[] => {
-  const lines = csvText
-    .split(/\r\n|\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+/**
+ * Helper to auto-detect delimiter from CSV line (, ; \t |)
+ */
+function detectDelimiter(text: string): string {
+  const firstLines = text.split(/\r\n|\n/).slice(0, 5).join('\n');
+  const commaCount = (firstLines.match(/,/g) || []).length;
+  const semiCount = (firstLines.match(/;/g) || []).length;
+  const tabCount = (firstLines.match(/\t/g) || []).length;
+  const pipeCount = (firstLines.match(/\|/g) || []).length;
 
-  if (lines.length <= 1) return [];
+  if (semiCount > commaCount && semiCount > tabCount) return ';';
+  if (tabCount > commaCount && tabCount > semiCount) return '\t';
+  if (pipeCount > commaCount && pipeCount > semiCount) return '|';
+  return ',';
+}
 
-  const headers = lines[0].split(',').map((h) => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
-
-  // Find column indices
-  let idIndex = headers.findIndex((h) => h.includes('no_pelajar') || h.includes('id') || h.includes('matric') || h.includes('student'));
-  let nameIndex = headers.findIndex((h) => h.includes('nama_pelajar') || h.includes('nama') || h.includes('name'));
-  let setIndex = headers.findIndex((h) => h.includes('kelas') || h.includes('seksyen') || h.includes('nama_set') || h.includes('set') || h.includes('class'));
-  let phoneIndex = headers.findIndex((h) => h.includes('telefon') || h.includes('phone') || h.includes('tel'));
-  let emailIndex = headers.findIndex((h) => h.includes('email') || h.includes('e-mel') || h.includes('mel'));
-  let deptIndex = headers.findIndex((h) => h.includes('program') || h.includes('jabatan') || h.includes('kursus') || h.includes('department'));
-
-  // Fallbacks by position if not found by name
-  if (idIndex === -1 && headers.length >= 2) idIndex = 1;
-  if (nameIndex === -1 && headers.length >= 3) nameIndex = 2;
-  if (setIndex === -1 && headers.length >= 4) setIndex = 3;
-  if (phoneIndex === -1 && headers.length >= 5) phoneIndex = 4;
-  if (emailIndex === -1 && headers.length >= 6) emailIndex = 5;
-
-  const resultStudents: Student[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const rawCols = splitCSVRow(lines[i]);
-    if (rawCols.length < 2) continue;
-
-    const studentId = (idIndex >= 0 && rawCols[idIndex] ? rawCols[idIndex] : `PDA-${Date.now()}-${i}`);
-    const name = (nameIndex >= 0 && rawCols[nameIndex] ? rawCols[nameIndex] : `Pelajar ${i}`);
-    const className = (setIndex >= 0 && rawCols[setIndex] ? rawCols[setIndex] : 'DIA_4A');
-    const phone = (phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex] : '');
-    const email = (emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex] : '');
-    const department = (deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex] : 'Diploma Perakaunan');
-
-    if (!studentId || !name) continue;
-
-    resultStudents.push({
-      id: studentId.trim().toUpperCase(),
-      studentId: studentId.trim().toUpperCase(),
-      name: name.trim().toUpperCase(),
-      className: className.trim().toUpperCase(),
-      phone: phone.trim(),
-      email: email.trim(),
-      department: department.trim()
-    });
-  }
-
-  return resultStudents;
-};
-
-function splitCSVRow(rowText: string): string[] {
+/**
+ * Universal CSV row splitter handling quotes and custom delimiters
+ */
+export function splitCSVRow(rowText: string, delimiter: string = ','): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -300,16 +233,249 @@ function splitCSVRow(rowText: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim().replace(/^["']|["']$/g, ''));
       current = '';
     } else {
       current += char;
     }
   }
-  result.push(current.trim());
+  result.push(current.trim().replace(/^["']|["']$/g, ''));
   return result;
 }
+
+export interface StudentCSVParseResult {
+  students: Student[];
+  totalRowsRead: number;
+  duplicateCount: number;
+  skippedCount: number;
+  detectedDelimiter: string;
+  headerRowIndex: number;
+}
+
+export const parseStudentCSVWithReport = (csvText: string): StudentCSVParseResult => {
+  // Strip BOM if present
+  const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+  const rawLines = cleanText
+    .split(/\r\n|\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (rawLines.length === 0) {
+    return {
+      students: [],
+      totalRowsRead: 0,
+      duplicateCount: 0,
+      skippedCount: 0,
+      detectedDelimiter: ',',
+      headerRowIndex: -1
+    };
+  }
+
+  const delimiter = detectDelimiter(cleanText);
+
+  // Search for the true header row among first 15 lines
+  let headerIndex = -1;
+  let headers: string[] = [];
+
+  for (let idx = 0; idx < Math.min(15, rawLines.length); idx++) {
+    const cols = splitCSVRow(rawLines[idx], delimiter).map((c) => c.toLowerCase().trim());
+    const hasHeaderKeywords = cols.some((c) =>
+      c.includes('nama') ||
+      c.includes('pelajar') ||
+      c.includes('name') ||
+      c.includes('matrik') ||
+      c.includes('student') ||
+      c.includes('id') ||
+      c.includes('kelas') ||
+      c.includes('seksyen')
+    );
+
+    if (hasHeaderKeywords) {
+      headerIndex = idx;
+      headers = cols;
+      break;
+    }
+  }
+
+  // Fallback if no explicit header row was detected
+  if (headerIndex === -1) {
+    headerIndex = 0;
+    headers = splitCSVRow(rawLines[0], delimiter).map((c) => c.toLowerCase().trim());
+  }
+
+  // Column matching with all Malaysian & International synonyms
+  let idIndex = headers.findIndex(
+    (h) =>
+      (h.includes('no_pelajar') ||
+        h.includes('no.pelajar') ||
+        h.includes('no pelajar') ||
+        h.includes('matrik') ||
+        h.includes('matric') ||
+        h.includes('student_id') ||
+        h.includes('student id') ||
+        h.includes('no_pendaftaran') ||
+        h.includes('angka_giliran') ||
+        h.includes('no_kp') ||
+        h.includes('nric') ||
+        (h === 'id' || h === 'studentId')) &&
+      !h.startsWith('bil')
+  );
+
+  let nameIndex = headers.findIndex(
+    (h) =>
+      h.includes('nama_pelajar') ||
+      h.includes('nama pelajar') ||
+      h.includes('nama_penuh') ||
+      h.includes('nama penuh') ||
+      h.includes('student_name') ||
+      h.includes('student name') ||
+      h.includes('nama') ||
+      h.includes('name')
+  );
+
+  let setIndex = headers.findIndex(
+    (h) =>
+      h.includes('kelas') ||
+      h.includes('seksyen') ||
+      h.includes('section') ||
+      h.includes('class') ||
+      h.includes('kumpulan') ||
+      h.includes('group') ||
+      h.includes('nama_set') ||
+      h.includes('set') ||
+      h.includes('sem')
+  );
+
+  let phoneIndex = headers.findIndex(
+    (h) =>
+      h.includes('telefon') ||
+      h.includes('phone') ||
+      h.includes('tel') ||
+      h.includes('no_tel') ||
+      h.includes('no_telefon') ||
+      h.includes('hp') ||
+      h.includes('no_hp') ||
+      h.includes('mobile') ||
+      h.includes('contact')
+  );
+
+  let emailIndex = headers.findIndex(
+    (h) =>
+      h.includes('email') ||
+      h.includes('emel') ||
+      h.includes('e-mel') ||
+      h.includes('e_mel') ||
+      h.includes('mail')
+  );
+
+  let deptIndex = headers.findIndex(
+    (h) =>
+      h.includes('program') ||
+      h.includes('kursus') ||
+      h.includes('jabatan') ||
+      h.includes('department') ||
+      h.includes('dept') ||
+      h.includes('bidang') ||
+      h.includes('course')
+  );
+
+  // Positional fallbacks based on standard template: Bil (0), No_Pelajar (1), Nama (2), Kelas (3), Tel (4), Email (5), Program (6)
+  if (idIndex === -1) {
+    if (headers.length >= 2 && nameIndex !== 1) idIndex = 1;
+    else if (headers.length >= 1) idIndex = 0;
+  }
+  if (nameIndex === -1) {
+    if (headers.length >= 3 && idIndex !== 2) nameIndex = 2;
+    else if (headers.length >= 2 && idIndex !== 1) nameIndex = 1;
+    else nameIndex = 0;
+  }
+  if (setIndex === -1 && headers.length >= 4) setIndex = 3;
+  if (phoneIndex === -1 && headers.length >= 5) phoneIndex = 4;
+  if (emailIndex === -1 && headers.length >= 6) emailIndex = 5;
+
+  const resultStudents: Student[] = [];
+  const seenIds = new Set<string>();
+  let duplicates = 0;
+  let skipped = 0;
+
+  for (let i = headerIndex + 1; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (!line || line.trim().length === 0) {
+      skipped++;
+      continue;
+    }
+
+    const rawCols = splitCSVRow(line, delimiter);
+    if (rawCols.length < 1) {
+      skipped++;
+      continue;
+    }
+
+    // Ignore potential footer / summary rows
+    const firstCol = (rawCols[0] || '').toLowerCase();
+    if (firstCol.includes('jumlah') || firstCol.includes('total') || firstCol.includes('disediakan')) {
+      skipped++;
+      continue;
+    }
+
+    let rawId = idIndex >= 0 && rawCols[idIndex] ? rawCols[idIndex].trim() : '';
+    let rawName = nameIndex >= 0 && rawCols[nameIndex] ? rawCols[nameIndex].trim() : '';
+
+    // If ID is actually empty but name is present, synthesize a stable ID so row is not lost
+    if (!rawId && rawName) {
+      rawId = `PDA-ST-${i}`;
+    }
+
+    // If name is empty, fallback to ID
+    if (!rawName && rawId) {
+      rawName = `Pelajar ${rawId}`;
+    }
+
+    // If both empty, skip row
+    if (!rawId && !rawName) {
+      skipped++;
+      continue;
+    }
+
+    const className = setIndex >= 0 && rawCols[setIndex] && rawCols[setIndex].trim() ? rawCols[setIndex].trim() : 'DIA_4A';
+    const phone = phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex].trim() : '';
+    const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim() : '';
+    const department = deptIndex >= 0 && rawCols[deptIndex] && rawCols[deptIndex].trim() ? rawCols[deptIndex].trim() : 'Diploma Perakaunan';
+
+    let cleanId = rawId.toUpperCase();
+    
+    // Prevent collapsing duplicate rows: if ID already exists, preserve both by appending index
+    if (seenIds.has(cleanId)) {
+      duplicates++;
+      cleanId = `${cleanId}-${i}`;
+    }
+    seenIds.add(cleanId);
+
+    resultStudents.push({
+      id: cleanId,
+      studentId: rawId.toUpperCase(),
+      name: rawName.toUpperCase(),
+      className: className.toUpperCase().replace(/\s+/g, '_'),
+      phone,
+      email,
+      department
+    });
+  }
+
+  return {
+    students: resultStudents,
+    totalRowsRead: rawLines.length - (headerIndex + 1),
+    duplicateCount: duplicates,
+    skippedCount: skipped,
+    detectedDelimiter: delimiter,
+    headerRowIndex: headerIndex
+  };
+};
+
+export const parseStudentCSV = (csvText: string): Student[] => {
+  return parseStudentCSVWithReport(csvText).students;
+};
 
 export const downloadCSV = (content: string, filename: string) => {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -322,4 +488,5 @@ export const downloadCSV = (content: string, filename: string) => {
   link.click();
   document.body.removeChild(link);
 };
+
 

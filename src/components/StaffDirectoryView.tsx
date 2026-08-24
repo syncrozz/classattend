@@ -43,7 +43,8 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  Filter
+  Filter,
+  Lock
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 
@@ -161,6 +162,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   };
 
   const handleExportCSV = () => {
+    if (!isAdmin && !activeLecturer) {
+      onRequestAdminAccess('Eksport Data Senarai Pelajar (CSV)');
+      return;
+    }
     const csvContent = exportStudentsToCSV(filteredStudents);
     const filename = `Senarai_Pelajar_${selectedSet}_${new Date().toISOString().split('T')[0]}.csv`;
     downloadCSV(csvContent, filename);
@@ -168,6 +173,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   };
 
   const handleExportLecturersCSV = () => {
+    if (!isAdmin && !activeLecturer) {
+      onRequestAdminAccess('Eksport Data Direktori Pensyarah (CSV)');
+      return;
+    }
     const csvContent = exportLecturersToCSV(lecturers);
     const filename = `Senarai_Pensyarah_KPM_${new Date().toISOString().split('T')[0]}.csv`;
     downloadCSV(csvContent, filename);
@@ -334,8 +343,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     id="btn-export-csv"
                     onClick={handleExportCSV}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai pelajar ke fail CSV'}
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
                     <span>Eksport CSV</span>
                   </button>
 
@@ -407,7 +417,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title="Muat turun templat fail CSV pensyarah rasmi"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>1. Muat Turun Templat CSV</span>
+                    <span>Template CSV</span>
                   </button>
 
                   <button
@@ -434,24 +444,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     type="button"
                     onClick={handleExportLecturersCSV}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai direktori pensyarah ke fail CSV'}
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
                     <span>Eksport CSV</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
-                        onRequestAdminAccess('Akses Admin Diperlukan untuk Menambah Pensyarah');
-                        return;
-                      }
-                      setIsAddLecturerOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Pensyarah</span>
                   </button>
                 </div>
               </div>
@@ -775,31 +771,21 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Lecturer Actions */}
+                      {/* Lecturer Actions & Status */}
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
                         {isCurrentActive ? (
                           <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold">
                             <ShieldCheck className="w-4 h-4" />
-                            <span>Kebenaran Penuh Diberikan (Cipta QR & Ubah Data)</span>
+                            <span>Pensyarah Aktif Bertugas</span>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onSelectActiveLecturer) {
-                                onSelectActiveLecturer(lec);
-                              } else {
-                                onRequestAdminAccess(`Log Masuk sebagai ${lec.name}`);
-                              }
-                            }}
-                            className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <Shield className="w-3.5 h-3.5" />
-                            <span>Sahkan Identiti & Aktifkan Sesi</span>
-                          </button>
+                          <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                            <Shield className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="text-slate-400">Pensyarah Berdaftar KPM</span>
+                          </div>
                         )}
 
-                        {onDeleteLecturer && (
+                        {isAdmin && onDeleteLecturer && (
                           <button
                             type="button"
                             onClick={() => {
@@ -808,7 +794,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                               }
                             }}
                             className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
-                            title="Padam Pensyarah"
+                            title="Padam Pensyarah (Mod Admin)"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

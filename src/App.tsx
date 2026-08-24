@@ -194,13 +194,20 @@ export default function App() {
   };
 
   // Import CSV Students
-  const handleImportStudents = (newStudentsList: Student[]) => {
-    const existingMap = new Map<string, Student>(students.map((s) => [s.id, s]));
-    newStudentsList.forEach((s) => existingMap.set(s.id, s));
-    const merged = Array.from(existingMap.values());
+  const handleImportStudents = (newStudentsList: Student[], replaceAll: boolean = true) => {
+    let finalList: Student[] = [];
 
-    attendanceEngine.saveStudentsList(merged);
-    setStudents(merged);
+    if (replaceAll) {
+      finalList = newStudentsList;
+    } else {
+      const existingMap = new Map<string, Student>(students.map((s) => [s.id, s]));
+      newStudentsList.forEach((s) => existingMap.set(s.id, s));
+      finalList = Array.from(existingMap.values());
+    }
+
+    attendanceEngine.saveStudentsList(finalList);
+    setStudents(finalList);
+    soundService.playSuccess();
   };
 
   // Import CSV Lecturers
@@ -377,6 +384,9 @@ export default function App() {
               sessions={sessions}
               subjects={subjects}
               attendanceRecords={attendanceRecords}
+              isAdmin={isAdmin}
+              activeLecturer={activeLecturer}
+              onRequestAdminAccess={handleRequestAdminAccess}
             />
           )}
 
