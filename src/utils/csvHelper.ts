@@ -443,20 +443,34 @@ export const parseStudentCSVWithReport = (csvText: string): StudentCSVParseResul
     const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim() : '';
     const department = deptIndex >= 0 && rawCols[deptIndex] && rawCols[deptIndex].trim() ? rawCols[deptIndex].trim() : 'Diploma Perakaunan';
 
-    let cleanId = rawId.toUpperCase();
+    const cleanId = rawId.toUpperCase();
+    const cleanName = rawName.toUpperCase();
+    const cleanClass = className.toUpperCase().replace(/\s+/g, '_');
     
-    // Prevent collapsing duplicate rows: if ID already exists, preserve both by appending index
+    // Exact deduplication: 1 student has 1 unique Student ID and 1 QR code
     if (seenIds.has(cleanId)) {
       duplicates++;
-      cleanId = `${cleanId}-${i}`;
+      // Update existing record if new row has more complete class or info
+      const existingIndex = resultStudents.findIndex((s) => s.id === cleanId);
+      if (existingIndex >= 0) {
+        resultStudents[existingIndex] = {
+          ...resultStudents[existingIndex],
+          name: cleanName || resultStudents[existingIndex].name,
+          className: cleanClass || resultStudents[existingIndex].className,
+          phone: phone || resultStudents[existingIndex].phone,
+          email: email || resultStudents[existingIndex].email,
+          department: department || resultStudents[existingIndex].department
+        };
+      }
+      continue;
     }
     seenIds.add(cleanId);
 
     resultStudents.push({
       id: cleanId,
-      studentId: rawId.toUpperCase(),
-      name: rawName.toUpperCase(),
-      className: className.toUpperCase().replace(/\s+/g, '_'),
+      studentId: cleanId,
+      name: cleanName,
+      className: cleanClass,
       phone,
       email,
       department

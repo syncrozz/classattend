@@ -205,8 +205,8 @@ export default function App() {
       finalList = Array.from(existingMap.values());
     }
 
-    attendanceEngine.saveStudentsList(finalList);
-    setStudents(finalList);
+    attendanceEngine.saveStudentsList(finalList, replaceAll);
+    setStudents(attendanceEngine.getStudents());
     soundService.playSuccess();
   };
 

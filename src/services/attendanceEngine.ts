@@ -67,10 +67,17 @@ class AttendanceEngine {
         const storedActiveLecturer = localStorage.getItem(STORAGE_KEYS.ACTIVE_LECTURER);
 
         if (storedStudents) {
-          const parsed = JSON.parse(storedStudents);
-          const existingIds = new Set(parsed.map((s: Student) => s.id));
-          const missingStudents = INITIAL_STUDENTS.filter((s) => !existingIds.has(s.id));
-          this.students = [...parsed, ...missingStudents];
+          const parsed: Student[] = JSON.parse(storedStudents);
+          const dedupedMap = new Map<string, Student>();
+          parsed.forEach((s) => {
+            const key = (s.studentId || s.id).trim().toUpperCase();
+            // Remove any trailing -1, -2 appended during previous duplicate generation
+            const baseId = key.replace(/-\d+$/, '');
+            if (!dedupedMap.has(baseId)) {
+              dedupedMap.set(baseId, { ...s, id: baseId, studentId: baseId });
+            }
+          });
+          this.students = Array.from(dedupedMap.values());
         } else {
           this.students = INITIAL_STUDENTS;
         }
@@ -637,15 +644,40 @@ class AttendanceEngine {
   }
 
   // --- Mutation Methods ---
-  public saveStudentsList(students: Student[]) {
-    this.students = students;
+  public saveStudentsList(students: Student[], replaceAll: boolean = true) {
+    // Strictly deduplicate by base studentId so no student has 2 records / 2 QR codes
+    const dedupedMap = new Map<string, Student>();
+    students.forEach((s) => {
+      const key = (s.studentId || s.id).trim().toUpperCase();
+      const baseId = key.replace(/-\d+$/, '');
+      dedupedMap.set(baseId, {
+        ...s,
+        id: baseId,
+        studentId: baseId,
+        name: s.name.trim().toUpperCase(),
+        className: s.className.trim().toUpperCase().replace(/\s+/g, '_')
+      });
+    });
+
+    const cleanStudents = Array.from(dedupedMap.values());
+    const oldStudents = [...this.students];
+
+    this.students = cleanStudents;
     this.saveStudentsLocally();
 
-    if (db && students.length > 0) {
+    if (db) {
       try {
         const batch = writeBatch(db);
-        students.forEach((student) => {
-          batch.set(doc(db, 'students', student.id), sanitizeForFirestore(student), { merge: true });
+        if (replaceAll) {
+          const newIds = new Set(cleanStudents.map((s) => s.id));
+          oldStudents.forEach((oldS) => {
+            if (!newIds.has(oldS.id)) {
+              deleteDoc(doc(db!, 'students', oldS.id)).catch(() => {});
+            }
+          });
+        }
+        cleanStudents.forEach((student) => {
+          batch.set(doc(db!, 'students', student.id), sanitizeForFirestore(student), { merge: true });
         });
         batch.commit().catch((err) => {
           console.warn('Error batch-saving students list to Firestore:', err?.message || err);

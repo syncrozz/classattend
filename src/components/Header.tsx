@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div className="flex flex-col justify-center">
             <div className="flex flex-col items-start gap-0.5">
-              <h1 className="text-lg font-extrabold tracking-tight leading-none">
+              <h1 className="text-lg font-extrabold tracking-tight leading-none flex items-center gap-1.5">
                 <span className="text-white group-hover:text-indigo-200 transition-colors">CLASS</span>
                 <span className="text-blue-500 group-hover:text-blue-400 transition-colors">ATTEND</span>
               </h1>
