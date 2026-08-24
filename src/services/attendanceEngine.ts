@@ -71,11 +71,15 @@ class AttendanceEngine {
           const parsed: Student[] = JSON.parse(storedStudents);
           const dedupedMap = new Map<string, Student>();
           parsed.forEach((s) => {
-            const key = (s.studentId || s.id).trim().toUpperCase();
-            // Remove any trailing -1, -2 appended during previous duplicate generation
-            const baseId = key.replace(/-\d+$/, '');
-            if (!dedupedMap.has(baseId)) {
-              dedupedMap.set(baseId, { ...s, id: baseId, studentId: baseId });
+            const rawId = (s.studentId || s.id || '').trim().toUpperCase();
+            if (rawId && !dedupedMap.has(rawId)) {
+              dedupedMap.set(rawId, {
+                ...s,
+                id: rawId,
+                studentId: rawId,
+                name: (s.name || '').trim().toUpperCase(),
+                className: (s.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_')
+              });
             }
           });
           this.students = Array.from(dedupedMap.values());
@@ -646,18 +650,19 @@ class AttendanceEngine {
 
   // --- Mutation Methods ---
   public async saveStudentsList(students: Student[], replaceAll: boolean = true) {
-    // Strictly deduplicate by base studentId so no student has 2 records / 2 QR codes
+    // Deduplicate by clean ID so each student has exactly 1 record and 1 QR code
     const dedupedMap = new Map<string, Student>();
-    students.forEach((s) => {
-      const key = (s.studentId || s.id).trim().toUpperCase();
-      const baseId = key.replace(/-\d+$/, '');
-      dedupedMap.set(baseId, {
-        ...s,
-        id: baseId,
-        studentId: baseId,
-        name: s.name.trim().toUpperCase(),
-        className: s.className.trim().toUpperCase().replace(/\s+/g, '_')
-      });
+    students.forEach((s, idx) => {
+      const rawId = (s.studentId || s.id || `PDA-ST-${idx + 1}`).trim().toUpperCase();
+      if (!dedupedMap.has(rawId)) {
+        dedupedMap.set(rawId, {
+          ...s,
+          id: rawId,
+          studentId: rawId,
+          name: (s.name || `PELAJAR ${idx + 1}`).trim().toUpperCase(),
+          className: (s.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_')
+        });
+      }
     });
 
     const cleanStudents = Array.from(dedupedMap.values());
@@ -670,27 +675,28 @@ class AttendanceEngine {
           // 1. Fetch all currently existing student documents in Firestore and delete those not in new set
           const snapshot = await getDocs(collection(db, 'students'));
           const newIds = new Set(cleanStudents.map((s) => s.id));
-          const deleteBatch = writeBatch(db);
-          let deleteCount = 0;
+          const toDelete = snapshot.docs.filter((docSnap) => !newIds.has(docSnap.id));
 
-          snapshot.docs.forEach((docSnap) => {
-            if (!newIds.has(docSnap.id)) {
-              deleteBatch.delete(doc(db!, 'students', docSnap.id));
-              deleteCount++;
-            }
-          });
-
-          if (deleteCount > 0) {
-            await deleteBatch.commit();
+          // Batch delete in chunks of 400
+          for (let i = 0; i < toDelete.length; i += 400) {
+            const batch = writeBatch(db);
+            const chunk = toDelete.slice(i, i + 400);
+            chunk.forEach((docSnap) => {
+              batch.delete(doc(db!, 'students', docSnap.id));
+            });
+            await batch.commit();
           }
         }
 
-        // 2. Write/Upsert current students
-        const insertBatch = writeBatch(db);
-        cleanStudents.forEach((student) => {
-          insertBatch.set(doc(db!, 'students', student.id), sanitizeForFirestore(student), { merge: true });
-        });
-        await insertBatch.commit();
+        // 2. Write/Upsert current students in chunks of 400
+        for (let i = 0; i < cleanStudents.length; i += 400) {
+          const batch = writeBatch(db);
+          const chunk = cleanStudents.slice(i, i + 400);
+          chunk.forEach((student) => {
+            batch.set(doc(db!, 'students', student.id), sanitizeForFirestore(student), { merge: true });
+          });
+          await batch.commit();
+        }
       } catch (err) {
         console.warn('Firestore students save/replace error:', err);
       }
@@ -704,17 +710,16 @@ class AttendanceEngine {
     const originalCount = this.students.length;
     const dedupedMap = new Map<string, Student>();
 
-    // Deduplicate in-memory
-    this.students.forEach((s) => {
-      const key = (s.studentId || s.id).trim().toUpperCase();
-      const baseId = key.replace(/-\d+$/, '');
-      if (!dedupedMap.has(baseId)) {
-        dedupedMap.set(baseId, {
+    // Deduplicate in-memory by studentId
+    this.students.forEach((s, idx) => {
+      const rawId = (s.studentId || s.id || `PDA-ST-${idx + 1}`).trim().toUpperCase();
+      if (!dedupedMap.has(rawId)) {
+        dedupedMap.set(rawId, {
           ...s,
-          id: baseId,
-          studentId: baseId,
-          name: s.name.trim().toUpperCase(),
-          className: s.className.trim().toUpperCase().replace(/\s+/g, '_')
+          id: rawId,
+          studentId: rawId,
+          name: (s.name || `PELAJAR ${idx + 1}`).trim().toUpperCase(),
+          className: (s.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_')
         });
       }
     });
@@ -728,16 +733,15 @@ class AttendanceEngine {
       try {
         const snapshot = await getDocs(collection(db, 'students'));
         const validIds = new Set(cleanStudents.map((s) => s.id));
-        const batch = writeBatch(db);
+        const toDelete = snapshot.docs.filter((docSnap) => !validIds.has(docSnap.id));
 
-        snapshot.docs.forEach((docSnap) => {
-          if (!validIds.has(docSnap.id)) {
+        for (let i = 0; i < toDelete.length; i += 400) {
+          const batch = writeBatch(db);
+          const chunk = toDelete.slice(i, i + 400);
+          chunk.forEach((docSnap) => {
             batch.delete(doc(db!, 'students', docSnap.id));
             removedFromDb++;
-          }
-        });
-
-        if (removedFromDb > 0) {
+          });
           await batch.commit();
         }
       } catch (err) {
