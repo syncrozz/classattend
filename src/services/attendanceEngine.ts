@@ -35,10 +35,10 @@ const STORAGE_KEYS = {
   INITIALIZED: 'classattend_initialized_v5'
 };
 
-const DUMMY_SESSION_IDS = ['SES-CLS-MPU2163-01', 'SES-CLS-ACC2103-01', 'SES-CLS-MGT2013-01', 'SES-CLS-TAX3013-01'];
-const DUMMY_RECORD_PREFIXES = ['REC-MPU-', 'REC-ACC-', 'REC-TAX-'];
-const DUMMY_SUBJECT_IDS = ['SUB-MPU2163', 'SUB-ACC2103', 'SUB-MGT2013', 'SUB-TAX3013'];
-const DUMMY_LECTURER_IDS = ['LEC-KHAIRI', 'LEC-ROHANI', 'LEC-FAIZAL', 'LEC-IZZATI'];
+const DUMMY_SESSION_IDS: string[] = [];
+const DUMMY_RECORD_PREFIXES: string[] = [];
+const DUMMY_SUBJECT_IDS: string[] = [];
+const DUMMY_LECTURER_IDS: string[] = [];
 
 class AttendanceEngine {
   private students: Student[] = [];
