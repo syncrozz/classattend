@@ -156,7 +156,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       name: newSubName.trim(),
       lecturerId: matchedLec?.id || activeLecturer?.id || 'LEC-001',
       lecturerName: newSubLecturer.trim() || matchedLec?.name || activeLecturer?.name || 'Pensyarah',
-      department: matchedLec?.department || 'Jabatan Perakaunan & Kewangan',
+      department: matchedLec?.department || 'Perakaunan',
       sections: newSubSections,
       description: newSubDesc.trim(),
       status: 'ACTIVE',
@@ -353,7 +353,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         </span>
                       ))}
                       <span className="text-xs text-slate-400">
-                        {subject.department || 'Jabatan Perakaunan & Kewangan'}
+                        {subject.department || 'Perakaunan'}
                       </span>
                     </div>
 

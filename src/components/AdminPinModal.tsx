@@ -41,7 +41,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regIC, setRegIC] = useState('');
-  const [regDepartment, setRegDepartment] = useState('Jabatan Perakaunan & Kewangan');
+  const [regDepartment, setRegDepartment] = useState('Perakaunan');
   const [regRole, setRegRole] = useState<'ADMIN' | 'LECTURER'>('LECTURER');
   const [regSuccessMsg, setRegSuccessMsg] = useState<string | null>(null);
 
@@ -570,7 +570,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 type="text"
                 value={regName}
                 onChange={(e) => setRegName(e.target.value)}
-                placeholder="cth: EN. KHAIRI BIN ABDUL RAHMAN"
+                placeholder="cth: AHMAD KHAIRI BIN MOHD"
                 required
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 uppercase"
               />
@@ -607,12 +607,12 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               <select
                 value={regDepartment}
                 onChange={(e) => setRegDepartment(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
-                <option value="Jabatan Perakaunan & Kewangan">Jabatan Perakaunan & Kewangan</option>
-                <option value="Jabatan Pengajian Perniagaan">Jabatan Pengajian Perniagaan</option>
-                <option value="Jabatan Teknologi Maklumat">Jabatan Teknologi Maklumat</option>
-                <option value="Jabatan Pengajian Am">Jabatan Pengajian Am</option>
+                <option value="Sains Kuantitatif">Sains Kuantitatif</option>
+                <option value="Pengurusan Perniagaan">Pengurusan Perniagaan</option>
+                <option value="Perakaunan">Perakaunan</option>
+                <option value="Pengajian Am">Pengajian Am</option>
               </select>
             </div>
 

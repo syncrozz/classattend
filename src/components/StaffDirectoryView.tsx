@@ -98,7 +98,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   const [lecName, setLecName] = useState('');
   const [lecEmail, setLecEmail] = useState('');
   const [lecIC, setLecIC] = useState('');
-  const [lecDepartment, setLecDepartment] = useState('Jabatan Perakaunan');
+  const [lecDepartment, setLecDepartment] = useState('Perakaunan');
   const [lecSections, setLecSections] = useState('DIA_4A, DIA_4B');
   const [lecSubjects, setLecSubjects] = useState('ACC 2103 - Perakaunan Kewangan 2');
   const [lecRole, setLecRole] = useState<'LECTURER' | 'ADMIN'>('LECTURER');
@@ -181,6 +181,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   };
 
   const toggleShowPin = (lecId: string) => {
+    if (!isAdmin) {
+      onRequestAdminAccess('Melihat PIN Keselamatan & No. IC Pensyarah');
+      return;
+    }
     setShowPins((prev) => ({ ...prev, [lecId]: !prev[lecId] }));
   };
 
@@ -714,19 +718,36 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                             <Key className="w-3.5 h-3.5 text-amber-400" />
                             <span>No. IC & PIN (4 Digit):</span>
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-amber-300">
-                              {isPinVisible ? `${lec.icNumber} (PIN: ${pinToDisplay})` : `******-**-${pinToDisplay}`}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleShowPin(lec.id)}
-                              className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
-                              title="Papar/Sembunyi No IC Penuh"
-                            >
-                              {isPinVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
+                          {isAdmin ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-amber-300">
+                                {isPinVisible ? `${lec.icNumber} (PIN: ${pinToDisplay})` : `******-**-${pinToDisplay}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleShowPin(lec.id)}
+                                className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                                title="Papar/Sembunyi No IC Penuh"
+                              >
+                                {isPinVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-slate-500 tracking-wider text-xs">
+                                ••••••••••••
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onRequestAdminAccess('Melihat PIN Keselamatan Pensyarah')}
+                                className="text-[10px] text-amber-400/90 hover:text-amber-300 px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Buka Mod Admin untuk melihat maklumat PIN"
+                              >
+                                <Shield className="w-3 h-3 text-amber-400" />
+                                <span>Mod Admin Sahaja</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -866,14 +887,17 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300">Kelas</label>
-                  <input
-                    type="text"
-                    placeholder="DIA_4A, DIA_4B"
-                    value={lecSections}
-                    onChange={(e) => setLecSections(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
-                  />
+                  <label className="text-xs font-semibold text-slate-300">Jabatan</label>
+                  <select
+                    value={lecDepartment}
+                    onChange={(e) => setLecDepartment(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="Sains Kuantitatif">Sains Kuantitatif</option>
+                    <option value="Pengurusan Perniagaan">Pengurusan Perniagaan</option>
+                    <option value="Perakaunan">Perakaunan</option>
+                    <option value="Pengajian Am">Pengajian Am</option>
+                  </select>
                 </div>
 
                 <div>

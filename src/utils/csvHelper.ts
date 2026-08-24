@@ -32,7 +32,7 @@ export const generateLecturerTemplateCSV = (): string => {
       '861115-46-5305',
       'DIA_4A, DIA_4B',
       'MPU 2163 - Pengajian Malaysia 2, QMT 2023 - Statistik Perniagaan',
-      'Jabatan Pengajian Am',
+      'Pengajian Am',
       'ADMIN'
     ],
     [
@@ -42,7 +42,7 @@ export const generateLecturerTemplateCSV = (): string => {
       '880520-01-5214',
       'DIA_4A, DIA_4C',
       'ACC 2103 - Perakaunan Kewangan 2',
-      'Jabatan Perakaunan',
+      'Perakaunan',
       'LECTURER'
     ],
     [
@@ -52,7 +52,7 @@ export const generateLecturerTemplateCSV = (): string => {
       '840912-08-5432',
       'DIA_4B, DIA_4D',
       'MGT 2013 - Prinsip Pengurusan',
-      'Jabatan Pengurusan Perniagaan',
+      'Pengurusan Perniagaan',
       'LECTURER'
     ],
     [
@@ -61,8 +61,8 @@ export const generateLecturerTemplateCSV = (): string => {
       'izzati@bpenawar.kpm.edu.my',
       '910304-01-6128',
       'DIA_4C, DIA_4D',
-      'TAX 3013 - Percukaian Malaysia',
-      'Jabatan Perakaunan',
+      'QMT 2023 - Statistik Perniagaan',
+      'Sains Kuantitatif',
       'LECTURER'
     ]
   ];
@@ -85,7 +85,7 @@ export const exportLecturersToCSV = (lecturers: Lecturer[]): string => {
     `"${l.pin || (l.icNumber ? l.icNumber.replace(/[^0-9]/g, '').slice(-4) : '')}"`,
     `"${(l.assignedSections || l.assignedClasses || []).join(', ')}"`,
     `"${(l.assignedSubjects || []).join(', ')}"`,
-    `"${l.department || 'Jabatan Perakaunan'}"`,
+    `"${l.department || 'Perakaunan'}"`,
     `"${l.role || 'LECTURER'}"`
   ]);
 
@@ -128,7 +128,7 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
     const customPin = pinIndex >= 0 && rawCols[pinIndex] ? rawCols[pinIndex].trim() : '';
     const sectionsRaw = sectionIndex >= 0 && rawCols[sectionIndex] ? rawCols[sectionIndex].trim() : 'DIA_4A';
     const subjectsRaw = subjectIndex >= 0 && rawCols[subjectIndex] ? rawCols[subjectIndex].trim() : '';
-    const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Jabatan Perakaunan';
+    const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Perakaunan';
     const roleRaw = roleIndex >= 0 && rawCols[roleIndex] ? rawCols[roleIndex].trim().toUpperCase() : 'LECTURER';
 
     if (!name || !email) continue;
