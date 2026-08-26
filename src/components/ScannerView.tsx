@@ -14,7 +14,8 @@ import {
   getCategoryLabel,
   getClassBadgeColor,
   getInitials,
-  getStudentColor
+  getStudentColor,
+  sortSessionsLatestFirst
 } from '../utils/studentUtils';
 import {
   Camera,
@@ -95,7 +96,8 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   soundEnabled,
   onToggleSound
 }) => {
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(activeSession?.id || allSessions[0]?.id || '');
+  const sortedSessions = sortSessionsLatestFirst(allSessions);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(activeSession?.id || sortedSessions[0]?.id || '');
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
@@ -104,7 +106,15 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState<number>(0);
   const [statsMode, setStatsMode] = useState<'CLASS' | 'OVERALL'>('CLASS');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
-  const [scanPace, setScanPace] = useState<ScanPaceMode>('RELAXED');
+  const [scanPace, setScanPace] = useState<ScanPaceMode>(() => {
+    try {
+      const saved = localStorage.getItem('classattend_scan_pace');
+      if (saved === 'RELAXED' || saved === 'BALANCED' || saved === 'FAST') {
+        return saved;
+      }
+    } catch (e) {}
+    return 'BALANCED';
+  });
   const [showPaceSettings, setShowPaceSettings] = useState<boolean>(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
@@ -331,6 +341,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const handlePaceChange = async (newPace: ScanPaceMode) => {
     setScanPace(newPace);
     scanPaceRef.current = newPace;
+    try {
+      localStorage.setItem('classattend_scan_pace', newPace);
+    } catch (e) {}
 
     // Reset current throttling
     isProcessingRef.current = false;
@@ -525,17 +538,18 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               onChange={(e) => setSelectedSessionId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs sm:text-sm font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-inner"
             >
-              {allSessions.length === 0 ? (
+              {sortedSessions.length === 0 ? (
                 <option value="">-- Tiada sesi kuliah dijumpai (Sila cipta sesi di Pengurusan Kelas) --</option>
               ) : (
-                allSessions.map((ses) => {
+                sortedSessions.map((ses) => {
                   const subDetail = ses.subjectCode ? ` [${ses.subjectCode}]` : '';
                   const classDetail = ses.className ? ` (${ses.className})` : '';
+                  const dateDetail = ses.date ? ` • ${ses.date}` : '';
                   const statusPrefix = ses.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
 
                   return (
                     <option key={ses.id} value={ses.id}>
-                      {statusPrefix}{ses.sessionName}{subDetail}{classDetail}
+                      {statusPrefix}{ses.sessionName}{subDetail}{classDetail}{dateDetail}
                     </option>
                   );
                 })

@@ -8,7 +8,7 @@ import {
   Student,
   EventStatus
 } from '../types';
-import { getClassBadgeColor } from '../utils/studentUtils';
+import { getClassBadgeColor, sortSessionsLatestFirst } from '../utils/studentUtils';
 import {
   BookOpen,
   Plus,
@@ -328,8 +328,10 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           </div>
         ) : (
           filteredSubjects.map((subject) => {
-            const subjectSessions = sessions.filter(
-              (s) => s.subjectId === subject.id || s.activityId === subject.id
+            const subjectSessions = sortSessionsLatestFirst(
+              sessions.filter(
+                (s) => s.subjectId === subject.id || s.activityId === subject.id
+              )
             );
 
             return (
@@ -684,7 +686,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       })}
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                      <span>💡 Hanya kelas yang mempunyai senarai data pelajar berdaftar dipaparkan.</span>
+                      <span>💡 Sila daftarkan pelajar dahulu sebelum pilihan Kelas boleh muncul di sini.</span>
                     </p>
                   </div>
                 )}

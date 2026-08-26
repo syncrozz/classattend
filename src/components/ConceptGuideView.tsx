@@ -109,7 +109,7 @@ export const ConceptGuideView: React.FC = () => {
             <div className="text-xs font-bold text-indigo-400 uppercase">Subjek / Kursus</div>
             <h4 className="text-sm font-bold text-white">FAR210, MAF251, TAX310, AUD390</h4>
             <p className="text-[11px] text-slate-400">
-              Setiap kursus dikendalikan oleh pensyarah bertanggungjawab dengan maklumat bilik kuliah dan silibus.
+              Setiap kursus dikendalikan oleh pensyarah bertanggungjawab mengikut kelas dan silibus.
             </p>
           </div>
 

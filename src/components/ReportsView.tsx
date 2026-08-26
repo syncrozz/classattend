@@ -9,7 +9,8 @@ import {
 import {
   getClassBadgeColor,
   getInitials,
-  getStudentColor
+  getStudentColor,
+  sortSessionsLatestFirst
 } from '../utils/studentUtils';
 import {
   exportSessionAttendanceToCSV,
@@ -62,14 +63,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   activeLecturer = null,
   onRequestAdminAccess
 }) => {
+  const sortedSessions = sortSessionsLatestFirst(sessions);
   const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT'>('CLASS');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0]?.id || '');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(sortedSessions[0]?.id || '');
   const [selectedClassSection, setSelectedClassSection] = useState<string>('DIA_3A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const currentSession = sessions.find((s) => s.id === selectedSessionId) || sessions[0];
+  const currentSession = sortedSessions.find((s) => s.id === selectedSessionId) || sortedSessions[0];
 
   // Extract unique classes dynamically including standard cohorts
   const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
@@ -294,14 +296,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 onChange={(e) => setSelectedSessionId(e.target.value)}
                 className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer max-w-md"
               >
-                {sessions.map((s) => {
+                {sortedSessions.map((s) => {
                   const subjectDetail = s.subjectCode ? `[${s.subjectCode}] ` : '';
                   const classDetail = s.className ? ` (${s.className})` : '';
-                  const statusPrefix = s.status === 'OPEN' ? '🟢 ' : '🔵 ';
+                  const dateDetail = s.date ? ` • ${s.date}` : '';
+                  const statusPrefix = s.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
 
                   return (
                     <option key={s.id} value={s.id}>
-                      {statusPrefix}{subjectDetail}{s.sessionName}{classDetail}
+                      {statusPrefix}{subjectDetail}{s.sessionName}{classDetail}{dateDetail}
                     </option>
                   );
                 })}

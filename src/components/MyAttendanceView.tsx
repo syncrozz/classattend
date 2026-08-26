@@ -9,7 +9,8 @@ import {
 import {
   getClassBadgeColor,
   getInitials,
-  getStudentColor
+  getStudentColor,
+  sortSessionsLatestFirst
 } from '../utils/studentUtils';
 import {
   GraduationCap,
@@ -48,8 +49,10 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
     return <div className="text-center py-12 text-slate-400">Tiada profil pelajar ditemui.</div>;
   }
 
-  // Applicable sessions for this student's class
-  const applicableSessions = sessions.filter((s) => !s.className || s.className === currentStudent.className);
+  // Applicable sessions for this student's class (sorted latest first)
+  const applicableSessions = sortSessionsLatestFirst(
+    sessions.filter((s) => !s.className || s.className === currentStudent.className)
+  );
 
   // Student's records
   const studentRecords = attendanceRecords.filter(
@@ -76,53 +79,61 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
     };
   }).filter((s) => s.total > 0);
 
-  // Filtered session timeline
-  const filteredTimeline = applicableSessions.filter((session) => {
-    if (filterSubject === 'ALL') return true;
-    return session.subjectCode === filterSubject || session.subjectId === filterSubject;
-  });
+  // Filtered session timeline (sorted latest first)
+  const filteredTimeline = sortSessionsLatestFirst(
+    applicableSessions.filter((session) => {
+      if (filterSubject === 'ALL') return true;
+      return session.subjectCode === filterSubject || session.subjectId === filterSubject;
+    })
+  );
 
   return (
     <div className="space-y-6">
       {/* Main Student Portal Content (Hidden during print modal) */}
       <div className={`space-y-6 ${isPrintModalOpen ? 'no-print' : ''}`}>
         {/* 1. STUDENT IDENTITY BANNER & SELECTOR */}
-        <div className="rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 border border-indigo-500/30 p-5 sm:p-6 shadow-xl">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0 shadow-lg ${getStudentColor(currentStudent.id)}`}>
-                {getInitials(currentStudent.name)}
-              </div>
+        <div className="rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 border border-indigo-500/30 p-4 sm:p-5 shadow-xl space-y-3.5">
+          {/* Header Row: Portal Badge + Class Badge */}
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-indigo-500/15">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                PORTAL KEHADIRAN KELAS
+              </span>
+            </div>
+            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border ${getClassBadgeColor(currentStudent.className)}`}>
+              Kelas {currentStudent.className}
+            </span>
+          </div>
 
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
-                    PORTAL KEHADIRAN KELAS
-                  </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getClassBadgeColor(currentStudent.className)}`}>
-                    Kelas {currentStudent.className}
-                  </span>
-                </div>
-
-                <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-                  {currentStudent.name}
-                </h2>
-
-                <p className="text-xs text-slate-300 font-mono">
-                  No. Pelajar: <strong className="text-indigo-400">{currentStudent.studentId}</strong> • {currentStudent.department || 'Diploma Perakaunan'}
-                </p>
-              </div>
+          {/* Student Profile Block: Avatar, Name & Info */}
+          <div className="flex items-center gap-3.5 sm:gap-4">
+            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-lg sm:text-xl font-bold shrink-0 shadow-lg ${getStudentColor(currentStudent.id)}`}>
+              {getInitials(currentStudent.name)}
             </div>
 
-            {/* Student Profile Switcher for Simulation & Demo */}
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 shrink-0 space-y-1">
-              <label className="text-[11px] font-semibold text-slate-400 block">
-                Pilih Profil Pelajar (Demo / Pratonton):
-              </label>
+            <div className="min-w-0 flex-1 space-y-1">
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight leading-snug">
+                {currentStudent.name}
+              </h2>
+
+              <p className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span>No. Pelajar: <strong className="text-indigo-400">{currentStudent.studentId}</strong></span>
+                <span className="text-slate-500 hidden sm:inline">•</span>
+                <span className="text-slate-400">{currentStudent.department || 'Diploma Perakaunan'}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Profile Selector Row */}
+          <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+            <label className="text-[11px] font-semibold text-slate-400 shrink-0 uppercase tracking-wider">
+              PROFIL PELAJAR:
+            </label>
+            <div className="flex-1">
               <select
                 value={selectedStudentId}
                 onChange={(e) => setSelectedStudentId(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                className="w-full px-3 py-1.5 sm:py-2 rounded-xl bg-slate-950/70 border border-slate-700/80 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
               >
                 {students.map((st) => (
                   <option key={st.id} value={st.id}>

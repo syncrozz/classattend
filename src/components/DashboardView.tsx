@@ -245,7 +245,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </p>
               )}
               <p className="text-xs sm:text-sm text-slate-300 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span>📍 {activeSession.location || 'Bilik Kuliah / Makmal'}</span>
                 <span>👨‍🏫 {activeSession.lecturerName ? `Pensyarah: ${activeSession.lecturerName}` : (activeSession.organizer || 'Pensyarah Kursus')}</span>
               </p>
             </div>

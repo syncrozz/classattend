@@ -15,6 +15,7 @@ import {
   INITIAL_SESSIONS,
   INITIAL_ATTENDANCE_RECORDS
 } from '../data/mockData';
+import { sortSessionsLatestFirst } from '../utils/studentUtils';
 import { db, sanitizeForFirestore } from './firebase';
 import {
   collection,
@@ -317,7 +318,7 @@ class AttendanceEngine {
 
   public subscribeSessions(callback: (sessions: AttendanceSession[]) => void): () => void {
     if (!db) {
-      callback(this.sessions);
+      callback(sortSessionsLatestFirst(this.sessions));
       return () => {};
     }
 
@@ -330,21 +331,21 @@ class AttendanceEngine {
             const data = snapshot.docs
               .map((docSnap) => docSnap.data() as AttendanceSession)
               .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
-            this.sessions = data;
+            this.sessions = sortSessionsLatestFirst(data);
             this.saveSessionsLocally();
             callback(this.sessions);
           } else {
-            callback(this.sessions);
+            callback(sortSessionsLatestFirst(this.sessions));
           }
         },
         (error) => {
           console.warn('Firestore sessions sync error, using local data:', error);
-          callback(this.sessions);
+          callback(sortSessionsLatestFirst(this.sessions));
         }
       );
       return unsubscribe;
     } catch (e) {
-      callback(this.sessions);
+      callback(sortSessionsLatestFirst(this.sessions));
       return () => {};
     }
   }
@@ -614,7 +615,7 @@ class AttendanceEngine {
   }
 
   public getSessions(): AttendanceSession[] {
-    return [...this.sessions];
+    return sortSessionsLatestFirst(this.sessions);
   }
 
   public getAttendanceRecords(): AttendanceRecord[] {

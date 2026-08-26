@@ -24,12 +24,19 @@ import { StaffDirectoryView } from './components/StaffDirectoryView';
 import { MyAttendanceView } from './components/MyAttendanceView';
 import { ReportsView } from './components/ReportsView';
 import { ConceptGuideView } from './components/ConceptGuideView';
+import { SupportInnovationView } from './components/SupportInnovationView';
+import { Footer } from './components/Footer';
 import { AdminPinModal } from './components/AdminPinModal';
 import { CSVImportModal } from './components/CSVImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#support') {
+      return 'support';
+    }
+    return 'dashboard';
+  });
   const [currentRole, setCurrentRole] = useState<UserRole>('ADMIN');
 
   // Real-time state from Attendance Engine
@@ -69,9 +76,18 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
+    const handleHashChange = () => {
+      if (window.location.hash === '#support') {
+        setActiveTab('support');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
 
@@ -256,6 +272,35 @@ export default function App() {
     }
   };
 
+  // Open Support Innovation Page (#support)
+  const handleOpenSupport = () => {
+    try {
+      window.location.hash = 'support';
+    } catch (e) {}
+    setActiveTab('support');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Return to Main Platform
+  const handleReturnToPlatform = () => {
+    try {
+      if (window.location.hash === '#support') {
+        history.pushState('', document.title, window.location.pathname + window.location.search);
+      }
+    } catch (e) {}
+    setActiveTab('dashboard');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTabChange = (tab: ActiveTab) => {
+    if (tab !== 'support' && window.location.hash === '#support') {
+      try {
+        history.pushState('', document.title, window.location.pathname + window.location.search);
+      } catch (e) {}
+    }
+    setActiveTab(tab);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
       {/* App Header */}
@@ -265,10 +310,10 @@ export default function App() {
         soundEnabled={soundEnabled}
         isAdmin={isAdmin}
         currentRole={currentRole}
-        onGoHome={() => setActiveTab('dashboard')}
+        onGoHome={handleReturnToPlatform}
         onRoleChange={(role) => setCurrentRole(role)}
         onToggleSound={(enabled) => setSoundEnabled(enabled)}
-        onOpenScanner={() => setActiveTab('scanner')}
+        onOpenScanner={() => handleTabChange('scanner')}
         onToggleAdminMode={handleToggleAdminMode}
         onLogoutLecturer={handleLogoutLecturer}
       />
@@ -277,7 +322,7 @@ export default function App() {
         {/* Sidebar Nav */}
         <SidebarNav
           activeTab={activeTab}
-          onTabChange={(tab) => setActiveTab(tab)}
+          onTabChange={handleTabChange}
           activeSessionName={activeSession?.sessionName}
           totalRecordsCount={attendanceRecords.length}
           onOpenPWAInstall={() => setIsPWAInstallModalOpen(true)}
@@ -294,10 +339,10 @@ export default function App() {
               attendanceRecords={attendanceRecords}
               lecturers={lecturers}
               activeLecturer={activeLecturer}
-              onOpenScanner={() => setActiveTab('scanner')}
-              onGoToActivities={() => setActiveTab('activities')}
-              onGoToStudents={() => setActiveTab('students')}
-              onGoToReports={() => setActiveTab('reports')}
+              onOpenScanner={() => handleTabChange('scanner')}
+              onGoToActivities={() => handleTabChange('activities')}
+              onGoToStudents={() => handleTabChange('students')}
+              onGoToReports={() => handleTabChange('reports')}
               onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
               onQuickSimulateScan={handleQuickSimulateScan}
             />
@@ -312,7 +357,7 @@ export default function App() {
               isAdmin={isAdmin}
               onRequestAdminAccess={handleRequestAdminAccess}
               onProcessScan={handleProcessScan}
-              onGoToActivities={() => setActiveTab('activities')}
+              onGoToActivities={() => handleTabChange('activities')}
               soundEnabled={soundEnabled}
               onToggleSound={(enabled) => setSoundEnabled(enabled)}
             />
@@ -334,11 +379,11 @@ export default function App() {
               onDeleteSubject={handleDeleteSubject}
               onOpenScannerForSession={(sessionId) => {
                 handleSetSessionStatus(sessionId, 'OPEN');
-                setActiveTab('scanner');
+                handleTabChange('scanner');
               }}
               onRequestAdminAccess={handleRequestAdminAccess}
               onOpenCSVImport={() => setIsCSVModalOpen(true)}
-              onNavigateToStudents={() => setActiveTab('students')}
+              onNavigateToStudents={() => handleTabChange('students')}
             />
           )}
 
@@ -391,8 +436,15 @@ export default function App() {
           )}
 
           {activeTab === 'guide' && <ConceptGuideView />}
+
+          {activeTab === 'support' && (
+            <SupportInnovationView onReturnToPlatform={handleReturnToPlatform} />
+          )}
         </main>
       </div>
+
+      {/* Footer Support CTA & Developer Credit */}
+      <Footer onOpenSupport={handleOpenSupport} />
 
       {/* Lecturer PIN / IC Verification Modal */}
       <AdminPinModal

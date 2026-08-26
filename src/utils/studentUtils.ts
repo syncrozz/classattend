@@ -1,4 +1,30 @@
-import { ActivityCategory } from '../types';
+import { ActivityCategory, AttendanceSession } from '../types';
+
+export const sortSessionsLatestFirst = (sessions: AttendanceSession[]): AttendanceSession[] => {
+  return [...sessions].sort((a, b) => {
+    // 1. Prioritize OPEN / Active sessions
+    if (a.status === 'OPEN' && b.status !== 'OPEN') return -1;
+    if (a.status !== 'OPEN' && b.status === 'OPEN') return 1;
+
+    // 2. Prioritize most recent date + startTime
+    const dateA = a.date ? `${a.date}T${a.startTime || '00:00'}` : (a.createdAt || '');
+    const dateB = b.date ? `${b.date}T${b.startTime || '00:00'}` : (b.createdAt || '');
+
+    if (dateA && dateB && dateA !== dateB) {
+      return dateB.localeCompare(dateA);
+    }
+
+    // 3. Prioritize createdAt
+    const createdA = a.createdAt || '';
+    const createdB = b.createdAt || '';
+    if (createdA && createdB && createdA !== createdB) {
+      return createdB.localeCompare(createdA);
+    }
+
+    // 4. Prioritize higher ID / descending
+    return b.id.localeCompare(a.id);
+  });
+};
 
 export const getInitials = (name: string): string => {
   if (!name) return 'ST';

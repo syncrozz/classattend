@@ -125,7 +125,8 @@ export type ActiveTab =
   | 'students'
   | 'my-attendance'
   | 'reports'
-  | 'guide';
+  | 'guide'
+  | 'support';
 
 export interface StudentAttendanceSummary {
   student: Student;
