@@ -18,11 +18,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenSupport }) => {
               e.preventDefault();
               onOpenSupport();
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white hover:bg-slate-100 active:scale-95 text-slate-950 text-xs font-semibold border border-slate-200/80 shadow-sm hover:shadow transition-all cursor-pointer select-none group"
-            title="Sokong Inovasi Ini"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-medium border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer select-none group"
+            title="Support"
           >
-            <span className="text-xs group-hover:scale-110 transition-transform">❤️</span>
-            <span className="tracking-tight text-slate-900 font-medium">Sokong Inovasi Ini</span>
+            <span className="tracking-tight text-slate-400 group-hover:text-slate-200 transition-colors">Support</span>
+            <span className="text-[11px] opacity-80 group-hover:opacity-100 transition-opacity">❤️</span>
           </a>
         </div>
 

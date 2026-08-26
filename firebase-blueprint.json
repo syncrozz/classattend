@@ -16,6 +16,35 @@
       },
       "required": ["id", "studentId", "name", "className", "email", "phone"]
     },
+    "lecturers": {
+      "title": "Lecturers",
+      "description": "Lecturer profile directory with @bpenawar.kpm.edu.my credentials",
+      "properties": {
+        "id": { "type": "string", "description": "Unique lecturer ID" },
+        "name": { "type": "string", "description": "Lecturer name" },
+        "email": { "type": "string", "description": "Official email" },
+        "icNumber": { "type": "string", "description": "IC number for verification" },
+        "pin": { "type": "string", "description": "4-digit security PIN" },
+        "department": { "type": "string", "description": "Department" },
+        "role": { "type": "string", "description": "ADMIN or LECTURER" },
+        "assignedClasses": { "type": "array", "description": "Assigned class codes" },
+        "assignedSubjects": { "type": "array", "description": "Assigned subjects" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "subjects": {
+      "title": "Subjects",
+      "description": "Registered academic subjects and course codes",
+      "properties": {
+        "id": { "type": "string", "description": "Unique subject ID" },
+        "code": { "type": "string", "description": "Subject course code (e.g. ACC101)" },
+        "name": { "type": "string", "description": "Subject full name" },
+        "department": { "type": "string", "description": "Department" },
+        "creditHours": { "type": "number", "description": "Credit hours" },
+        "defaultLocation": { "type": "string", "description": "Default room/lab" }
+      },
+      "required": ["id", "code", "name"]
+    },
     "activities": {
       "title": "Attendance Activities",
       "description": "Master parent activity definitions (e.g. Perhimpunan, Kuliah, Program)",
@@ -33,7 +62,7 @@
     },
     "sessions": {
       "title": "Attendance Sessions",
-      "description": "Individual attendance sessions spawned from activities",
+      "description": "Individual attendance sessions spawned from activities or classes",
       "properties": {
         "id": { "type": "string", "description": "Unique session ID" },
         "activityId": { "type": "string", "description": "Linked activity ID" },
@@ -53,7 +82,7 @@
         "lecturerName": { "type": "string", "description": "Lecturer name" },
         "createdAt": { "type": "string", "description": "Creation timestamp" }
       },
-      "required": ["id", "activityId", "sessionName", "date", "startTime", "endTime", "status", "attendanceMethod", "createdAt"]
+      "required": ["id", "sessionName", "date", "startTime", "endTime", "status", "attendanceMethod", "createdAt"]
     },
     "attendanceRecords": {
       "title": "Attendance Records",
@@ -75,6 +104,14 @@
     "/students/{studentId}": {
       "schema": "students",
       "description": "Collection of student records"
+    },
+    "/lecturers/{lecturerId}": {
+      "schema": "lecturers",
+      "description": "Collection of lecturer records"
+    },
+    "/subjects/{subjectId}": {
+      "schema": "subjects",
+      "description": "Collection of course subjects"
     },
     "/activities/{activityId}": {
       "schema": "activities",

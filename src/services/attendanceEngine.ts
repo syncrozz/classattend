@@ -180,40 +180,18 @@ class AttendanceEngine {
     this.saveRecordsLocally();
     this.saveActiveLecturerLocally();
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-
-    if (db) {
-      this.syncInitialToFirestore();
-    }
   }
 
-  private async syncInitialToFirestore() {
-    if (!db) return;
+  public async syncInitialStudentsToFirestore() {
+    if (!db || this.students.length === 0) return;
     try {
       const batch = writeBatch(db);
-      
       for (const student of this.students) {
         batch.set(doc(db, 'students', student.id), sanitizeForFirestore(student), { merge: true });
       }
-      for (const lecturer of this.lecturers) {
-        batch.set(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
-      }
-      for (const subject of this.subjects) {
-        batch.set(doc(db, 'subjects', subject.id), sanitizeForFirestore(subject), { merge: true });
-      }
-      for (const session of this.sessions) {
-        batch.set(doc(db, 'sessions', session.id), sanitizeForFirestore(session), { merge: true });
-      }
-      for (const rec of this.attendanceRecords) {
-        batch.set(doc(db, 'attendance_records', rec.id), sanitizeForFirestore(rec), { merge: true });
-      }
-
       await batch.commit();
     } catch (e: any) {
-      if (e?.code === 'unavailable' || e?.message?.includes('offline')) {
-        console.info('[Firestore] ClassAttend operating in offline-first mode.');
-      } else {
-        console.warn('Firestore initial sync notice:', e?.message || e);
-      }
+      console.warn('Firestore initial students seed notice:', e?.message || e);
     }
   }
 
@@ -229,12 +207,18 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const data = snapshot.docs.map((docSnap) => docSnap.data() as Student);
+          const data = snapshot.docs.map((docSnap) => docSnap.data() as Student);
+          if (data.length > 0) {
             this.students = data;
             this.saveStudentsLocally();
             callback(this.students);
           } else {
+            // First time database is empty, seed master student data
+            if (this.students.length === 0) {
+              this.students = [...INITIAL_STUDENTS];
+            }
+            this.saveStudentsLocally();
+            this.syncInitialStudentsToFirestore();
             callback(this.students);
           }
         },
@@ -261,18 +245,15 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const data = snapshot.docs
-              .map((docSnap) => docSnap.data() as Lecturer)
-              .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
-            this.lecturers = data;
-            this.saveLecturersLocally();
-            callback(this.lecturers);
-          } else {
-            callback(this.lecturers);
-          }
+          const data = snapshot.docs
+            .map((docSnap) => docSnap.data() as Lecturer)
+            .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
+          this.lecturers = data;
+          this.saveLecturersLocally();
+          callback(this.lecturers);
         },
-        () => {
+        (error) => {
+          console.warn('Firestore lecturers sync error, using local data:', error);
           callback(this.lecturers);
         }
       );
@@ -294,18 +275,15 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const data = snapshot.docs
-              .map((docSnap) => docSnap.data() as Subject)
-              .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
-            this.subjects = data;
-            this.saveSubjectsLocally();
-            callback(this.subjects);
-          } else {
-            callback(this.subjects);
-          }
+          const data = snapshot.docs
+            .map((docSnap) => docSnap.data() as Subject)
+            .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
+          this.subjects = data;
+          this.saveSubjectsLocally();
+          callback(this.subjects);
         },
-        () => {
+        (error) => {
+          console.warn('Firestore subjects sync error, using local data:', error);
           callback(this.subjects);
         }
       );
@@ -327,16 +305,12 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const data = snapshot.docs
-              .map((docSnap) => docSnap.data() as AttendanceSession)
-              .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
-            this.sessions = sortSessionsLatestFirst(data);
-            this.saveSessionsLocally();
-            callback(this.sessions);
-          } else {
-            callback(sortSessionsLatestFirst(this.sessions));
-          }
+          const data = snapshot.docs
+            .map((docSnap) => docSnap.data() as AttendanceSession)
+            .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
+          this.sessions = sortSessionsLatestFirst(data);
+          this.saveSessionsLocally();
+          callback(this.sessions);
         },
         (error) => {
           console.warn('Firestore sessions sync error, using local data:', error);
@@ -361,20 +335,16 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const data = snapshot.docs
-              .map((docSnap) => docSnap.data() as AttendanceRecord)
-              .filter(
-                (rec) =>
-                  !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
-                  !DUMMY_SESSION_IDS.includes(rec.sessionId)
-              );
-            this.attendanceRecords = data;
-            this.saveRecordsLocally();
-            callback(this.attendanceRecords);
-          } else {
-            callback(this.attendanceRecords);
-          }
+          const data = snapshot.docs
+            .map((docSnap) => docSnap.data() as AttendanceRecord)
+            .filter(
+              (rec) =>
+                !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
+                !DUMMY_SESSION_IDS.includes(rec.sessionId)
+            );
+          this.attendanceRecords = data;
+          this.saveRecordsLocally();
+          callback(this.attendanceRecords);
         },
         (error) => {
           console.warn('Firestore records sync error, using local data:', error);

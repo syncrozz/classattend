@@ -3,23 +3,33 @@ import {
   initializeFirestore,
   getFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-let firestoreInstance;
+let firestoreInstance: Firestore;
+const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== '' 
+  ? firebaseConfig.firestoreDatabaseId 
+  : undefined;
+
 try {
   firestoreInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     })
-  }, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== '' ? firebaseConfig.firestoreDatabaseId : undefined);
-} catch (e) {
-  firestoreInstance = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== ''
-    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
+  }, dbId);
+} catch (e1) {
+  try {
+    firestoreInstance = initializeFirestore(app, {
+      localCache: memoryLocalCache()
+    }, dbId);
+  } catch (e2) {
+    firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
 }
 
 export const db = firestoreInstance;
