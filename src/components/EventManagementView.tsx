@@ -248,7 +248,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
   // Handle Delete Session
   const handleDeleteSessionClick = (session: AttendanceSession) => {
-    if (!isAdmin) {
+    if (!isAdmin && !activeLecturer) {
       onRequestAdminAccess(`Padam Sesi Kelas (${session.sessionName})`);
       return;
     }
@@ -262,7 +262,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
   // Handle Delete Subject
   const handleDeleteSubjectClick = (subject: Subject) => {
-    if (!isAdmin) {
+    if (!isAdmin && !activeLecturer) {
       onRequestAdminAccess(`Padam Subjek (${subject.code})`);
       return;
     }
@@ -618,15 +618,17 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <QrCode className="w-4 h-4 text-indigo-400" />
                     </button>
 
-                    {/* Destructive / Subdued: Delete Subject */}
-                    <button
-                      id={`btn-delete-subject-${subject.id}`}
-                      onClick={() => handleDeleteSubjectClick(subject)}
-                      className="p-2.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 border border-slate-800/80 hover:border-rose-500/30 text-xs transition-all cursor-pointer"
-                      title="Padam Maklumat Subjek Ini"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Destructive / Subdued: Delete Subject (Only visible for Admin / Lecturer) */}
+                    {(isAdmin || activeLecturer) && (
+                      <button
+                        id={`btn-delete-subject-${subject.id}`}
+                        onClick={() => handleDeleteSubjectClick(subject)}
+                        className="p-2.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 border border-slate-800/80 hover:border-rose-500/30 text-xs transition-all cursor-pointer"
+                        title="Padam Maklumat Subjek Ini"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -736,19 +738,21 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                             <button
                               id={`btn-open-session-${nextSession.id}`}
                               onClick={() => onSetSessionStatus(nextSession.id, 'OPEN')}
-                              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                              title="Aktifkan sesi ini dan mula imbasan kehadiran pelajar"
+                              className="p-2 rounded-lg bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 transition-all flex items-center justify-center cursor-pointer shadow-sm active:scale-95"
+                              title="Mula imbasan kehadiran"
+                              aria-label="Mula imbasan kehadiran"
                             >
-                              <Play className="w-3.5 h-3.5 fill-white" />
-                              <span>Mula Imbas Kehadiran</span>
+                              <Play className="w-4 h-4 fill-current" />
                             </button>
-                            <button
-                              onClick={() => handleDeleteSessionClick(nextSession)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-all cursor-pointer"
-                              title="Padam sesi ini"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {(isAdmin || activeLecturer) && (
+                              <button
+                                onClick={() => handleDeleteSessionClick(nextSession)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-all cursor-pointer"
+                                title="Padam sesi ini"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -804,13 +808,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                                       >
                                         Mula Imbas
                                       </button>
-                                      <button
-                                        onClick={() => handleDeleteSessionClick(session)}
-                                        className="p-1 text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
-                                        title="Padam sesi ini"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
+                                      {(isAdmin || activeLecturer) && (
+                                        <button
+                                          onClick={() => handleDeleteSessionClick(session)}
+                                          className="p-1 text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
+                                          title="Padam sesi ini"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 );

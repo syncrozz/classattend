@@ -72,7 +72,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [searchSimulate, setSearchSimulate] = useState('');
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
-  const [bannerStatMode, setBannerStatMode] = useState<'CLASS' | 'OVERALL'>('CLASS');
   const [classStatScope, setClassStatScope] = useState<'CUMULATIVE' | 'ACTIVE_SESSION'>('CUMULATIVE');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('ALL');
 
@@ -251,34 +250,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {/* Quick Metrics & Actions */}
             <div className="w-full flex flex-col gap-3.5 bg-slate-950/70 p-4 rounded-xl border border-slate-800">
-              {/* Row 1: Option Switcher & Action Buttons */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                {/* Option Switcher between Class (Primary) and Overall */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBannerStatMode('CLASS')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      bannerStatMode === 'CLASS'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
-                    }`}
-                    title="Papar Peratus Mengikut Kelas"
-                  >
-                    👥 Ikut Kelas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBannerStatMode('OVERALL')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      bannerStatMode === 'OVERALL'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
-                    }`}
-                    title="Papar Peratus Keseluruhan"
-                  >
-                    🌐 Keseluruhan ({activePercent}%)
-                  </button>
+              {/* Row 1: Key Session Metrics & Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Kehadiran Semasa:</span>
+                    <span className="text-xl sm:text-2xl font-black text-white font-mono">
+                      {activePercent}%
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-slate-800 hidden sm:block"></div>
+                  <div className="text-xs text-slate-300">
+                    <span className="font-bold text-emerald-400">{activeSessionRecords.length}</span> daripada{' '}
+                    <span className="font-semibold text-slate-200">{targetStudentsForActive.length}</span> Pelajar Direkod
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
@@ -286,7 +271,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button
                     id="dashboard-btn-open-scanner"
                     onClick={onOpenScanner}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
                   >
                     <QrCode className="w-4 h-4" />
                     <span>Buka Kamera QR</span>
@@ -294,7 +279,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button
                     id="dashboard-btn-close-session"
                     onClick={() => onCloseActiveSession(activeSession.id)}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
                     title="Tutup Sesi Kuliah Ini"
                   >
                     Tutup Sesi
@@ -302,110 +287,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
 
-              {/* Row 2: Stats Value Display on separate row */}
-              <div className="w-full">
-                {bannerStatMode === 'CLASS' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {activeSession?.className ? (
-                      <div className="col-span-2 sm:col-span-4 p-2.5 rounded-xl border bg-indigo-950/60 border-indigo-500/50 flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-indigo-300">Peratus Kehadiran Kelas {activeSession.className}</div>
-                          <div className="text-[11px] text-slate-300">
-                            {activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Telah Hadir
-                          </div>
-                        </div>
-                        <div className="text-xl font-black text-white px-3 py-1 bg-indigo-600/40 rounded-lg border border-indigo-500/40">
-                          {activePercent}%
-                        </div>
-                      </div>
-                    ) : (
-                      detailedClassStats.map((st, idx) => (
-                        <div
-                          key={`banner-stat-${st.name}-${idx}`}
-                          className="p-2 rounded-xl border bg-slate-900/90 border-slate-800 flex items-center justify-between"
-                        >
-                          <div>
-                            <div className="text-[11px] font-bold text-slate-300">{st.name}</div>
-                            <div className="text-[10px] text-slate-400">
-                              {st.presentInActive}/{st.totalStudents} Pelajar
-                            </div>
-                          </div>
-                          <div className="text-sm font-black text-white font-mono">
-                            {st.activeRate}%
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-emerald-400">Kehadiran Keseluruhan Sesi Aktif</div>
-                      <div className="text-[11px] text-slate-300">
-                        {activeSessionRecords.length} / {targetStudentsForActive.length} Pelajar Berjaya Direkodkan
-                      </div>
-                    </div>
-                    <div className="text-2xl font-black text-emerald-400 font-mono">
-                      {activePercent}%
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Bar / Class Set Bars */}
-          <div className="mt-4 pt-3 border-t border-slate-800/80">
-            {bannerStatMode === 'CLASS' ? (
-              <div className="space-y-2">
+              {/* Progress Bar */}
+              <div className="space-y-1.5 pt-1">
                 <div className="flex justify-between text-xs text-slate-400 font-medium">
-                  <span>{activeSession.className ? `Kemajuan Kehadiran Kelas ${activeSession.className}` : 'Pecahan Kehadiran Mengikut Kelas'}</span>
-                  <span>{activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Hadir ({activePercent}%)</span>
+                  <span>{activeSession.className ? `Kemajuan Kelas ${activeSession.className}` : 'Kemajuan Kehadiran Keseluruhan'}</span>
+                  <span>{activePercent}% Capai</span>
                 </div>
-                {activeSession.className ? (
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        activePercent >= 80 ? 'bg-emerald-400' : activePercent >= 50 ? 'bg-indigo-400' : 'bg-amber-400'
-                      }`}
-                      style={{ width: `${activePercent}%` }}
-                    ></div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {detailedClassStats.map((st, idx) => (
-                      <div key={`progress-bar-${st.name}-${idx}`} className="space-y-1">
-                        <div className="flex justify-between text-[10px]">
-                          <span className="font-semibold text-slate-300">{st.name}</span>
-                          <span className="font-bold text-white">{st.activeRate}%</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              st.activeRate >= 80 ? 'bg-emerald-400' : st.activeRate >= 50 ? 'bg-indigo-400' : 'bg-amber-400'
-                            }`}
-                            style={{ width: `${st.activeRate}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div className="flex justify-between text-xs text-slate-400 mb-1.5 font-medium">
-                  <span>Kemajuan Kehadiran Keseluruhan</span>
-                  <span>{activeSessionRecords.length} daripada {targetStudentsForActive.length} Pelajar Direkodkan ({activePercent}%)</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      activePercent >= 80 ? 'bg-emerald-400' : activePercent >= 50 ? 'bg-indigo-500' : 'bg-amber-400'
+                    }`}
                     style={{ width: `${activePercent}%` }}
                   ></div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       ) : (
@@ -489,12 +386,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-indigo-400" />
-              <h3 className="text-lg font-bold text-white tracking-tight">
+              <BarChart3 className="w-4 h-4 text-indigo-400" />
+              <h3 className="text-sm sm:text-base font-semibold text-slate-100 tracking-normal">
                 Statistik % Kehadiran Mengikut Setiap Kelas
               </h3>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] text-slate-400 leading-normal">
               Analisis kadar kehadiran (%) terperinci mengikut kelas masing-masing bagi pemantauan pensyarah
             </p>
           </div>

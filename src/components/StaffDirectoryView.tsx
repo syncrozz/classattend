@@ -1266,15 +1266,41 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300">E-mel Rasmi Kolej (@bpenawar.kpm.edu.my) *</label>
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>E-mel Rasmi Kolej</span>
+                  <span className="text-[10px] text-emerald-400 font-mono">@bpenawar.kpm.edu.my</span>
+                </label>
                 <input
                   type="email"
                   required
                   placeholder="Contoh: shah.ismail@bpenawar.kpm.edu.my"
                   value={lecEmail}
-                  onChange={(e) => setLecEmail(e.target.value)}
+                  onChange={(e) => {
+                    let val = e.target.value;
+                    if (val.endsWith('@') && !lecEmail.endsWith('@') && !lecEmail.includes('@')) {
+                      val = `${val}bpenawar.kpm.edu.my`;
+                    }
+                    setLecEmail(val);
+                  }}
                   className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                 />
+                {lecEmail.trim() && !lecEmail.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const user = lecEmail.split('@')[0].trim();
+                      if (user) setLecEmail(`${user}@bpenawar.kpm.edu.my`);
+                    }}
+                    className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 hover:bg-emerald-900/80 px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm mt-1"
+                  >
+                    <span className="truncate font-mono text-[10px]">
+                      Cadangan: {lecEmail.split('@')[0]}@bpenawar.kpm.edu.my
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.2 rounded font-semibold shrink-0">
+                      Gunakan
+                    </span>
+                  </button>
+                )}
               </div>
 
               <div>

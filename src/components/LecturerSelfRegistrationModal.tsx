@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
+import { auditLogger } from '../services/auditLogger';
 import {
   UserCheck,
   CheckCircle2,
@@ -160,6 +161,21 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
     setSelectedSubjectGroups((prev) => prev.filter((sg) => sg.subjectCode !== subjectCode));
   };
 
+  const handleEmailInput = (newVal: string) => {
+    let formatted = newVal.toLowerCase();
+    if (formatted.endsWith('@') && !email.endsWith('@') && !email.includes('@')) {
+      formatted = `${formatted}bpenawar.kpm.edu.my`;
+    }
+    setEmail(formatted);
+  };
+
+  const applyEmailSuggestion = (prefix: string) => {
+    const user = prefix.split('@')[0].trim();
+    if (user) {
+      setEmail(`${user}@bpenawar.kpm.edu.my`);
+    }
+  };
+
   // Handler to toggle a class for a subject
   const handleToggleClass = (subjectCode: string, className: string) => {
     setSelectedSubjectGroups((prev) =>
@@ -268,7 +284,17 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
           origin: { y: 0.6 }
         });
 
+        auditLogger.log({
+          category: 'LECTURER_STATUS',
+          action: 'Permohonan Pendaftaran Kendiri Pensyarah',
+          details: `Pensyarah ${res.lecturer.name} (${res.lecturer.email}) telah menghantar permohonan pendaftaran akaun untuk jabatan ${res.lecturer.department || department}. Status semasa: ${res.lecturer.status}.`,
+          performedBy: res.lecturer.name,
+          target: res.lecturer.email,
+          severity: 'INFO'
+        });
+
         setSubmittedResult({
+
           lecturer: res.lecturer,
           assignments: res.assignments,
           isNewLecturer: res.isNewLecturer
@@ -516,11 +542,25 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                         required
                         placeholder="nama.pensyarah@bpenawar.kpm.edu.my"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none transition"
+                        onChange={(e) => handleEmailInput(e.target.value)}
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none transition font-mono"
                       />
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     </div>
+                    {email.trim() && !email.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                      <button
+                        type="button"
+                        onClick={() => applyEmailSuggestion(email)}
+                        className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm mt-1"
+                      >
+                        <span className="truncate font-mono text-[10px]">
+                          Cadangan: {email.split('@')[0]}@bpenawar.kpm.edu.my
+                        </span>
+                        <span className="text-[10px] bg-teal-600 text-white dark:bg-teal-500/40 px-1.5 py-0.2 rounded font-semibold shrink-0">
+                          Gunakan
+                        </span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Phone Number */}

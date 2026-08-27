@@ -195,6 +195,29 @@ export interface StudentAttendanceSummary {
   }>;
 }
 
+export type AuditCategory =
+  | 'CSV_IMPORT'
+  | 'SESSION_MGMT'
+  | 'LECTURER_STATUS'
+  | 'STUDENT_MGMT'
+  | 'MASTER_DATA'
+  | 'SECURITY_AUTH'
+  | 'ATTENDANCE_OVERRIDE';
+
+export type AuditSeverity = 'INFO' | 'WARNING' | 'CRITICAL' | 'SUCCESS';
+
+export interface AuditLogItem {
+  id: string;
+  timestamp: string; // ISO String
+  category: AuditCategory;
+  action: string; // e.g. "Import Pelajar (CSV)", "Padam Sesi Kuliah", "Kelulusan Pensyarah"
+  details: string; // Detailed description of the event
+  performedBy: string; // e.g. "Ts. Dr. Ahmad (Admin)", "Sistem"
+  target?: string; // e.g. "MPU 2163", "DIA_4A", "ahmad@bpenawar.kpm.edu.my"
+  metadata?: Record<string, any>;
+  severity: AuditSeverity;
+}
+
 /**
  * Official ClassAttend App Icon — Single Source of Truth
  */
@@ -206,4 +229,5 @@ export const OFFICIAL_STUDENT_ATTEND_ICON =
  */
 export const OFFICIAL_STUDENT_ATTEND_OGI =
   'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/ClassAttend/OGI%20ClassAttend.jpg';
+
 

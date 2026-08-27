@@ -27,10 +27,13 @@ import {
   Search,
   BookOpen,
   GraduationCap,
-  AlertCircle
+  AlertCircle,
+  History,
+  LayoutDashboard
 } from 'lucide-react';
 import { getInitials } from '../utils/studentUtils';
 import { GenerateLecturerQRModal } from './GenerateLecturerQRModal';
+import { AuditLogSection } from './AuditLogSection';
 
 interface AdminControlCenterViewProps {
   lecturers: Lecturer[];
@@ -39,6 +42,7 @@ interface AdminControlCenterViewProps {
   sessions: AttendanceSession[];
   students: Student[];
   attendanceRecords: AttendanceRecord[];
+  activeSession?: AttendanceSession | null;
   onOpenScanner: () => void;
   onGoToActivities: () => void;
   onGoToStudents: () => void;
@@ -46,6 +50,7 @@ interface AdminControlCenterViewProps {
   onCloseActiveSession: (sessionId: string) => void;
   onApproveLecturer: (lecturerId: string) => void;
   onRejectLecturer: (lecturerId: string) => void;
+  onOpenLecturerRegistration?: () => void;
   onQuickSimulateScan?: (studentId: string) => ScanResult;
 }
 
@@ -56,6 +61,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
   sessions,
   students,
   attendanceRecords,
+  activeSession: propActiveSession,
   onOpenScanner,
   onGoToActivities,
   onGoToStudents,
@@ -63,8 +69,10 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
   onCloseActiveSession,
   onApproveLecturer,
   onRejectLecturer,
+  onOpenLecturerRegistration,
   onQuickSimulateScan
 }) => {
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'AUDIT_LOG'>('OVERVIEW');
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -72,7 +80,8 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
   const pendingLecturers = lecturers.filter((l) => l.status === 'PENDING');
 
   // 2. Active Session College-Wide
-  const activeSession = sessions.find((s) => s.status === 'OPEN') || null;
+  const activeSession = propActiveSession || sessions.find((s) => s.status === 'OPEN') || null;
+
 
   const activeSessionRecords = activeSession
     ? attendanceRecords.filter((r) => r.sessionId === activeSession.id && r.status === 'PRESENT')
@@ -126,7 +135,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
               <span>Pusat Kawalan Pentadbir Kolej (Admin)</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              Pusat Kawalan Operasi Kehadiran
+              Pusat Kawalan
             </h1>
             <p className="text-xs sm:text-sm text-slate-300">
               Kolej Profesional MARA Bandar Penawar • Pengawasan Sistem & Kelulusan Pensyarah
@@ -153,9 +162,48 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Tab Switcher: Overview vs Audit Log */}
+        <div className="flex items-center gap-2 mt-5 pt-4 border-t border-slate-800/80">
+          <button
+            type="button"
+            id="tab-admin-overview"
+            onClick={() => setActiveTab('OVERVIEW')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'OVERVIEW'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+                : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span>Ikhtisar & Operasi Kolej</span>
+          </button>
+
+          <button
+            type="button"
+            id="tab-admin-audit-log"
+            onClick={() => setActiveTab('AUDIT_LOG')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'AUDIT_LOG'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4 text-indigo-300" />
+            <span>Audit Log Sistem</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 text-[10px] font-mono">
+              Live
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* 2. Perlu Perhatian (Pending Approvals & Notifications) */}
+      {activeTab === 'AUDIT_LOG' ? (
+        <AuditLogSection />
+      ) : (
+        <>
+          {/* 2. Perlu Perhatian (Pending Approvals & Notifications) */}
+
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -384,7 +432,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
       </div>
 
       {/* 5. Tindakan Pantas Pentadbir (Admin Actions) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <button
           type="button"
           onClick={() => setIsQRModalOpen(true)}
@@ -395,21 +443,21 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
           </div>
           <div>
             <div className="text-xs font-bold text-white">QR Pendaftaran</div>
-            <div className="text-[11px] text-slate-400">Papar kod pendaftaran pensyarah</div>
+            <div className="text-[11px] text-slate-400">Papar kod pendaftaran</div>
           </div>
         </button>
 
         <button
           type="button"
           onClick={onGoToActivities}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
+          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
         >
           <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
             <CalendarCheck className="w-4 h-4" />
           </div>
           <div>
             <div className="text-xs font-bold text-white">Sesi & Subjek</div>
-            <div className="text-[11px] text-slate-400">Buka / pantau kelas kolej</div>
+            <div className="text-[11px] text-slate-400">Buka / pantau kelas</div>
           </div>
         </button>
 
@@ -423,21 +471,35 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
           </div>
           <div>
             <div className="text-xs font-bold text-white">Master Data</div>
-            <div className="text-[11px] text-slate-400">Direktori pelajar & pensyarah</div>
+            <div className="text-[11px] text-slate-400">Direktori & jabatan</div>
           </div>
         </button>
 
         <button
           type="button"
           onClick={onGoToReports}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
+          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
         >
           <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
             <FileSpreadsheet className="w-4 h-4" />
           </div>
           <div>
             <div className="text-xs font-bold text-white">Laporan Kehadiran</div>
-            <div className="text-[11px] text-slate-400">Analisis & muat turun CSV</div>
+            <div className="text-[11px] text-slate-400">Analisis & muat turun</div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('AUDIT_LOG')}
+          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer col-span-2 sm:col-span-1"
+        >
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <History className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white">Audit Log</div>
+            <div className="text-[11px] text-indigo-400 font-medium">Jejak akauntabiliti</div>
           </div>
         </button>
       </div>
@@ -513,6 +575,8 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Generate Lecturer QR Modal */}
       <GenerateLecturerQRModal
@@ -522,3 +586,4 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
     </div>
   );
 };
+

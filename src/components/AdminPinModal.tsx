@@ -17,7 +17,9 @@ import {
 import { soundService } from '../services/soundService';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { accessManager } from '../services/accessManager';
+import { auditLogger } from '../services/auditLogger';
 import { Lecturer, UserRole } from '../types';
+
 
 interface LecturerAuthModalProps {
   isOpen: boolean;
@@ -34,7 +36,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  actionTitle = 'Pengesahan Akses',
+  actionTitle = 'Pengesahan Identiti',
   onOpenSelfRegistration,
   initialTab = 'LOGIN'
 }) => {
@@ -94,10 +96,36 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   if (!isOpen) return null;
 
   const handleEmailChange = (newEmail: string) => {
-    setEmail(newEmail);
+    let formatted = newEmail;
+    // Auto-complete @bpenawar.kpm.edu.my when user types @
+    if (newEmail.endsWith('@') && !email.endsWith('@') && !email.includes('@')) {
+      formatted = `${newEmail}bpenawar.kpm.edu.my`;
+    }
+    setEmail(formatted);
     setErrorMessage(null);
-    if (newEmail.trim()) {
-      localStorage.setItem(SAVED_EMAIL_KEY, newEmail.trim());
+    if (formatted.trim()) {
+      localStorage.setItem(SAVED_EMAIL_KEY, formatted.trim());
+    }
+  };
+
+  const handleRegEmailChange = (newEmail: string) => {
+    let formatted = newEmail;
+    if (newEmail.endsWith('@') && !regEmail.endsWith('@') && !regEmail.includes('@')) {
+      formatted = `${newEmail}bpenawar.kpm.edu.my`;
+    }
+    setRegEmail(formatted);
+  };
+
+  const applyDomainSuggestion = (prefix: string, isReg = false) => {
+    const username = prefix.split('@')[0].trim();
+    if (!username) return;
+    const complete = `${username}@bpenawar.kpm.edu.my`;
+    if (isReg) {
+      setRegEmail(complete);
+    } else {
+      setEmail(complete);
+      localStorage.setItem(SAVED_EMAIL_KEY, complete);
+      lecturerPinInputRef.current?.focus();
     }
   };
 
@@ -115,9 +143,18 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
         // Create trusted admin session
         accessManager.createTrustedSession(res.lecturer, 'ADMIN');
         setErrorMessage(null);
+        auditLogger.log({
+          category: 'SECURITY_AUTH',
+          action: 'Log Masuk Pentadbir (PIN Master)',
+          details: `Akses mod Pentadbir Utama berjaya disahkan melalui 4-digit PIN keselamatan.`,
+          performedBy: res.lecturer.name || 'Master Admin',
+          target: 'Admin Control Center',
+          severity: 'SUCCESS'
+        });
         onSuccess(res.lecturer, 'ADMIN');
         onClose();
       } else {
+
         setErrorMessage(res.message);
         setShake(true);
         setAdminPin('');
@@ -151,8 +188,17 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       const assignedRole = result.lecturer.role === 'ADMIN' ? 'ADMIN' : 'LECTURER';
       accessManager.createTrustedSession(result.lecturer, assignedRole);
       setErrorMessage(null);
+      auditLogger.log({
+        category: 'SECURITY_AUTH',
+        action: 'Log Masuk Pensyarah Berjaya',
+        details: `Pensyarah ${result.lecturer.name} (${result.lecturer.email}) berjaya log masuk dengan peranan ${assignedRole}.`,
+        performedBy: result.lecturer.name,
+        target: result.lecturer.email,
+        severity: 'SUCCESS'
+      });
       onSuccess(result.lecturer, assignedRole);
       onClose();
+
     } else {
       setErrorMessage(result.message);
       setShake(true);
@@ -175,9 +221,18 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       if (res.success && res.lecturer) {
         accessManager.createTrustedSession(res.lecturer, 'ADMIN');
         setErrorMessage(null);
+        auditLogger.log({
+          category: 'SECURITY_AUTH',
+          action: 'Log Masuk Pentadbir (PIN Master)',
+          details: `Akses mod Pentadbir Utama disahkan dengan 4-digit PIN keselamatan.`,
+          performedBy: res.lecturer.name || 'Master Admin',
+          target: 'Admin Control Center',
+          severity: 'SUCCESS'
+        });
         onSuccess(res.lecturer, 'ADMIN');
         onClose();
       } else {
+
         setErrorMessage(res.message);
         setShake(true);
         setTimeout(() => {
@@ -284,7 +339,6 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm text-white">{actionTitle}</h3>
-              <p className="text-[11px] text-slate-400">Access Gateway • KPM Bandar Penawar</p>
             </div>
           </div>
           <button
@@ -369,11 +423,33 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>
-              {email && (
+
+              {/* Instant Domain Auto-Suggestion Pill */}
+              {email.trim() && !email.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => applyDomainSuggestion(email, false)}
+                    className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-indigo-300 bg-indigo-950/70 border border-indigo-500/40 hover:bg-indigo-900/90 hover:border-indigo-400 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-sm"
+                  >
+                    <div className="flex items-center gap-1 truncate font-mono text-[11px]">
+                      <span className="text-slate-400">Cadangan:</span>
+                      <span className="font-bold text-indigo-200 truncate">
+                        {email.split('@')[0]}@bpenawar.kpm.edu.my
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-indigo-500/40 text-indigo-200 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                      Gunakan ↵
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {email && email.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
                 <div className="flex justify-between items-center text-[10px] text-slate-400 px-1 pt-0.5">
                   <span className="text-emerald-400 flex items-center gap-1">
                     <Check className="w-3 h-3 text-emerald-400" />
-                    <span>Emel disimpan untuk peranti ini</span>
+                    <span>Domain sah @bpenawar.kpm.edu.my</span>
                   </span>
                   <button
                     type="button"
@@ -390,21 +466,10 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               )}
             </div>
 
-            {/* Security Note */}
-            <div className="p-2.5 bg-slate-800/80 rounded-2xl border border-slate-700/60 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 text-indigo-300 font-semibold">
-                <Info className="w-4 h-4 shrink-0" />
-                <span>Kombinasi Emel & 4-Digit Keselamatan</span>
-              </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
-                PIN lalai pensyarah ialah <strong className="text-emerald-300">4 digit terakhir No. Kad Pengenalan</strong> yang didaftarkan.
-              </p>
-            </div>
-
             {/* Ready-to-type 4-Digit PIN Element */}
             <div className="space-y-2">
               <label className="text-[11px] font-bold text-slate-300 block text-center uppercase tracking-wider">
-                Taip 4-Digit PIN (4 Digit Akhir IC)
+                PIN Keselamatan
               </label>
 
               <div
@@ -445,10 +510,6 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 })}
               </div>
 
-              <p className="text-[11px] text-center text-slate-400">
-                Sedia untuk ditaip terus (autofokus aktif).
-              </p>
-
               {errorMessage && (
                 <div className="text-rose-400 text-xs font-medium flex items-start space-x-2 bg-rose-950/60 border border-rose-500/30 p-2.5 rounded-xl">
                   <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
@@ -476,25 +537,6 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               >
                 <Check className="w-4 h-4" />
                 <span>Masuk Workspace</span>
-              </button>
-            </div>
-
-            {/* Prompt to register if new lecturer */}
-            <div className="text-center pt-1 border-t border-slate-800/60">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenSelfRegistration) {
-                    onClose();
-                    onOpenSelfRegistration();
-                  } else {
-                    setActiveTab('REGISTER');
-                  }
-                }}
-                className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1 cursor-pointer"
-              >
-                <span>Pensyarah baharu? Daftar profil anda di sini</span>
-                <ArrowRight className="w-3 h-3" />
               </button>
             </div>
           </form>
@@ -651,15 +693,32 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-slate-300">Emel Rasmi (@bpenawar.kpm.edu.my)</label>
+                <label className="text-[11px] font-medium text-slate-300 flex items-center justify-between">
+                  <span>Emel Rasmi Kolej</span>
+                  <span className="text-[10px] text-indigo-400 font-mono">@bpenawar.kpm.edu.my</span>
+                </label>
                 <input
                   type="email"
                   value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
+                  onChange={(e) => handleRegEmailChange(e.target.value)}
                   placeholder="nama@bpenawar.kpm.edu.my"
                   required
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                 />
+                {regEmail.trim() && !regEmail.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                  <button
+                    type="button"
+                    onClick={() => applyDomainSuggestion(regEmail, true)}
+                    className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-indigo-300 bg-indigo-950/70 border border-indigo-500/40 hover:bg-indigo-900/90 hover:border-indigo-400 px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm mt-1"
+                  >
+                    <span className="truncate font-mono text-[10px]">
+                      Cadangan: {regEmail.split('@')[0]}@bpenawar.kpm.edu.my
+                    </span>
+                    <span className="text-[10px] bg-indigo-500/40 text-indigo-200 px-1.5 py-0.2 rounded font-semibold shrink-0">
+                      Gunakan
+                    </span>
+                  </button>
+                )}
               </div>
 
               <div className="space-y-1">

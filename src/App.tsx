@@ -39,6 +39,7 @@ import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrati
 import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
 import { StudentCheckinModal, StudentCheckinContext } from './components/StudentCheckinModal';
 import { accessManager } from './services/accessManager';
+import { auditLogger } from './services/auditLogger';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -137,7 +138,7 @@ export default function App() {
     return Boolean(active);
   });
   const [isAdminPinModalOpen, setIsAdminPinModalOpen] = useState<boolean>(false);
-  const [adminActionTitle, setAdminActionTitle] = useState<string>('Sila Sahkan Akses Admin / Pensyarah');
+  const [adminActionTitle, setAdminActionTitle] = useState<string>('Pengesahan Identiti');
   const [isCSVModalOpen, setIsCSVModalOpen] = useState<boolean>(false);
   const [csvImportInitialMode, setCsvImportInitialMode] = useState<'STUDENT' | 'LECTURER'>('STUDENT');
 
@@ -205,10 +206,10 @@ export default function App() {
   // Toggle Admin / Lecturer Auth Mode
   const handleToggleAdminMode = () => {
     if (isAdmin || activeLecturer) {
-      setAdminActionTitle('Tukar / Sahkan Identiti Pensyarah');
+      setAdminActionTitle('Pengesahan Identiti');
       setIsAdminPinModalOpen(true);
     } else {
-      setAdminActionTitle('Pengesahan Identiti Pensyarah (@bpenawar.kpm.edu.my)');
+      setAdminActionTitle('Pengesahan Identiti');
       setIsAdminPinModalOpen(true);
     }
   };
@@ -226,21 +227,39 @@ export default function App() {
 
   // Approve Pending Lecturer Registration
   const handleApproveLecturer = async (lecturerId: string) => {
+    const targetLec = lecturers.find((l) => l.id === lecturerId);
     const result = await attendanceEngine.approveLecturer(lecturerId, activeLecturer?.name || 'Pentadbir Utama');
     if (result.success) {
       setLecturers(attendanceEngine.getLecturers());
       setTeachingAssignments(attendanceEngine.getTeachingAssignments());
       soundService.playSuccess();
+      auditLogger.log({
+        category: 'LECTURER_STATUS',
+        action: 'Kelulusan Pendaftaran Pensyarah',
+        details: `Permohonan pendaftaran pensyarah ${targetLec?.name || lecturerId} (${targetLec?.email || ''}) telah diluluskan dan diaktifkan.`,
+        performedBy: activeLecturer?.name || 'Pentadbir Utama',
+        target: targetLec?.name || lecturerId,
+        severity: 'SUCCESS'
+      });
     }
   };
 
   // Reject Pending Lecturer Registration
   const handleRejectLecturer = async (lecturerId: string) => {
+    const targetLec = lecturers.find((l) => l.id === lecturerId);
     const result = await attendanceEngine.rejectLecturer(lecturerId, activeLecturer?.name || 'Pentadbir Utama');
     if (result.success) {
       setLecturers(attendanceEngine.getLecturers());
       setTeachingAssignments(attendanceEngine.getTeachingAssignments());
       soundService.playClick();
+      auditLogger.log({
+        category: 'LECTURER_STATUS',
+        action: 'Penolakan Pendaftaran Pensyarah',
+        details: `Permohonan pendaftaran pensyarah ${targetLec?.name || lecturerId} (${targetLec?.email || ''}) telah ditolak.`,
+        performedBy: activeLecturer?.name || 'Pentadbir Utama',
+        target: targetLec?.name || lecturerId,
+        severity: 'WARNING'
+      });
     }
   };
 
@@ -254,18 +273,36 @@ export default function App() {
 
   // Session Status Change (OPEN / CLOSED / ARCHIVED)
   const handleSetSessionStatus = (sessionId: string, newStatus: EventStatus) => {
+    const session = sessions.find((s) => s.id === sessionId);
     const updated = attendanceEngine.setSessionStatus(sessionId, newStatus);
     setSessions(updated);
     if (newStatus === 'CLOSED') {
       soundService.playClick();
     }
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: `Perubahan Status Sesi (${newStatus})`,
+      details: `Status sesi "${session?.sessionName || sessionId}" (${session?.subjectCode || ''} - ${session?.className || ''}) ditukar kepada ${newStatus}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: session?.sessionName || sessionId,
+      severity: newStatus === 'CLOSED' ? 'INFO' : 'SUCCESS'
+    });
   };
 
   // Delete Session
   const handleDeleteSession = (sessionId: string) => {
+    const sessionToDelete = sessions.find((s) => s.id === sessionId);
     const updated = attendanceEngine.deleteSession(sessionId);
     setSessions(updated);
     soundService.playClick();
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: 'Pemadaman Sesi Kuliah',
+      details: `Sesi "${sessionToDelete?.sessionName || sessionId}" bagi subjek ${sessionToDelete?.subjectCode || ''} (${sessionToDelete?.className || ''}) telah dipadamkan secara kekal.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: sessionToDelete?.sessionName || sessionId,
+      severity: 'WARNING'
+    });
   };
 
   // Create Subject
@@ -273,13 +310,31 @@ export default function App() {
     attendanceEngine.addSubject(newSubject);
     setSubjects(attendanceEngine.getSubjects());
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'MASTER_DATA',
+      action: 'Penambahan Subjek Kursus',
+      details: `Subjek baharu ${newSubject.code} - ${newSubject.name} (${newSubject.sections?.join(', ') || 'Semua Seksyen'}) berjaya didaftarkan.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: newSubject.code,
+      severity: 'SUCCESS'
+    });
   };
+
 
   // Delete Subject
   const handleDeleteSubject = (subjectId: string) => {
+    const subjectToDelete = subjects.find((s) => s.id === subjectId || s.code === subjectId);
     attendanceEngine.deleteSubject(subjectId);
     setSubjects(attendanceEngine.getSubjects());
     soundService.playClick();
+    auditLogger.log({
+      category: 'MASTER_DATA',
+      action: 'Pemadaman Subjek Kursus',
+      details: `Subjek ${subjectToDelete?.code || subjectId} - ${subjectToDelete?.name || ''} telah dipadamkan daripada kurikulum.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: subjectToDelete?.code || subjectId,
+      severity: 'WARNING'
+    });
   };
 
   // Create Session
@@ -287,6 +342,14 @@ export default function App() {
     const updated = attendanceEngine.addSession(session);
     setSessions(updated);
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: 'Pembukaan Sesi Kuliah Baharu',
+      details: `Sesi kuliah "${session.sessionName}" bagi subjek ${session.subjectCode} (${session.className}) berjaya dibuka oleh ${session.lecturerName || 'Pensyarah'}.`,
+      performedBy: activeLecturer?.name || session.lecturerName || 'Pensyarah KPM',
+      target: session.sessionName,
+      severity: 'SUCCESS'
+    });
   };
 
   // Sprint 9: Seamless Start Attendance Session for Class
@@ -343,6 +406,14 @@ export default function App() {
     setSessions(updatedSessions);
     handleTabChange('scanner');
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: 'Pelancaran Sesi Pantas Kelas',
+      details: `Sesi kehadiran "${newSession.sessionName}" dilancarkan untuk kelas ${className}.`,
+      performedBy: activeLecturer?.name || 'Pensyarah KPM',
+      target: newSession.sessionName,
+      severity: 'SUCCESS'
+    });
   };
 
   // Process Scan
@@ -365,12 +436,29 @@ export default function App() {
   const handleAddStudent = (newStudent: Student) => {
     attendanceEngine.addStudent(newStudent);
     setStudents(attendanceEngine.getStudents());
+    auditLogger.log({
+      category: 'STUDENT_MGMT',
+      action: 'Pendaftaran Pelajar Individu',
+      details: `Pelajar ${newStudent.name} (${newStudent.studentId || newStudent.id}) telah didaftarkan ke dalam kelas ${newStudent.className}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: newStudent.name,
+      severity: 'SUCCESS'
+    });
   };
 
   // Delete Student
   const handleDeleteStudent = (studentId: string) => {
+    const studentToDelete = students.find((s) => s.id === studentId || s.studentId === studentId);
     attendanceEngine.deleteStudent(studentId);
     setStudents(attendanceEngine.getStudents());
+    auditLogger.log({
+      category: 'STUDENT_MGMT',
+      action: 'Pemadaman Rekod Pelajar',
+      details: `Rekod pelajar ${studentToDelete?.name || studentId} (${studentToDelete?.studentId || studentId}) telah dipadamkan.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: studentToDelete?.name || studentId,
+      severity: 'WARNING'
+    });
   };
 
   // Import CSV Students
@@ -388,6 +476,14 @@ export default function App() {
     await attendanceEngine.saveStudentsList(finalList, replaceAll);
     setStudents(attendanceEngine.getStudents());
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'CSV_IMPORT',
+      action: replaceAll ? 'Import Pelajar CSV (Ganti Semua)' : 'Import Pelajar CSV (Gabung Rekod)',
+      details: `Berjaya memproses ${newStudentsList.length} rekod pelajar melalui import fail CSV. Jumlah pelajar terkini: ${finalList.length}. Mod: ${replaceAll ? 'Ganti Keseluruhan' : 'Gabung / Tambah'}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: `${newStudentsList.length} Rekod Pelajar`,
+      severity: 'SUCCESS'
+    });
   };
 
   // Import CSV Lecturers
@@ -399,6 +495,14 @@ export default function App() {
     attendanceEngine.saveLecturersList(merged);
     setLecturers(merged);
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'CSV_IMPORT',
+      action: 'Import Direktori Pensyarah (CSV)',
+      details: `Berjaya memuat naik ${newLecturersList.length} rekod pensyarah daripada fail CSV. Jumlah pensyarah terkini: ${merged.length}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: `${newLecturersList.length} Rekod Pensyarah`,
+      severity: 'SUCCESS'
+    });
   };
 
   // Add Single Lecturer
@@ -406,12 +510,29 @@ export default function App() {
     const updated = [...lecturers.filter((l) => l.email.toLowerCase() !== newLecturer.email.toLowerCase()), newLecturer];
     attendanceEngine.saveLecturersList(updated);
     setLecturers(updated);
+    auditLogger.log({
+      category: 'LECTURER_STATUS',
+      action: 'Penambahan Pensyarah Baharu',
+      details: `Pensyarah ${newLecturer.name} (${newLecturer.email}) telah ditambah dengan status ${newLecturer.status || 'ACTIVE'}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: newLecturer.name,
+      severity: 'SUCCESS'
+    });
   };
 
   // Delete Lecturer
   const handleDeleteLecturer = (lecturerId: string) => {
+    const targetLec = lecturers.find((l) => l.id === lecturerId);
     attendanceEngine.deleteLecturer(lecturerId);
     setLecturers(attendanceEngine.getLecturers());
+    auditLogger.log({
+      category: 'LECTURER_STATUS',
+      action: 'Pemadaman Akaun Pensyarah',
+      details: `Akaun pensyarah ${targetLec?.name || lecturerId} (${targetLec?.email || ''}) telah dipadamkan.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: targetLec?.name || lecturerId,
+      severity: 'WARNING'
+    });
   };
 
   // Select/Activate Lecturer
@@ -420,6 +541,14 @@ export default function App() {
     setActiveLecturer(lec);
     setIsAdmin(true);
     soundService.playSuccess();
+    auditLogger.log({
+      category: 'SECURITY_AUTH',
+      action: 'Sesi Aktif Pensyarah Ditukar',
+      details: `Sesi kerja aktif kini ditetapkan kepada ${lec.name} (${lec.department || 'KPM'}).`,
+      performedBy: lec.name,
+      target: lec.email,
+      severity: 'INFO'
+    });
   };
 
   // Reset Data to Default 95 Students
@@ -433,8 +562,17 @@ export default function App() {
       setAttendanceRecords(attendanceEngine.getAttendanceRecords());
       setActiveLecturer(attendanceEngine.getActiveLecturer());
       soundService.playSuccess();
+      auditLogger.log({
+        category: 'MASTER_DATA',
+        action: 'Reset Data Penuh Sistem',
+        details: 'Semua rekod pangkalan data telah diset semula kepada data master lalai (95 pelajar DIA dan kurikulum KPM).',
+        performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+        target: 'Pangkalan Data Kolej',
+        severity: 'CRITICAL'
+      });
     }
   };
+
 
   // Open Support Innovation Page (#support)
   const handleOpenSupport = () => {

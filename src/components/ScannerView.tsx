@@ -541,8 +541,12 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             <span>Pensyarah: <strong className="text-slate-200">{currentSession?.lecturerName || 'Pensyarah Kursus'}</strong></span>
             <span>•</span>
             <span>Tarikh: <strong className="text-slate-200">{currentSession?.date || currentTime.toISOString().split('T')[0]}</strong></span>
-            <span>•</span>
-            <span>Lokasi: <strong className="text-slate-200">{currentSession?.location || 'Bilik Kuliah'}</strong></span>
+            {currentSession?.className && (
+              <>
+                <span>•</span>
+                <span>Kelas: <strong className="text-indigo-300">{currentSession.className}</strong></span>
+              </>
+            )}
           </div>
         </div>
 
