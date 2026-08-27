@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
           {activeLecturer || isAdmin ? (
             <div
               id="header-lecturer-indicator"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-500/60 text-xs shadow-lg shadow-emerald-950/40 transition-all"
+              className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-500/60 text-xs shadow-lg shadow-emerald-950/40 transition-all"
             >
               <div className="relative flex items-center justify-center shrink-0">
                 <div className="w-6 h-6 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
@@ -124,9 +124,22 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-white font-semibold text-[11px] leading-tight truncate max-w-[130px]">
                     {activeLecturer ? activeLecturer.name : 'Pentadbir (Admin)'}
                   </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 uppercase">
-                    {isAdmin ? 'ADMIN' : 'PENSYARAH'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isAdmin || activeLecturer?.role === 'ADMIN') {
+                        onRoleChange(currentRole === 'ADMIN' ? 'LECTURER' : 'ADMIN');
+                      }
+                    }}
+                    title={isAdmin || activeLecturer?.role === 'ADMIN' ? "Klik untuk tukar paparan Admin / Pensyarah" : undefined}
+                    className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold border uppercase transition-all ${
+                      currentRole === 'ADMIN'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                    } ${isAdmin || activeLecturer?.role === 'ADMIN' ? 'cursor-pointer' : ''}`}
+                  >
+                    {currentRole === 'ADMIN' ? 'ADMIN' : 'PENSYARAH'}
+                  </button>
                 </div>
                 <div className="text-[10px] text-emerald-300 font-mono leading-tight truncate max-w-[140px]">
                   {activeLecturer ? activeLecturer.email : 'admin@bpenawar.kpm.edu.my'}
@@ -134,11 +147,13 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <button
                 type="button"
+                id="header-btn-lock-session"
                 onClick={onLogoutLecturer}
-                title="Tukar Pensyarah / Log Keluar"
-                className="p-1 text-emerald-400/80 hover:text-rose-400 transition-colors cursor-pointer ml-0.5"
+                title="Kunci Akses (Keluarkan Sesi)"
+                className="p-1.5 text-emerald-400/80 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer ml-0.5 flex items-center gap-1"
               >
                 <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline text-[10px] font-semibold text-rose-300">Kunci Akses</span>
               </button>
             </div>
           ) : (

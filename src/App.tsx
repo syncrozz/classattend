@@ -21,6 +21,9 @@ import { soundService } from './services/soundService';
 import { Header } from './components/Header';
 import { SidebarNav } from './components/SidebarNav';
 import { DashboardView } from './components/DashboardView';
+import { AdminControlCenterView } from './components/AdminControlCenterView';
+import { LecturerWorkspaceView } from './components/LecturerWorkspaceView';
+import { FirstTimeLecturerModal } from './components/FirstTimeLecturerModal';
 import { ScannerView } from './components/ScannerView';
 import { EventManagementView } from './components/EventManagementView';
 import { StaffDirectoryView } from './components/StaffDirectoryView';
@@ -34,6 +37,7 @@ import { CSVImportModal } from './components/CSVImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrationModal';
 import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
+import { accessManager } from './services/accessManager';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -42,7 +46,11 @@ export default function App() {
     }
     return 'dashboard';
   });
-  const [currentRole, setCurrentRole] = useState<UserRole>('ADMIN');
+  
+  // Access Management & Roles
+  const [accessState, setAccessState] = useState(() => accessManager.getAccessState());
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => accessManager.getAccessState().role || 'ADMIN');
+  const [isFirstTimeLecturerModalOpen, setIsFirstTimeLecturerModalOpen] = useState<boolean>(false);
 
   // Real-time state from Attendance Engine
   const [students, setStudents] = useState<Student[]>([]);
@@ -186,9 +194,32 @@ export default function App() {
   // Logout Lecturer / Switch to Regular User Mode
   const handleLogoutLecturer = () => {
     attendanceEngine.logoutLecturer();
+    accessManager.clearTrustedAccess();
+    setAccessState(accessManager.getAccessState());
     setActiveLecturer(null);
     setIsAdmin(false);
+    setCurrentRole('LECTURER');
     soundService.playClick();
+  };
+
+  // Approve Pending Lecturer Registration
+  const handleApproveLecturer = async (lecturerId: string) => {
+    const result = await attendanceEngine.approveLecturer(lecturerId, activeLecturer?.name || 'Pentadbir Utama');
+    if (result.success) {
+      setLecturers(attendanceEngine.getLecturers());
+      setTeachingAssignments(attendanceEngine.getTeachingAssignments());
+      soundService.playSuccess();
+    }
+  };
+
+  // Reject Pending Lecturer Registration
+  const handleRejectLecturer = async (lecturerId: string) => {
+    const result = await attendanceEngine.rejectLecturer(lecturerId, activeLecturer?.name || 'Pentadbir Utama');
+    if (result.success) {
+      setLecturers(attendanceEngine.getLecturers());
+      setTeachingAssignments(attendanceEngine.getTeachingAssignments());
+      soundService.playClick();
+    }
   };
 
   // Request Admin Access with Context
@@ -386,21 +417,43 @@ export default function App() {
         {/* Main Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {activeTab === 'dashboard' && (
-            <DashboardView
-              activeSession={activeSession}
-              subjects={subjects}
-              sessions={sessions}
-              students={students}
-              attendanceRecords={attendanceRecords}
-              lecturers={lecturers}
-              activeLecturer={activeLecturer}
-              onOpenScanner={() => handleTabChange('scanner')}
-              onGoToActivities={() => handleTabChange('activities')}
-              onGoToStudents={() => handleTabChange('students')}
-              onGoToReports={() => handleTabChange('reports')}
-              onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
-              onQuickSimulateScan={handleQuickSimulateScan}
-            />
+            currentRole === 'ADMIN' ? (
+              <AdminControlCenterView
+                subjects={subjects}
+                sessions={sessions}
+                students={students}
+                lecturers={lecturers}
+                attendanceRecords={attendanceRecords}
+                teachingAssignments={teachingAssignments}
+                activeSession={activeSession}
+                onOpenScanner={() => handleTabChange('scanner')}
+                onGoToActivities={() => handleTabChange('activities')}
+                onGoToStudents={() => handleTabChange('students')}
+                onGoToReports={() => handleTabChange('reports')}
+                onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+                onQuickSimulateScan={handleQuickSimulateScan}
+                onApproveLecturer={handleApproveLecturer}
+                onRejectLecturer={handleRejectLecturer}
+                onOpenLecturerRegistration={() => setIsLecturerSelfRegOpen(true)}
+              />
+            ) : (
+              <LecturerWorkspaceView
+                activeLecturer={activeLecturer}
+                subjects={subjects}
+                sessions={sessions}
+                students={students}
+                attendanceRecords={attendanceRecords}
+                teachingAssignments={teachingAssignments}
+                onOpenScanner={() => handleTabChange('scanner')}
+                onGoToActivities={() => handleTabChange('activities')}
+                onGoToStudents={() => handleTabChange('students')}
+                onGoToReports={() => handleTabChange('reports')}
+                onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+                onQuickSimulateScan={handleQuickSimulateScan}
+                onCreateSession={handleCreateSession}
+                onSwitchToAdminMode={handleToggleAdminMode}
+              />
+            )
           )}
 
           {activeTab === 'scanner' && (
@@ -511,16 +564,47 @@ export default function App() {
       <AdminPinModal
         isOpen={isAdminPinModalOpen}
         onClose={() => setIsAdminPinModalOpen(false)}
-        onSuccess={(lec) => {
+        onSuccess={(lec, role) => {
           setIsAdmin(true);
+          const updatedAccess = accessManager.getAccessState();
+          setAccessState(updatedAccess);
+          if (role) {
+            setCurrentRole(role);
+          }
           if (lec) {
             setActiveLecturer(lec);
+            if (accessManager.isFirstTimeLecturer(lec.id)) {
+              setIsFirstTimeLecturerModalOpen(true);
+            }
           } else {
             setActiveLecturer(attendanceEngine.getActiveLecturer());
           }
         }}
         actionTitle={adminActionTitle}
+        onOpenSelfRegistration={() => {
+          setIsAdminPinModalOpen(false);
+          setIsLecturerSelfRegOpen(true);
+        }}
       />
+
+      {/* First-Time Lecturer Onboarding & Subject Association Modal */}
+      {activeLecturer && (
+        <FirstTimeLecturerModal
+          isOpen={isFirstTimeLecturerModalOpen}
+          onClose={() => {
+            setIsFirstTimeLecturerModalOpen(false);
+            accessManager.markLecturerOnboarded(activeLecturer.id);
+          }}
+          lecturer={activeLecturer}
+          teachingAssignments={teachingAssignments}
+          subjects={subjects}
+          onStartTeaching={() => {
+            setIsFirstTimeLecturerModalOpen(false);
+            accessManager.markLecturerOnboarded(activeLecturer.id);
+            handleTabChange('activities');
+          }}
+        />
+      )}
 
       {/* CSV Import Modal (Dual-mode: Students & Lecturers) */}
       <CSVImportModal

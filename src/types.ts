@@ -169,6 +169,19 @@ export type ActiveTab =
   | 'guide'
   | 'support';
 
+export type AccessState = 'ACCESS_REQUIRED' | 'ACCESS_GRANTED' | 'ACCESS_EXPIRED';
+
+export interface TrustedSession {
+  type: 'ADMIN' | 'LECTURER';
+  lecturerId: string;
+  email: string;
+  name: string;
+  role: 'ADMIN' | 'LECTURER';
+  token: string;
+  issuedAt: number;
+  expiresAt: number;
+}
+
 export interface StudentAttendanceSummary {
   student: Student;
   totalSessions: number;
