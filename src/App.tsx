@@ -12,7 +12,8 @@ import {
   AttendanceMethod,
   UserRole,
   Enrollment,
-  EnrollmentContext
+  EnrollmentContext,
+  TeachingAssignment
 } from './types';
 import { attendanceEngine } from './services/attendanceEngine';
 import { soundService } from './services/soundService';
@@ -47,6 +48,7 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
+  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [activeLecturer, setActiveLecturer] = useState<Lecturer | null>(attendanceEngine.getActiveLecturer());
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
@@ -145,6 +147,7 @@ export default function App() {
     const unsubStudents = attendanceEngine.subscribeStudents((data) => setStudents(data));
     const unsubSubjects = attendanceEngine.subscribeSubjects((data) => setSubjects(data));
     const unsubLecturers = attendanceEngine.subscribeLecturers((data) => setLecturers(data));
+    const unsubAssignments = attendanceEngine.subscribeTeachingAssignments((data) => setTeachingAssignments(data));
     const unsubEnrollments = attendanceEngine.subscribeEnrollments((data) => setEnrollments(data));
     const unsubSessions = attendanceEngine.subscribeSessions((data) => setSessions(data));
     const unsubRecords = attendanceEngine.subscribeRecords((data) => setAttendanceRecords(data));
@@ -160,6 +163,7 @@ export default function App() {
       unsubStudents();
       unsubSubjects();
       unsubLecturers();
+      unsubAssignments();
       unsubEnrollments();
       unsubSessions();
       unsubRecords();
@@ -449,6 +453,7 @@ export default function App() {
               sessions={sessions}
               subjects={subjects}
               lecturers={lecturers}
+              teachingAssignments={teachingAssignments}
               activeLecturer={activeLecturer}
               attendanceRecords={attendanceRecords}
               isAdmin={isAdmin}
