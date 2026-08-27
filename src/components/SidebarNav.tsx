@@ -18,6 +18,8 @@ interface SidebarNavProps {
   onTabChange: (tab: ActiveTab) => void;
   activeSessionName?: string;
   totalRecordsCount: number;
+  totalStudentsCount?: number;
+  currentRole?: UserRole;
   onOpenPWAInstall?: () => void;
 }
 
@@ -26,12 +28,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onTabChange,
   activeSessionName,
   totalRecordsCount,
+  totalStudentsCount,
+  currentRole = 'ADMIN',
   onOpenPWAInstall
 }) => {
   const navItems = [
     {
       id: 'dashboard' as ActiveTab,
-      label: 'Pusat Operasi',
+      label: currentRole === 'ADMIN' ? 'Pusat Kawalan' : 'Ruang Kerja',
       icon: LayoutDashboard,
       badge: undefined
     },
@@ -52,12 +56,12 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       id: 'students' as ActiveTab,
       label: 'Master Data',
       icon: Users,
-      badge: '95',
+      badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
     },
     {
       id: 'my-attendance' as ActiveTab,
-      label: 'Semak By Pelajar',
+      label: 'Kehadiran Pelajar',
       icon: UserSquare2,
       badge: 'Pelajar',
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
@@ -70,7 +74,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     {
       id: 'guide' as ActiveTab,
-      label: 'Panduan Pensyarah',
+      label: currentRole === 'ADMIN' ? 'Panduan Penggunaan' : 'Panduan Pensyarah',
       icon: BookOpen,
       badge: undefined
     }

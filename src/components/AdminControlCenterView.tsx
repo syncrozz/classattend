@@ -126,7 +126,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
               <span>Pusat Kawalan Pentadbir Kolej (Admin)</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              Pusat Kawalan Operasi Kehadiran SYNCROZZ
+              Pusat Kawalan Operasi Kehadiran
             </h1>
             <p className="text-xs sm:text-sm text-slate-300">
               Kolej Profesional MARA Bandar Penawar • Pengawasan Sistem & Kelulusan Pensyarah

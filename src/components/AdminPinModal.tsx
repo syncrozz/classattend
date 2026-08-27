@@ -34,7 +34,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  actionTitle = 'Pengesahan Akses SYNCROZZ',
+  actionTitle = 'Pengesahan Akses',
   onOpenSelfRegistration,
   initialTab = 'LOGIN'
 }) => {
@@ -284,7 +284,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm text-white">{actionTitle}</h3>
-              <p className="text-[11px] text-slate-400">Access Gateway • SYNCROZZ KPM Bandar Penawar</p>
+              <p className="text-[11px] text-slate-400">Access Gateway • KPM Bandar Penawar</p>
             </div>
           </div>
           <button

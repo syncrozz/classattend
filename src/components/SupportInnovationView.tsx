@@ -36,7 +36,7 @@ export const SupportInnovationView: React.FC<SupportInnovationViewProps> = ({
 
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = 'Syncrozz-QR-Sumbangan.jpg';
+      link.download = 'QR-Sumbangan-Inovasi.jpg';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -52,7 +52,7 @@ export const SupportInnovationView: React.FC<SupportInnovationViewProps> = ({
       const link = document.createElement('a');
       link.href = QR_IMAGE_URL;
       link.target = '_blank';
-      link.download = 'Syncrozz-QR-Sumbangan.jpg';
+      link.download = 'QR-Sumbangan-Inovasi.jpg';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -100,7 +100,7 @@ export const SupportInnovationView: React.FC<SupportInnovationViewProps> = ({
           <div className="p-3.5 sm:p-4 rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/50 max-w-[280px] w-full transition-transform hover:scale-[1.01]">
             <img
               src={QR_IMAGE_URL}
-              alt="DuitNow Bank QR Code Sumbangan Syncrozz"
+              alt="DuitNow Bank QR Code Sumbangan Inovasi"
               className="w-full h-auto aspect-square object-contain rounded-xl select-none"
               referrerPolicy="no-referrer"
             />

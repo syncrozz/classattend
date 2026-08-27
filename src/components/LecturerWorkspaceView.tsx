@@ -23,9 +23,11 @@ import {
   FileSpreadsheet,
   AlertCircle,
   ExternalLink,
-  GraduationCap
+  GraduationCap,
+  Play
 } from 'lucide-react';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import { StartAttendanceModal } from './StartAttendanceModal';
 
 interface LecturerWorkspaceViewProps {
   activeLecturer?: Lecturer | null;
@@ -43,6 +45,7 @@ interface LecturerWorkspaceViewProps {
   onCloseActiveSession: (sessionId: string) => void;
   onQuickSimulateScan?: (studentId: string) => ScanResult;
   onCreateSession?: (session: AttendanceSession) => void;
+  onStartSessionForClass?: (subjectCode: string, subjectName: string, className: string) => void;
   onSwitchToAdminMode?: () => void;
 }
 
@@ -62,9 +65,16 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onCloseActiveSession,
   onQuickSimulateScan,
   onCreateSession,
+  onStartSessionForClass,
   onSwitchToAdminMode
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
+  const [startModalContext, setStartModalContext] = useState<{
+    subjectCode: string;
+    subjectName: string;
+    className: string;
+    studentCount: number;
+  } | null>(null);
 
   // Resolve current active lecturer with safe fallback
   const lecturer: Lecturer = activeLecturer || propLecturer || {
@@ -365,18 +375,53 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-500">
                       {sub.classes.length} Seksyen Kelas
                     </span>
-                    <button
-                      type="button"
-                      onClick={onGoToActivities}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Buka Kelas</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {sub.classes.length === 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cls = sub.classes[0];
+                            const count = students.filter(
+                              (st) => st.className.toUpperCase() === cls.toUpperCase()
+                            ).length;
+                            setStartModalContext({
+                              subjectCode: sub.subjectCode,
+                              subjectName: sub.subjectName,
+                              className: cls,
+                              studentCount: count
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                        >
+                          <Play className="w-3 h-3 fill-white" />
+                          <span>Mula Kehadiran</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const defaultCls = sub.classes[0] || 'DIA_4A';
+                            const count = students.filter(
+                              (st) => st.className.toUpperCase() === defaultCls.toUpperCase()
+                            ).length;
+                            setStartModalContext({
+                              subjectCode: sub.subjectCode,
+                              subjectName: sub.subjectName,
+                              className: defaultCls,
+                              studentCount: count
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                        >
+                          <Play className="w-3 h-3 fill-white" />
+                          <span>Mula Kehadiran</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -527,6 +572,28 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Start Attendance Confirmation Modal */}
+      {startModalContext && (
+        <StartAttendanceModal
+          isOpen={Boolean(startModalContext)}
+          onClose={() => setStartModalContext(null)}
+          subjectCode={startModalContext.subjectCode}
+          subjectName={startModalContext.subjectName}
+          className={startModalContext.className}
+          lecturerName={lecturer.name}
+          studentCount={startModalContext.studentCount}
+          onConfirmStart={() => {
+            const ctx = startModalContext;
+            setStartModalContext(null);
+            if (onStartSessionForClass) {
+              onStartSessionForClass(ctx.subjectCode, ctx.subjectName, ctx.className);
+            } else {
+              onOpenScanner();
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

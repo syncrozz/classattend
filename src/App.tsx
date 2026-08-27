@@ -37,6 +37,7 @@ import { CSVImportModal } from './components/CSVImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrationModal';
 import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
+import { StudentCheckinModal, StudentCheckinContext } from './components/StudentCheckinModal';
 import { accessManager } from './services/accessManager';
 
 export default function App() {
@@ -63,6 +64,10 @@ export default function App() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
+  // Student Check-In Modal & Context (From QR Scan / Link / Hash)
+  const [isStudentCheckinOpen, setIsStudentCheckinOpen] = useState<boolean>(false);
+  const [studentCheckinContext, setStudentCheckinContext] = useState<StudentCheckinContext | null>(null);
+
   // Student Self Registration Modal & Context
   const [isSelfRegistrationOpen, setIsSelfRegistrationOpen] = useState<boolean>(false);
   const [selfRegistrationContext, setSelfRegistrationContext] = useState<EnrollmentContext | null>(null);
@@ -75,8 +80,8 @@ export default function App() {
     return false;
   });
 
-  // Helper to parse #enroll from URL hash
-  const parseEnrollmentHash = () => {
+  // Helper to parse URL hash (#enroll, #attend, #lecturer-register, #support)
+  const parseHashRouting = () => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash;
     if (hash.startsWith('#enroll')) {
@@ -98,11 +103,32 @@ export default function App() {
       setIsSelfRegistrationOpen(true);
     } else if (hash.startsWith('#lecturer-register')) {
       setIsLecturerSelfRegOpen(true);
+    } else if (hash.startsWith('#attend')) {
+      const queryString = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+      const sessionId = params.get('session') || '';
+      const subjectCode = params.get('subject') || '';
+      const subjectName = params.get('subjectName') || undefined;
+      const className = params.get('class') || 'DIA_4A';
+      const lecturerName = params.get('lecturer') || undefined;
+      const date = params.get('date') || undefined;
+
+      setStudentCheckinContext({
+        sessionId,
+        subjectCode,
+        subjectName,
+        className,
+        lecturerName,
+        date
+      });
+      setIsStudentCheckinOpen(true);
+    } else if (hash === '#support') {
+      setActiveTab('support');
     }
   };
 
   useEffect(() => {
-    parseEnrollmentHash();
+    parseHashRouting();
   }, []);
 
   // Admin Mode & Modal States
@@ -134,11 +160,7 @@ export default function App() {
     window.addEventListener('appinstalled', handleAppInstalled);
 
     const handleHashChange = () => {
-      if (window.location.hash === '#support') {
-        setActiveTab('support');
-      } else if (window.location.hash.startsWith('#enroll')) {
-        parseEnrollmentHash();
-      }
+      parseHashRouting();
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -264,6 +286,62 @@ export default function App() {
   const handleCreateSession = (session: AttendanceSession) => {
     const updated = attendanceEngine.addSession(session);
     setSessions(updated);
+    soundService.playSuccess();
+  };
+
+  // Sprint 9: Seamless Start Attendance Session for Class
+  const handleStartSessionForClass = (subjectCode: string, subjectName: string, className: string) => {
+    // 1. Check if there's already an existing OPEN session for this subject and class
+    const existingOpen = sessions.find(
+      (s) =>
+        s.status === 'OPEN' &&
+        s.subjectCode?.toUpperCase() === subjectCode.toUpperCase() &&
+        (s.className?.toUpperCase() === className.toUpperCase() || s.className === 'ALL')
+    );
+
+    if (existingOpen) {
+      handleTabChange('scanner');
+      soundService.playSuccess();
+      return;
+    }
+
+    // 2. Check if there is an existing session today for this subject & class, reopen it
+    const todayStr = new Date().toISOString().split('T')[0];
+    const existingToday = sessions.find(
+      (s) =>
+        s.date === todayStr &&
+        s.subjectCode?.toUpperCase() === subjectCode.toUpperCase() &&
+        s.className?.toUpperCase() === className.toUpperCase()
+    );
+
+    if (existingToday) {
+      handleSetSessionStatus(existingToday.id, 'OPEN');
+      handleTabChange('scanner');
+      soundService.playSuccess();
+      return;
+    }
+
+    // 3. Otherwise create a fresh new session
+    const newSession: AttendanceSession = {
+      id: `SESS-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sessionName: `Kuliah ${subjectCode} - ${className}`,
+      subjectCode: subjectCode,
+      subjectName: subjectName,
+      className: className,
+      date: todayStr,
+      startTime: new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }),
+      endTime: '23:59',
+      status: 'OPEN',
+      attendanceMethod: 'QR',
+      location: 'Bilik Kuliah / Dewan',
+      lecturerName: activeLecturer?.name || 'PENSYARAH KPM',
+      lecturerEmail: activeLecturer?.email || 'pensyarah@bpenawar.kpm.edu.my',
+      category: 'CLASS'
+    };
+
+    const updatedSessions = attendanceEngine.addSession(newSession);
+    setSessions(updatedSessions);
+    handleTabChange('scanner');
     soundService.playSuccess();
   };
 
@@ -411,6 +489,8 @@ export default function App() {
           onTabChange={handleTabChange}
           activeSessionName={activeSession?.sessionName}
           totalRecordsCount={attendanceRecords.length}
+          totalStudentsCount={students.length}
+          currentRole={currentRole}
           onOpenPWAInstall={() => setIsPWAInstallModalOpen(true)}
         />
 
@@ -451,6 +531,7 @@ export default function App() {
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
                 onQuickSimulateScan={handleQuickSimulateScan}
                 onCreateSession={handleCreateSession}
+                onStartSessionForClass={handleStartSessionForClass}
                 onSwitchToAdminMode={handleToggleAdminMode}
               />
             )
@@ -466,6 +547,9 @@ export default function App() {
               onRequestAdminAccess={handleRequestAdminAccess}
               onProcessScan={handleProcessScan}
               onGoToActivities={() => handleTabChange('activities')}
+              onCloseSession={(sessionId) => handleSetSessionStatus(sessionId, 'CLOSED')}
+              onGoToLecturerWorkspace={() => handleTabChange('dashboard')}
+              onGoToReports={() => handleTabChange('reports')}
               soundEnabled={soundEnabled}
               onToggleSound={(enabled) => setSoundEnabled(enabled)}
             />
@@ -534,6 +618,10 @@ export default function App() {
               sessions={sessions}
               subjects={subjects}
               attendanceRecords={attendanceRecords}
+              onOpenStudentCheckin={(ctx) => {
+                setStudentCheckinContext(ctx || null);
+                setIsStudentCheckinOpen(true);
+              }}
             />
           )}
 
@@ -559,6 +647,32 @@ export default function App() {
 
       {/* Footer Support CTA & Developer Credit */}
       <Footer onOpenSupport={handleOpenSupport} />
+
+      {/* Student Self-Check-in Modal (1-Tap & QR Attendance) */}
+      <StudentCheckinModal
+        isOpen={isStudentCheckinOpen}
+        onClose={() => {
+          setIsStudentCheckinOpen(false);
+          setStudentCheckinContext(null);
+          if (window.location.hash.startsWith('#attend')) {
+            try {
+              history.pushState('', document.title, window.location.pathname + window.location.search);
+            } catch (e) {}
+          }
+        }}
+        context={studentCheckinContext}
+        sessions={sessions}
+        students={students}
+        attendanceRecords={attendanceRecords}
+        onSuccess={(student, record) => {
+          // Re-sync attendance records from engine
+          setAttendanceRecords(attendanceEngine.getAttendanceRecords());
+        }}
+        onViewMyAttendance={(studentId) => {
+          setIsStudentCheckinOpen(false);
+          handleTabChange('my-attendance');
+        }}
+      />
 
       {/* Lecturer PIN / IC Verification Modal */}
       <AdminPinModal
