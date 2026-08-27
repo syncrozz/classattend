@@ -53,7 +53,8 @@ import {
   AlertCircle,
   BookOpen,
   Layers,
-  ExternalLink
+  ExternalLink,
+  MessageCircle
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
@@ -202,11 +203,13 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   const getStudentStats = (studentId: string, className: string) => {
     const applicableSessions = sessions.filter((s) => !s.className || s.className === className);
     const presentRecords = attendanceRecords.filter((r) => r.studentId === studentId && r.status === 'PRESENT');
-    const rate = applicableSessions.length > 0 ? Math.round((presentRecords.length / applicableSessions.length) * 100) : 0;
+    const hasSessions = applicableSessions.length > 0;
+    const rate = hasSessions ? Math.round((presentRecords.length / applicableSessions.length) * 100) : 0;
     return {
       total: applicableSessions.length,
       present: presentRecords.length,
-      rate
+      rate,
+      hasSessions
     };
   };
 
@@ -675,17 +678,52 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Contact details */}
-                      <div className="space-y-1 text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60 font-mono">
-                        <div className="flex items-center gap-2 truncate">
-                          <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span className="truncate">{student.email || `${student.studentId.toLowerCase()}@bpenawar.kpm.edu.my`}</span>
+                      {/* Bottom Row: Attendance Stat (Left) + Actions (Right) */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                        {/* Attendance stats (Left) */}
+                        <div className="flex items-center gap-1.5 text-xs min-w-0">
+                          {stats.hasSessions ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-14 sm:w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    stats.rate >= 80 ? 'bg-emerald-500' : stats.rate >= 60 ? 'bg-amber-500' : 'bg-rose-500'
+                                  }`}
+                                  style={{ width: `${stats.rate}%` }}
+                                />
+                              </div>
+                              <span
+                                className={`font-bold font-mono text-[11px] ${
+                                  stats.rate >= 80 ? 'text-emerald-400' : stats.rate >= 60 ? 'text-amber-400' : 'text-rose-400'
+                                }`}
+                              >
+                                {stats.rate}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-[11px] italic">
+                              Tiada Sesi
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 truncate">
-                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span className="truncate">{student.phone || 'Tiada telefon'}</span>
-                          </div>
+
+                        {/* Actions (Right) */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Adakah anda pasti untuk memadam rekod pelajar ${student.name}?`)) {
+                                  onDeleteStudent(student.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                              title="Padam Pelajar"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           {student.phone && (
                             <a
                               href={generateWhatsAppWarningLink({
@@ -697,62 +735,22 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                               })}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold transition-all shrink-0 cursor-pointer"
+                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs transition-colors flex items-center justify-center cursor-pointer"
                               title={`Buka WhatsApp untuk hubungi ${student.name}`}
                             >
-                              <span>WA</span>
+                              <MessageCircle className="w-4 h-4" />
                             </a>
                           )}
-                        </div>
-                      </div>
 
-                      {/* Attendance stats */}
-                      <div className="pt-1 flex items-center justify-between text-xs">
-                        <span className="text-slate-400 text-[11px]">Kehadiran:</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 bg-slate-800 rounded-full h-2 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                stats.rate >= 80 ? 'bg-emerald-500' : stats.rate >= 60 ? 'bg-amber-500' : 'bg-rose-500'
-                              }`}
-                              style={{ width: `${stats.rate}%` }}
-                            />
-                          </div>
-                          <span
-                            className={`font-bold font-mono text-[11px] ${
-                              stats.rate >= 80 ? 'text-emerald-400' : stats.rate >= 60 ? 'text-amber-400' : 'text-rose-400'
-                            }`}
-                          >
-                            {stats.rate}%
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStudentForQR(student)}
-                          className="flex-1 py-1.5 px-3 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>Kad QR Pelajar</span>
-                        </button>
-
-                        {isAdmin && (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (window.confirm(`Adakah anda pasti untuk memadam rekod pelajar ${student.name}?`)) {
-                                onDeleteStudent(student.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
-                            title="Padam Pelajar"
+                            onClick={() => setSelectedStudentForQR(student)}
+                            className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs transition-colors flex items-center justify-center cursor-pointer"
+                            title="Papar Kad QR Pelajar"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <QrCode className="w-4 h-4" />
                           </button>
-                        )}
+                        </div>
                       </div>
                     </div>
                   );

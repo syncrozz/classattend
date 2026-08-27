@@ -35,7 +35,12 @@ import {
   User,
   BookMarked,
   AlertTriangle,
-  Upload
+  Upload,
+  Radio,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Calendar
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 
@@ -289,6 +294,21 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setIsCreateSubjectOpen(true);
   };
 
+  // Global Active Sessions (Level 1: NOW / ACTIVE)
+  const activeSessionsList = useMemo(() => {
+    return sessions.filter((s) => s.status === 'OPEN');
+  }, [sessions]);
+
+  // State to toggle past sessions for subjects (Progressive Disclosure)
+  const [expandedPastSubjects, setExpandedPastSubjects] = useState<Record<string, boolean>>({});
+
+  const togglePastSessions = (subjectId: string) => {
+    setExpandedPastSubjects((prev) => ({
+      ...prev,
+      [subjectId]: !prev[subjectId]
+    }));
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
@@ -327,9 +347,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Dedicated Search & Class Enrollment Action Toolbar */}
+        {/* Row 2: Search & Quick Enrollment QR Button */}
         <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Search Box */}
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
@@ -341,7 +360,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             />
           </div>
 
-          {/* Quick Action: Global Enrollment QR Generator */}
           <div className="flex items-center gap-2 shrink-0">
             <button
               id="btn-open-global-enrollment-qr"
@@ -350,17 +368,139 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 setQrModalClass(subjects[0]?.sections?.[0] || 'DIA_4A');
                 setIsGenerateQRModalOpen(true);
               }}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-[0.98]"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold shadow-sm transition-all cursor-pointer"
               title="Jana Kod QR Pendaftaran Kelas untuk dipancarkan kepada pelajar"
             >
-              <QrCode className="w-4 h-4 text-blue-400" />
+              <QrCode className="w-4 h-4 text-indigo-400" />
               <span>Jana QR Pendaftaran Kelas</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* SUBJECTS LIST WITH NESTED SESSIONS */}
+      {/* ========================================================
+          LEVEL 1: NOW / ACTIVE SESSIONS (DOMINANT VISUAL PRIORITY)
+          ======================================================== */}
+      {activeSessionsList.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">
+              Sedang Berlangsung Sekarang (Live)
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {activeSessionsList.map((activeSes) => {
+              const matchedSub = subjects.find((s) => s.id === activeSes.subjectId || s.id === activeSes.activityId);
+              const presentCount = attendanceRecords.filter(
+                (r) => r.sessionId === activeSes.id && r.status === 'PRESENT'
+              ).length;
+              const targetClassCount = activeSes.className && activeSes.className !== 'ALL'
+                ? (studentCountByClass[activeSes.className.toUpperCase()] || 0)
+                : (matchedSub?.sections || []).reduce((acc, sec) => acc + (studentCountByClass[sec.toUpperCase()] || 0), 0) || availableStudents.length;
+
+              const percent = targetClassCount > 0
+                ? Math.min(100, Math.round((presentCount / targetClassCount) * 100))
+                : 0;
+
+              return (
+                <div
+                  key={`active-banner-${activeSes.id}`}
+                  className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500 shadow-xl shadow-emerald-950/40 relative overflow-hidden"
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                    {/* Left: Live Identity & Class info */}
+                    <div className="space-y-2 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-extrabold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          🔴 SEDANG BERLANGSUNG (LIVE)
+                        </span>
+
+                        {activeSes.className && (
+                          <span className="text-xs px-2.5 py-0.5 rounded-lg bg-slate-800 text-white font-bold border border-slate-700">
+                            Kelas {activeSes.className}
+                          </span>
+                        )}
+
+                        <span className="text-xs text-slate-400 font-mono">
+                          {activeSes.subjectCode || matchedSub?.code}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
+                          {activeSes.sessionName}
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          {activeSes.subjectName || matchedSub?.name || 'Sesi Kuliah'} • Pensyarah: <strong className="text-white">{activeSes.lecturerName || matchedSub?.lecturerName}</strong>
+                        </p>
+                      </div>
+
+                      {/* Real Progress Bar */}
+                      <div className="pt-2 max-w-md space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-300 font-bold">
+                            <strong className="text-emerald-400 text-sm">{presentCount}</strong> / {targetClassCount} Pelajar Hadir
+                          </span>
+                          <span className="text-emerald-400 font-mono font-bold text-xs">
+                            {percent}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Primary Single Dominant Action + Secondary Contextual Controls */}
+                    <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end gap-2.5 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800/80">
+                      <button
+                        id={`btn-live-resume-scan-${activeSes.id}`}
+                        onClick={() => onOpenScannerForSession(activeSes.id)}
+                        className="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      >
+                        <QrCode className="w-4 h-4 text-slate-950" />
+                        <span>SAMBUNG KEHADIRAN</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          id={`btn-live-projector-${activeSes.id}`}
+                          onClick={() => setProjectorSession(activeSes)}
+                          className="flex-1 sm:flex-none px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Papar kod QR sesi di projektor kelas"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                          <span>Projektor</span>
+                        </button>
+
+                        <button
+                          id={`btn-live-close-${activeSes.id}`}
+                          onClick={() => onSetSessionStatus(activeSes.id, 'CLOSED')}
+                          className="flex-1 sm:flex-none px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Tutup sesi kelas ini"
+                        >
+                          <Square className="w-3.5 h-3.5" />
+                          <span>Tutup Sesi</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          LEVEL 2-4: SUBJECTS LIST WITH PROGRESSIVE DISCLOSURE
+          ======================================================== */}
       <div className="space-y-4">
         {filteredSubjects.length === 0 ? (
           <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center space-y-3">
@@ -380,76 +520,91 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               )
             );
 
+            // Separate into Active, Next/Available, and Past Sessions
+            const activeInSub = subjectSessions.filter((s) => s.status === 'OPEN');
+            const nonActiveInSub = subjectSessions.filter((s) => s.status !== 'OPEN');
+            const nextSession = nonActiveInSub[0] || null;
+            const pastSessions = nonActiveInSub.slice(1);
+            const isPastExpanded = expandedPastSubjects[subject.id] || false;
+
+            // Calculate total students in subject's assigned classes
+            const totalSubjectStudents = (subject.sections || []).reduce(
+              (acc, sec) => acc + (studentCountByClass[sec.toUpperCase()] || 0),
+              0
+            );
+
+            // Self-registered enrollments via QR
+            const subjectEnrCount = activeEnrollments.filter(
+              (e) => e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED'
+            ).length;
+
             return (
               <div
                 key={subject.id}
-                className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-lg"
+                className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-lg"
               >
-                {/* Subject Header */}
-                <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1.5 flex-1">
+                {/* ========================================================
+                    MAIN KATEGORI: SUBJEK / KURSUS UTAMA
+                    ======================================================== */}
+                <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-slate-900 border-b-2 border-indigo-500/40 flex flex-col md:flex-row md:items-center justify-between gap-5 relative">
+                  <div className="space-y-2 flex-1">
+                    {/* Main Category Identifier Badge */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 text-xs font-black uppercase tracking-wider shadow-sm">
+                        <BookOpen className="w-3.5 h-3.5 text-indigo-300" />
+                        <span>KATEGORI UTAMA</span>
+                      </span>
+                      <span className="text-sm font-mono font-black px-3 py-1 rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
                         {subject.code}
                       </span>
-                      {Array.from(new Set<string>(subject.sections || [])).map((sec, secIdx) => (
-                        <span
-                          key={`${subject.id}-sec-${sec}-${secIdx}`}
-                          className={`text-[10px] px-2 py-0.5 rounded border font-bold ${getClassBadgeColor(sec)}`}
-                        >
-                          {sec}
-                        </span>
-                      ))}
-                      <span className="text-xs text-slate-400">
-                        {subject.department || 'Perakaunan'}
+                      <span className="text-xs font-semibold text-slate-300 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-slate-700">
+                        {subject.department || 'Jabatan Perakaunan'}
                       </span>
                     </div>
 
-                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                      {subject.name}
-                    </h3>
-
-                    {subject.description && (
-                      <p className="text-xs text-slate-300 max-w-2xl">{subject.description}</p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
-                      <span className="flex items-center gap-1 text-slate-300">
-                        <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Pensyarah: <strong className="text-white">{subject.lecturerName}</strong></span>
-                      </span>
-                      <span className="flex items-center gap-1 text-indigo-300">
-                        <BookMarked className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>{subjectSessions.length} Sesi Kuliah Terjadual</span>
-                      </span>
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-white tracking-tight">
+                        {subject.name}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-slate-300 mt-1 flex flex-wrap items-center gap-2">
+                        <span>Pensyarah: <strong className="text-white font-bold">{subject.lecturerName}</strong></span>
+                        <span className="text-slate-600">•</span>
+                        <span>Kelas: <strong className="text-indigo-300 font-bold">{(subject.sections || []).join(', ') || 'Semua'}</strong> ({totalSubjectStudents} Pelajar)</span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-slate-400 font-medium">{subjectSessions.length} Sesi Terjadual</span>
+                      </p>
                     </div>
                   </div>
 
-                  {/* Subject Header Right Actions: QR Enrollment, Enrolled List, Delete */}
+                  {/* Level 4: Subject Management Actions (Clean Button Hierarchy) */}
                   <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
-                    {/* View Enrolled Students button */}
-                    {(() => {
-                      const subjectEnrCount = activeEnrollments.filter(
-                        (e) => e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED'
-                      ).length;
-                      return (
-                        <button
-                          id={`btn-view-enrolled-${subject.id}`}
-                          onClick={() => {
-                            setEnrolledModalSubject(subject);
-                            setEnrolledModalClass('ALL');
-                            setIsEnrolledModalOpen(true);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-                          title="Lihat senarai pelajar yang mendaftar bagi subjek ini"
-                        >
-                          <Users className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>{subjectEnrCount} Pelajar Berdaftar</span>
-                        </button>
-                      );
-                    })()}
+                    {/* Primary Action for this Subject: Add a new session schedule */}
+                    <button
+                      id={`btn-add-session-${subject.id}`}
+                      onClick={() => handleOpenAddSession(subject.id)}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                      title="Cipta & jadualkan sesi kuliah/amali baharu untuk subjek ini"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Tambah Jadual Sesi</span>
+                    </button>
 
-                    {/* Generate Enrollment QR for this subject */}
+                    {/* Secondary: Enrolled Students List */}
+                    <button
+                      id={`btn-view-enrolled-${subject.id}`}
+                      onClick={() => {
+                        setEnrolledModalSubject(subject);
+                        setEnrolledModalClass('ALL');
+                        setIsEnrolledModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                      title="Lihat senarai pelajar berdaftar bagi subjek ini"
+                    >
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{subjectEnrCount > 0 ? `${subjectEnrCount} Daftar QR` : 'Senarai Pelajar'}</span>
+                    </button>
+
+                    {/* Secondary: Generate QR */}
                     <button
                       id={`btn-qr-enroll-subject-${subject.id}`}
                       onClick={() => {
@@ -457,178 +612,213 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         setQrModalClass(subject.sections?.[0] || 'DIA_4A');
                         setIsGenerateQRModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-semibold transition-all cursor-pointer"
-                      title="Jana Kod QR Pendaftaran Kelas untuk Subjek Ini"
+                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs transition-all cursor-pointer"
+                      title="Jana Kod QR Pendaftaran Pelajar"
                     >
-                      <QrCode className="w-3.5 h-3.5 text-blue-400" />
-                      <span>QR Daftar Pelajar</span>
+                      <QrCode className="w-4 h-4 text-indigo-400" />
                     </button>
 
+                    {/* Destructive / Subdued: Delete Subject */}
                     <button
                       id={`btn-delete-subject-${subject.id}`}
                       onClick={() => handleDeleteSubjectClick(subject)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-medium transition-all cursor-pointer"
+                      className="p-2.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 border border-slate-800/80 hover:border-rose-500/30 text-xs transition-all cursor-pointer"
                       title="Padam Maklumat Subjek Ini"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Padam</span>
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* SESSIONS SUB-LIST */}
-                <div className="p-4 sm:p-5 bg-slate-950/40 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Sesi Kehadiran Kelas Mingguan
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">
-                        {subjectSessions.length} Sesi
-                      </span>
-                    </div>
-
-                    {/* Moved 'Buka Sesi Kelas' here directly with the session list */}
-                    <button
-                      id={`btn-add-session-${subject.id}`}
-                      onClick={() => handleOpenAddSession(subject.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all cursor-pointer shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Buka Sesi Kelas</span>
-                    </button>
+                {/* ========================================================
+                    SUB-KATEGORI: SESI & JADUAL KULIAH
+                    ======================================================== */}
+                <div className="p-4 sm:p-5 bg-slate-950/60 space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>SUB-KATEGORI: SESI & JADUAL KELAS</span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {subjectSessions.length} sesi dicipta
+                    </span>
                   </div>
-
                   {subjectSessions.length === 0 ? (
-                    <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2.5">
+                    <div className="p-6 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2.5">
                       <p className="text-xs text-slate-400">
-                        Belum ada sesi kuliah mingguan dibuka bagi subjek ini.
+                        Belum ada sesi kuliah dibuka bagi subjek ini.
                       </p>
                       <button
                         onClick={() => handleOpenAddSession(subject.id)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Buka Sesi Kelas Pertama</span>
+                        <span>Cipta Jadual Sesi Pertama</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {subjectSessions.map((session) => {
+                    <div className="space-y-3">
+                      {/* Active Sessions Inside this Subject */}
+                      {activeInSub.map((session) => {
                         const count = attendanceRecords.filter(
                           (r) => r.sessionId === session.id && r.status === 'PRESENT'
                         ).length;
-
-                        const isOpen = session.status === 'OPEN';
+                        const classTarget = session.className && session.className !== 'ALL'
+                          ? (studentCountByClass[session.className.toUpperCase()] || 0)
+                          : totalSubjectStudents || availableStudents.length;
 
                         return (
                           <div
                             key={session.id}
-                            className={`p-4 rounded-xl border transition-all ${
-                              isOpen
-                                ? 'bg-emerald-950/20 border-emerald-500/40 shadow-md shadow-emerald-500/10'
-                                : 'bg-slate-950/80 border-slate-800'
-                            }`}
+                            className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
-                                      isOpen
-                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
-                                        : 'bg-blue-950/40 text-blue-300 border border-blue-800/40'
-                                    }`}
-                                  >
-                                    {isOpen ? '🟢 KELAS DIBUKA' : '🔵 SESI TERSEDIA'}
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  🔴 LIVE SEKARANG
+                                </span>
+                                {session.className && (
+                                  <span className="text-[11px] font-bold text-slate-300">
+                                    Kelas {session.className}
                                   </span>
-
-                                  {session.className && (
-                                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
-                                      Kelas {session.className}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <h4 className="text-sm font-bold text-white tracking-tight">
-                                  {session.sessionName}
-                                </h4>
-
-                                <div className="text-xs text-slate-400 space-y-0.5 pt-0.5">
-                                  <div className="text-[11px] text-slate-300">
-                                    Pensyarah: {session.lecturerName || subject.lecturerName}
-                                  </div>
-                                </div>
+                                )}
                               </div>
-
-                              {/* Attendee Count Badge */}
-                              <div className="text-right shrink-0">
-                                <div className="text-lg font-extrabold text-white">{count}</div>
-                                <div className="text-[10px] text-slate-400">Pelajar Hadir</div>
+                              <h4 className="text-sm font-bold text-white">
+                                {session.sessionName}
+                              </h4>
+                              <div className="text-xs text-slate-400">
+                                Kehadiran: <strong className="text-emerald-400">{count} / {classTarget} Hadir</strong>
                               </div>
                             </div>
 
-                            {/* Action Row for this Session */}
-                            <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                              {/* Left Controls: Open/Close & Delete */}
-                              <div className="flex items-center gap-2">
-                                {isOpen ? (
-                                  <button
-                                    id={`btn-close-session-${session.id}`}
-                                    onClick={() => onSetSessionStatus(session.id, 'CLOSED')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-rose-500/20 text-emerald-300 hover:text-rose-300 text-xs font-semibold border border-emerald-500/40 hover:border-rose-500/40 transition-all cursor-pointer group"
-                                    title="Sesi sedang aktif (Hijau). Klik untuk tutup kelas."
-                                  >
-                                    <Square className="w-3.5 h-3.5 text-emerald-400 group-hover:text-rose-400" />
-                                    <span>🟢 Tutup Kelas</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    id={`btn-open-session-${session.id}`}
-                                    onClick={() => onSetSessionStatus(session.id, 'OPEN')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-semibold border border-blue-500/30 transition-all cursor-pointer"
-                                    title="Buka sesi kelas ini untuk pengimbasan"
-                                  >
-                                    <Play className="w-3.5 h-3.5 text-blue-400" />
-                                    <span>Buka Kelas Ini</span>
-                                  </button>
-                                )}
-
-                                <button
-                                  id={`btn-delete-session-${session.id}`}
-                                  onClick={() => handleDeleteSessionClick(session)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900/90 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 text-xs font-semibold border border-slate-800 hover:border-rose-500/40 transition-all cursor-pointer"
-                                  title="Padam sesi kelas ini"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Padam</span>
-                                </button>
-                              </div>
-
-                              {/* Right Controls: Projector & Scanner */}
-                              <div className="flex items-center gap-2">
-                                <button
-                                  id={`btn-projector-${session.id}`}
-                                  onClick={() => setProjectorSession(session)}
-                                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-indigo-300 text-xs transition-all cursor-pointer"
-                                  title="Papar QR Sesi di Projektor Skrin Kelas"
-                                >
-                                  <Maximize2 className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  id={`btn-scan-session-${session.id}`}
-                                  onClick={() => onOpenScannerForSession(session.id)}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-indigo-600/20"
-                                >
-                                  <QrCode className="w-3.5 h-3.5" />
-                                  <span>Imbas Kelas</span>
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                              <button
+                                onClick={() => onOpenScannerForSession(session.id)}
+                                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>Sambung Imbas</span>
+                              </button>
+                              <button
+                                onClick={() => onSetSessionStatus(session.id, 'CLOSED')}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs font-medium border border-slate-700 transition-all cursor-pointer"
+                              >
+                                Tutup Sesi
+                              </button>
                             </div>
                           </div>
                         );
                       })}
+
+                      {/* LEVEL 2: NEXT AVAILABLE SESSION */}
+                      {nextSession && (
+                        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                TERJADUAL
+                              </span>
+                              {nextSession.className && (
+                                <span className="text-[11px] font-semibold text-slate-300">
+                                  Kelas {nextSession.className}
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="text-sm font-bold text-white">
+                              {nextSession.sessionName}
+                            </h4>
+                            <div className="text-xs text-slate-400">
+                              Status: Sedia untuk diimbas • Sasaran: {nextSession.className && nextSession.className !== 'ALL' ? (studentCountByClass[nextSession.className.toUpperCase()] || 0) : totalSubjectStudents} Pelajar
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                            <button
+                              id={`btn-open-session-${nextSession.id}`}
+                              onClick={() => onSetSessionStatus(nextSession.id, 'OPEN')}
+                              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                              title="Aktifkan sesi ini dan mula imbasan kehadiran pelajar"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-white" />
+                              <span>Mula Imbas Kehadiran</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSessionClick(nextSession)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-all cursor-pointer"
+                              title="Padam sesi ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* LEVEL 3: OTHER / PAST SESSIONS (COMPACT PRESENTATION WITH PROGRESSIVE DISCLOSURE) */}
+                      {pastSessions.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => togglePastSessions(subject.id)}
+                            className="text-xs font-semibold text-slate-400 hover:text-indigo-300 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
+                          >
+                            <span>Sesi Terdahulu / Jadual Lain ({pastSessions.length})</span>
+                            {isPastExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {isPastExpanded && (
+                            <div className="space-y-1.5 pt-1">
+                              {pastSessions.map((session) => {
+                                const count = attendanceRecords.filter(
+                                  (r) => r.sessionId === session.id && r.status === 'PRESENT'
+                                ).length;
+                                const classTarget = session.className && session.className !== 'ALL'
+                                  ? (studentCountByClass[session.className.toUpperCase()] || 0)
+                                  : totalSubjectStudents || availableStudents.length;
+
+                                return (
+                                  <div
+                                    key={session.id}
+                                    className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/60 flex items-center justify-between gap-3 text-xs"
+                                  >
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                                        {session.className || 'ALL'}
+                                      </span>
+                                      <span className="font-semibold text-slate-300 truncate">
+                                        {session.sessionName}
+                                      </span>
+                                      <span className="text-slate-500 text-[11px] shrink-0">
+                                        {count > 0 ? `${count} / ${classTarget} Hadir` : 'Belum berlangsung'}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        onClick={() => onSetSessionStatus(session.id, 'OPEN')}
+                                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer"
+                                        title="Aktifkan sesi ini dan mula imbasan"
+                                      >
+                                        Mula Imbas
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteSessionClick(session)}
+                                        className="p-1 text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
+                                        title="Padam sesi ini"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -817,7 +1007,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 text-white">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white">Buka Sesi Kuliah / Kelas Baharu</h3>
+                <h3 className="text-base font-bold text-white">Cipta & Jadualkan Sesi Kuliah Baharu</h3>
                 <p className="text-xs text-slate-400">
                   Subjek: {subjects.find((s) => s.id === selectedSubjectId)?.code} - {subjects.find((s) => s.id === selectedSubjectId)?.name}
                 </p>
@@ -864,7 +1054,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                💡 Sesi kelas ini akan dibuka secara automatik (OPEN) dan sedia untuk diimbas serta-merta oleh pelajar mengikut kelas yang dipilih.
+                💡 Sesi kelas ini akan dicipta serta-merta dan sedia untuk diimbas oleh pelajar bagi kelas yang dipilih.
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
@@ -879,7 +1069,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   type="submit"
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
                 >
-                  Buka Sesi Kehadiran
+                  Simpan & Cipta Sesi
                 </button>
               </div>
             </form>

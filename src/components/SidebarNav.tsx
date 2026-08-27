@@ -48,7 +48,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     {
       id: 'activities' as ActiveTab,
-      label: 'Pengurusan Kelas',
+      label: 'Urus Kelas & Sesi',
       icon: BookMarked,
       badge: undefined
     },

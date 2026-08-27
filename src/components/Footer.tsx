@@ -34,7 +34,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenSupport }) => {
             target="_blank"
             rel="noopener noreferrer"
             id="footer-link-syncrozz-whatsapp"
-            className="text-slate-200 hover:text-indigo-400 font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+            className="text-slate-200 hover:text-indigo-400 font-semibold no-underline transition-colors cursor-pointer"
             title="Hubungi Syncrozz melalui WhatsApp"
           >
             Syncrozz

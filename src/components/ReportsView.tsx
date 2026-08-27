@@ -413,19 +413,31 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <div className="flex items-center">
                     <span
                       className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded border ${
-                        cls.rate >= 80
+                        cls.sessionCount === 0
+                          ? 'bg-slate-800 text-slate-400 border-slate-700'
+                          : cls.rate >= 80
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                           : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                       }`}
                     >
-                      {cls.rate >= 80 ? '✅ KPI Dipenuhi' : '❌ Perlu Surat Amaran'}
+                      {cls.sessionCount === 0
+                        ? '⚪ Belum Bermula'
+                        : cls.rate >= 80
+                        ? '✅ KPI Dipenuhi'
+                        : '❌ Perlu Surat Amaran'}
                     </span>
                   </div>
 
                   <div className="flex items-baseline justify-between pt-1">
                     <div>
                       <div className="text-3xl font-black text-white">
-                        {cls.rate}<span className="text-lg text-indigo-400">%</span>
+                        {cls.sessionCount > 0 ? (
+                          <>
+                            {cls.rate}<span className="text-lg text-indigo-400">%</span>
+                          </>
+                        ) : (
+                          <span className="text-lg text-slate-400 font-medium">Tiada Sesi</span>
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-400">Purata Kehadiran</div>
                     </div>
@@ -438,9 +450,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${
-                        isHigh ? 'bg-emerald-400' : isMedium ? 'bg-indigo-400' : 'bg-amber-400'
+                        cls.sessionCount === 0
+                          ? 'bg-slate-700'
+                          : isHigh
+                          ? 'bg-emerald-400'
+                          : isMedium
+                          ? 'bg-indigo-400'
+                          : 'bg-amber-400'
                       }`}
-                      style={{ width: `${cls.rate}%` }}
+                      style={{ width: `${cls.sessionCount > 0 ? cls.rate : 0}%` }}
                     ></div>
                   </div>
                 </button>
@@ -494,23 +512,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                           <td className="py-3 px-4 font-mono font-bold text-indigo-400">{item.student.studentId}</td>
                           <td className="py-3 px-4 font-semibold text-white">{item.student.name}</td>
                           <td className="py-3 px-4 text-center font-mono text-slate-300">
-                            {item.present} / {item.total}
+                            {item.total > 0 ? `${item.present} / ${item.total}` : '-'}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span
-                              className={`px-2.5 py-1 rounded-full font-bold text-xs ${
-                                isHigh
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                  : isMedium
-                                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              }`}
-                            >
-                              {item.rate}%
-                            </span>
+                            {item.total > 0 ? (
+                              <span
+                                className={`px-2.5 py-1 rounded-full font-bold text-xs ${
+                                  isHigh
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : isMedium
+                                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                }`}
+                              >
+                                {item.rate}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-xs italic">Tiada Sesi</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            {item.rate >= 80 ? (
+                            {item.total === 0 ? (
+                              <span className="text-slate-500 text-xs">-</span>
+                            ) : item.rate >= 80 ? (
                               <span
                                 className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
                                 title="Lulus KPI (≥ 80%)"
@@ -791,23 +815,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`px-2 py-0.5 rounded-full font-bold text-xs ${
-                            item.rate >= 80
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : item.rate >= 60
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-rose-500/20 text-rose-300'
-                          }`}
-                        >
-                          {item.rate}%
-                        </span>
+                        {item.total > 0 ? (
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold text-xs ${
+                              item.rate >= 80
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : item.rate >= 60
+                                ? 'bg-amber-500/20 text-amber-300'
+                                : 'bg-rose-500/20 text-rose-300'
+                            }`}
+                          >
+                            {item.rate}%
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 text-xs italic">Tiada Sesi</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-400">
-                        {item.present} / {item.total}
+                        {item.total > 0 ? `${item.present} / ${item.total}` : '-'}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {item.rate >= 80 ? (
+                        {item.total === 0 ? (
+                          <span className="text-slate-500 text-xs">-</span>
+                        ) : item.rate >= 80 ? (
                           <span
                             className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
                             title="Lulus KPI (≥ 80%)"
