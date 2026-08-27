@@ -2,7 +2,57 @@ import { Student, AttendanceSession, AttendanceRecord, Lecturer, Subject } from 
 
 export const INITIAL_LECTURERS: Lecturer[] = [];
 
-export const INITIAL_SUBJECTS: Subject[] = [];
+export const INITIAL_SUBJECTS: Subject[] = [
+  {
+    id: 'SUB-MPU2163',
+    code: 'MPU 2163',
+    name: 'Pengajian Malaysia 2',
+    department: 'Jabatan Pengajian Am',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-ACC2103',
+    code: 'ACC 2103',
+    name: 'Perakaunan Kewangan 2',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-TAX3103',
+    code: 'TAX 3103',
+    name: 'Percukaian 1',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-AUD3903',
+    code: 'AUD 3903',
+    name: 'Pengauditan',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-FAR2103',
+    code: 'FAR 2103',
+    name: 'Pelaporan Kewangan 1',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-MAF2513',
+    code: 'MAF 2513',
+    name: 'Perakaunan Pengurusan 1',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  },
+  {
+    id: 'SUB-QBM1013',
+    code: 'QBM 1013',
+    name: 'Kaedah Kuantitatif Perniagaan',
+    department: 'Jabatan Perakaunan',
+    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
+  }
+];
 
 export const INITIAL_STUDENTS: Student[] = [
   // DIA_3A (20 students)

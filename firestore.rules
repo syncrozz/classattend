@@ -8,6 +8,9 @@ service cloud.firestore {
     match /lecturers/{lecturerId} {
       allow read, write: if true;
     }
+    match /teaching_assignments/{assignmentId} {
+      allow read, write: if true;
+    }
     match /subjects/{subjectId} {
       allow read, write: if true;
     }
@@ -15,6 +18,9 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /attendance_records/{recordId} {
+      allow read, write: if true;
+    }
+    match /enrollments/{enrollmentId} {
       allow read, write: if true;
     }
     match /activities/{activityId} {

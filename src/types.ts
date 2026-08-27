@@ -25,11 +25,31 @@ export interface Lecturer {
   email: string; // Must end with @bpenawar.kpm.edu.my
   icNumber: string; // e.g. 861115-46-5305
   pin: string; // Last 4 digits of IC (e.g. 5305)
+  phone?: string;
   department?: string;
   assignedSections?: string[]; // e.g. ['DIA_4A', 'DIA_4B']
   assignedClasses?: string[]; // Alias for assignedSections
   assignedSubjects?: string[]; // e.g. ['MPU 2163 - Pengajian Malaysia 2']
   role?: 'ADMIN' | 'LECTURER';
+  status?: 'PENDING' | 'ACTIVE' | 'REJECTED';
+  registeredAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
+export interface TeachingAssignment {
+  id: string; // e.g. TA_${lecturerId}_${subjectCode}_${className}
+  lecturerId: string;
+  lecturerEmail: string;
+  lecturerName: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  className: string; // e.g. DIA_4A
+  status: 'PENDING' | 'ACTIVE' | 'REJECTED';
+  createdAt: string; // ISO String
+  approvedAt?: string;
+  approvedBy?: string;
 }
 
 export interface Subject {
@@ -45,6 +65,27 @@ export interface Subject {
   description?: string;
   status?: 'ACTIVE' | 'ARCHIVED';
   createdAt?: string;
+}
+
+export interface Enrollment {
+  id: string; // e.g. ENR_${studentId}_${subjectCode}_${className}
+  studentId: string; // Unique student identifier (No. Pelajar e.g. PDA-2502-011)
+  subjectCode: string; // e.g. MPU 2163
+  subjectName?: string; // e.g. Pengajian Malaysia 2
+  className: string; // e.g. DIA_4A
+  section?: string;
+  lecturerEmail?: string;
+  lecturerName?: string;
+  enrolledAt: string; // ISO String
+  status?: 'ACTIVE' | 'DROPPED';
+}
+
+export interface EnrollmentContext {
+  subjectCode: string;
+  subjectName: string;
+  className: string;
+  lecturerName?: string;
+  lecturerEmail?: string;
 }
 
 export interface Student {

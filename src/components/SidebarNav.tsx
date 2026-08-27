@@ -50,7 +50,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     {
       id: 'students' as ActiveTab,
-      label: 'Senarai Pelajar',
+      label: 'Master Data',
       icon: Users,
       badge: '95',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'

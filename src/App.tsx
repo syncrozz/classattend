@@ -10,7 +10,9 @@ import {
   EventStatus,
   ScanResult,
   AttendanceMethod,
-  UserRole
+  UserRole,
+  Enrollment,
+  EnrollmentContext
 } from './types';
 import { attendanceEngine } from './services/attendanceEngine';
 import { soundService } from './services/soundService';
@@ -29,6 +31,8 @@ import { Footer } from './components/Footer';
 import { AdminPinModal } from './components/AdminPinModal';
 import { CSVImportModal } from './components/CSVImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrationModal';
+import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -43,10 +47,53 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [activeLecturer, setActiveLecturer] = useState<Lecturer | null>(attendanceEngine.getActiveLecturer());
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+
+  // Student Self Registration Modal & Context
+  const [isSelfRegistrationOpen, setIsSelfRegistrationOpen] = useState<boolean>(false);
+  const [selfRegistrationContext, setSelfRegistrationContext] = useState<EnrollmentContext | null>(null);
+
+  // Lecturer Self Registration Modal (From QR / Link)
+  const [isLecturerSelfRegOpen, setIsLecturerSelfRegOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#lecturer-register')) {
+      return true;
+    }
+    return false;
+  });
+
+  // Helper to parse #enroll from URL hash
+  const parseEnrollmentHash = () => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (hash.startsWith('#enroll')) {
+      const queryString = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+      const subjectCode = params.get('subject') || 'MPU 2163';
+      const subjectName = params.get('subjectName') || 'Pengajian Malaysia 2';
+      const className = params.get('class') || 'DIA_4A';
+      const lecturerName = params.get('lecturer') || undefined;
+      const lecturerEmail = params.get('lecturerEmail') || undefined;
+
+      setSelfRegistrationContext({
+        subjectCode,
+        subjectName,
+        className,
+        lecturerName,
+        lecturerEmail
+      });
+      setIsSelfRegistrationOpen(true);
+    } else if (hash.startsWith('#lecturer-register')) {
+      setIsLecturerSelfRegOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    parseEnrollmentHash();
+  }, []);
 
   // Admin Mode & Modal States
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
@@ -79,6 +126,8 @@ export default function App() {
     const handleHashChange = () => {
       if (window.location.hash === '#support') {
         setActiveTab('support');
+      } else if (window.location.hash.startsWith('#enroll')) {
+        parseEnrollmentHash();
       }
     };
 
@@ -96,6 +145,7 @@ export default function App() {
     const unsubStudents = attendanceEngine.subscribeStudents((data) => setStudents(data));
     const unsubSubjects = attendanceEngine.subscribeSubjects((data) => setSubjects(data));
     const unsubLecturers = attendanceEngine.subscribeLecturers((data) => setLecturers(data));
+    const unsubEnrollments = attendanceEngine.subscribeEnrollments((data) => setEnrollments(data));
     const unsubSessions = attendanceEngine.subscribeSessions((data) => setSessions(data));
     const unsubRecords = attendanceEngine.subscribeRecords((data) => setAttendanceRecords(data));
 
@@ -110,6 +160,7 @@ export default function App() {
       unsubStudents();
       unsubSubjects();
       unsubLecturers();
+      unsubEnrollments();
       unsubSessions();
       unsubRecords();
     };
@@ -370,6 +421,7 @@ export default function App() {
               attendanceRecords={attendanceRecords}
               students={students}
               lecturers={lecturers}
+              enrollments={enrollments}
               activeLecturer={activeLecturer}
               isAdmin={isAdmin}
               onSetSessionStatus={handleSetSessionStatus}
@@ -384,6 +436,10 @@ export default function App() {
               onRequestAdminAccess={handleRequestAdminAccess}
               onOpenCSVImport={() => setIsCSVModalOpen(true)}
               onNavigateToStudents={() => handleTabChange('students')}
+              onOpenSelfRegistrationTest={(ctx) => {
+                setSelfRegistrationContext(ctx);
+                setIsSelfRegistrationOpen(true);
+              }}
             />
           )}
 
@@ -476,6 +532,40 @@ export default function App() {
         onClose={() => setIsPWAInstallModalOpen(false)}
         deferredPrompt={deferredPrompt}
         onInstalled={() => setDeferredPrompt(null)}
+      />
+
+      {/* Student Self-Registration Modal (Triggered by QR Scan or Direct Link) */}
+      <StudentSelfRegistrationModal
+        isOpen={isSelfRegistrationOpen}
+        onClose={() => {
+          setIsSelfRegistrationOpen(false);
+          setSelfRegistrationContext(null);
+          if (window.location.hash.startsWith('#enroll')) {
+            try {
+              history.pushState('', document.title, window.location.pathname + window.location.search);
+            } catch (e) {}
+          }
+        }}
+        context={selfRegistrationContext}
+        onSuccess={(student, enrollment) => {
+          // Re-sync local states
+          setStudents(attendanceEngine.getStudents());
+          setEnrollments(attendanceEngine.getEnrollments());
+        }}
+      />
+
+      {/* Lecturer Self-Registration Modal (Triggered by Admin QR Scan or Direct Link) */}
+      <LecturerSelfRegistrationModal
+        isOpen={isLecturerSelfRegOpen}
+        onClose={() => {
+          setIsLecturerSelfRegOpen(false);
+          if (window.location.hash.startsWith('#lecturer-register')) {
+            try {
+              history.pushState('', document.title, window.location.pathname + window.location.search);
+            } catch (e) {}
+          }
+        }}
+        subjects={subjects}
       />
     </div>
   );

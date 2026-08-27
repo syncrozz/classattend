@@ -6,9 +6,12 @@ import {
   AttendanceRecord,
   Lecturer,
   Student,
-  EventStatus
+  EventStatus,
+  Enrollment
 } from '../types';
 import { getClassBadgeColor, sortSessionsLatestFirst } from '../utils/studentUtils';
+import { GenerateEnrollmentQRModal } from './GenerateEnrollmentQRModal';
+import { EnrolledStudentsModal } from './EnrolledStudentsModal';
 import {
   BookOpen,
   Plus,
@@ -42,6 +45,7 @@ interface ClassManagementViewProps {
   attendanceRecords: AttendanceRecord[];
   students?: Student[];
   lecturers?: Lecturer[];
+  enrollments?: Enrollment[];
   activeLecturer: Lecturer | null;
   isAdmin: boolean;
   onSetSessionStatus: (sessionId: string, newStatus: EventStatus) => void;
@@ -53,6 +57,13 @@ interface ClassManagementViewProps {
   onRequestAdminAccess: (actionName?: string) => void;
   onOpenCSVImport?: () => void;
   onNavigateToStudents?: () => void;
+  onOpenSelfRegistrationTest?: (context: {
+    subjectCode: string;
+    subjectName: string;
+    className: string;
+    lecturerName?: string;
+    lecturerEmail?: string;
+  }) => void;
 }
 
 export const EventManagementView: React.FC<ClassManagementViewProps> = ({
@@ -61,6 +72,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   attendanceRecords,
   students: propStudents,
   lecturers: propLecturers,
+  enrollments: propEnrollments,
   activeLecturer,
   isAdmin,
   onSetSessionStatus,
@@ -71,9 +83,22 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onOpenScannerForSession,
   onRequestAdminAccess,
   onOpenCSVImport,
-  onNavigateToStudents
+  onNavigateToStudents,
+  onOpenSelfRegistrationTest
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Enrollments from props or engine
+  const activeEnrollments = propEnrollments || attendanceEngine.getEnrollments();
+
+  // QR Modal & Enrolled Modal State
+  const [isGenerateQRModalOpen, setIsGenerateQRModalOpen] = useState<boolean>(false);
+  const [qrModalSubject, setQrModalSubject] = useState<Subject | null>(null);
+  const [qrModalClass, setQrModalClass] = useState<string>('DIA_4A');
+
+  const [isEnrolledModalOpen, setIsEnrolledModalOpen] = useState<boolean>(false);
+  const [enrolledModalSubject, setEnrolledModalSubject] = useState<Subject | null>(null);
+  const [enrolledModalClass, setEnrolledModalClass] = useState<string>('ALL');
 
   // Lecturers list from props or engine
   const availableLecturers = propLecturers && propLecturers.length > 0
@@ -268,6 +293,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
       <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4">
+        {/* Row 1: Title, Metadata & Main Create Action */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -289,26 +315,46 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            {/* Search Box */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Cari kod atau nama subjek..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
+          <div className="flex items-center gap-2.5 self-start md:self-center shrink-0">
             <button
               id="btn-create-new-subject"
               onClick={handleOpenCreateSubjectModal}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer shrink-0"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer shrink-0 active:scale-[0.98]"
             >
               <Plus className="w-4 h-4" />
               <span>Daftar Subjek Baharu</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Dedicated Search & Class Enrollment Action Toolbar */}
+        <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Cari kod atau nama subjek..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+            />
+          </div>
+
+          {/* Quick Action: Global Enrollment QR Generator */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              id="btn-open-global-enrollment-qr"
+              onClick={() => {
+                setQrModalSubject(subjects[0] || null);
+                setQrModalClass(subjects[0]?.sections?.[0] || 'DIA_4A');
+                setIsGenerateQRModalOpen(true);
+              }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-[0.98]"
+              title="Jana Kod QR Pendaftaran Kelas untuk dipancarkan kepada pelajar"
+            >
+              <QrCode className="w-4 h-4 text-blue-400" />
+              <span>Jana QR Pendaftaran Kelas</span>
             </button>
           </div>
         </div>
@@ -379,8 +425,45 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Subject Header Right Actions: Delete Subject */}
-                  <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+                  {/* Subject Header Right Actions: QR Enrollment, Enrolled List, Delete */}
+                  <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
+                    {/* View Enrolled Students button */}
+                    {(() => {
+                      const subjectEnrCount = activeEnrollments.filter(
+                        (e) => e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED'
+                      ).length;
+                      return (
+                        <button
+                          id={`btn-view-enrolled-${subject.id}`}
+                          onClick={() => {
+                            setEnrolledModalSubject(subject);
+                            setEnrolledModalClass('ALL');
+                            setIsEnrolledModalOpen(true);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                          title="Lihat senarai pelajar yang mendaftar bagi subjek ini"
+                        >
+                          <Users className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>{subjectEnrCount} Pelajar Berdaftar</span>
+                        </button>
+                      );
+                    })()}
+
+                    {/* Generate Enrollment QR for this subject */}
+                    <button
+                      id={`btn-qr-enroll-subject-${subject.id}`}
+                      onClick={() => {
+                        setQrModalSubject(subject);
+                        setQrModalClass(subject.sections?.[0] || 'DIA_4A');
+                        setIsGenerateQRModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-semibold transition-all cursor-pointer"
+                      title="Jana Kod QR Pendaftaran Kelas untuk Subjek Ini"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-blue-400" />
+                      <span>QR Daftar Pelajar</span>
+                    </button>
+
                     <button
                       id={`btn-delete-subject-${subject.id}`}
                       onClick={() => handleDeleteSubjectClick(subject)}
@@ -388,7 +471,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       title="Padam Maklumat Subjek Ini"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Padam Subjek</span>
+                      <span>Padam</span>
                     </button>
                   </div>
                 </div>
@@ -860,6 +943,40 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* LECTURER GENERATE CLASS ENROLLMENT QR MODAL */}
+      <GenerateEnrollmentQRModal
+        isOpen={isGenerateQRModalOpen}
+        onClose={() => setIsGenerateQRModalOpen(false)}
+        subjects={subjects}
+        initialSubject={qrModalSubject}
+        initialClass={qrModalClass}
+        activeLecturer={activeLecturer}
+        enrollments={activeEnrollments}
+        students={availableStudents}
+        onOpenSelfRegistrationTest={(context) => {
+          setIsGenerateQRModalOpen(false);
+          if (onOpenSelfRegistrationTest) {
+            onOpenSelfRegistrationTest(context);
+          }
+        }}
+      />
+
+      {/* VIEW & MANAGE ENROLLED STUDENTS MODAL */}
+      <EnrolledStudentsModal
+        isOpen={isEnrolledModalOpen}
+        onClose={() => setIsEnrolledModalOpen(false)}
+        subject={enrolledModalSubject}
+        className={enrolledModalClass}
+        enrollments={activeEnrollments}
+        students={availableStudents}
+        onOpenGenerateQR={(subj, cls) => {
+          setIsEnrolledModalOpen(false);
+          setQrModalSubject(subj);
+          if (cls) setQrModalClass(cls);
+          setIsGenerateQRModalOpen(true);
+        }}
+      />
     </div>
   );
 };

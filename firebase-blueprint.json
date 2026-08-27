@@ -25,12 +25,36 @@
         "email": { "type": "string", "description": "Official email" },
         "icNumber": { "type": "string", "description": "IC number for verification" },
         "pin": { "type": "string", "description": "4-digit security PIN" },
+        "phone": { "type": "string", "description": "Phone number" },
         "department": { "type": "string", "description": "Department" },
         "role": { "type": "string", "description": "ADMIN or LECTURER" },
+        "status": { "type": "string", "description": "PENDING, ACTIVE, or REJECTED" },
         "assignedClasses": { "type": "array", "description": "Assigned class codes" },
-        "assignedSubjects": { "type": "array", "description": "Assigned subjects" }
+        "assignedSubjects": { "type": "array", "description": "Assigned subjects" },
+        "registeredAt": { "type": "string", "description": "Registration timestamp" },
+        "approvedAt": { "type": "string", "description": "Approval timestamp" },
+        "approvedBy": { "type": "string", "description": "Admin who approved" }
       },
       "required": ["id", "name", "email", "role"]
+    },
+    "teachingAssignments": {
+      "title": "Teaching Assignments",
+      "description": "Links a lecturer to course subjects and classes taught",
+      "properties": {
+        "id": { "type": "string", "description": "Unique assignment ID" },
+        "lecturerId": { "type": "string", "description": "Unique lecturer identifier" },
+        "lecturerEmail": { "type": "string", "description": "Lecturer email" },
+        "lecturerName": { "type": "string", "description": "Lecturer display name" },
+        "subjectId": { "type": "string", "description": "Subject identifier" },
+        "subjectCode": { "type": "string", "description": "Subject course code" },
+        "subjectName": { "type": "string", "description": "Subject course name" },
+        "className": { "type": "string", "description": "Class code (e.g. DIA_4A)" },
+        "status": { "type": "string", "description": "PENDING, ACTIVE, or REJECTED" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "approvedAt": { "type": "string", "description": "Approval timestamp" },
+        "approvedBy": { "type": "string", "description": "Approving admin" }
+      },
+      "required": ["id", "lecturerId", "subjectCode", "className", "status", "createdAt"]
     },
     "subjects": {
       "title": "Subjects",
@@ -98,6 +122,23 @@
         "verifiedBy": { "type": "string", "description": "Verified by identifier" }
       },
       "required": ["id", "sessionId", "studentId", "timestamp", "status", "method"]
+    },
+    "enrollments": {
+      "title": "Class Enrollments",
+      "description": "Links a unique student master record to subjects, sections, and lecturers",
+      "properties": {
+        "id": { "type": "string", "description": "Unique enrollment ID" },
+        "studentId": { "type": "string", "description": "Unique student identifier (No. Pelajar)" },
+        "subjectCode": { "type": "string", "description": "Subject course code (e.g. MPU 2163)" },
+        "subjectName": { "type": "string", "description": "Subject title" },
+        "className": { "type": "string", "description": "Class / Section (e.g. DIA_4A)" },
+        "section": { "type": "string", "description": "Section code" },
+        "lecturerEmail": { "type": "string", "description": "Lecturer official email" },
+        "lecturerName": { "type": "string", "description": "Lecturer display name" },
+        "enrolledAt": { "type": "string", "description": "Enrollment timestamp" },
+        "status": { "type": "string", "description": "ACTIVE or DROPPED" }
+      },
+      "required": ["id", "studentId", "subjectCode", "className", "enrolledAt"]
     }
   },
   "firestore": {
@@ -109,9 +150,17 @@
       "schema": "lecturers",
       "description": "Collection of lecturer records"
     },
+    "/teaching_assignments/{assignmentId}": {
+      "schema": "teachingAssignments",
+      "description": "Collection of lecturer teaching assignments"
+    },
     "/subjects/{subjectId}": {
       "schema": "subjects",
       "description": "Collection of course subjects"
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": "enrollments",
+      "description": "Collection of student course and class enrollments"
     },
     "/activities/{activityId}": {
       "schema": "activities",
