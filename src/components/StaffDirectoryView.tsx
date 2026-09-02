@@ -18,6 +18,8 @@ import {
   exportStudentsToCSV,
   exportLecturersToCSV,
   generateLecturerTemplateCSV,
+  exportSubjectsToCSV,
+  generateSubjectTemplateCSV,
   downloadCSV
 } from '../utils/csvHelper';
 import {
@@ -78,6 +80,10 @@ interface StudentDirectoryViewProps {
   onSelectActiveLecturer?: (lecturer: Lecturer) => void;
   onOpenCSVImport: () => void;
   onOpenLecturerCSVImport?: () => void;
+  onOpenSubjectCSVImport?: () => void;
+  onAddSubject?: (subject: Subject) => void;
+  onDeleteSubject?: (subjectId: string) => void;
+  onResetSubjects?: () => void;
   onRequestAdminAccess: (actionName?: string) => void;
   onQuickSimulateScan: (studentId: string) => ScanResult;
 }
@@ -98,10 +104,14 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   onSelectActiveLecturer,
   onOpenCSVImport,
   onOpenLecturerCSVImport,
+  onOpenSubjectCSVImport,
+  onAddSubject,
+  onDeleteSubject,
+  onResetSubjects,
   onRequestAdminAccess,
   onQuickSimulateScan
 }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'LECTURERS'>('STUDENTS');
+  const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'LECTURERS' | 'SUBJECTS'>('STUDENTS');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSet, setSelectedSet] = useState<string>('ALL');
 
@@ -113,6 +123,15 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   const [isSelfRegModalOpen, setIsSelfRegModalOpen] = useState<boolean>(false);
   const [approvalActionLoading, setApprovalActionLoading] = useState<string | null>(null);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+
+  // Subject view states
+  const [subjectSearch, setSubjectSearch] = useState<string>('');
+  const [selectedSubjectDepartment, setSelectedSubjectDepartment] = useState<string>('ALL');
+  const [isAddSubjectOpen, setIsAddSubjectOpen] = useState<boolean>(false);
+  const [subCode, setSubCode] = useState<string>('');
+  const [subName, setSubName] = useState<string>('');
+  const [subDepartment, setSubDepartment] = useState<string>('Jabatan Pengajian Am');
+  const [subSections, setSubSections] = useState<string>('DIA_1A, DIA_1B, DIA_2A, DIA_2B');
 
   // New Lecturer Form State
   const [lecName, setLecName] = useState('');
@@ -199,6 +218,26 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     );
   });
 
+  // Filter subjects
+  const filteredSubjects = subjects.filter((sub) => {
+    const q = subjectSearch.toLowerCase();
+    const matchesDept = selectedSubjectDepartment === 'ALL' || sub.department === selectedSubjectDepartment;
+    const matchesSearch =
+      sub.code.toLowerCase().includes(q) ||
+      sub.name.toLowerCase().includes(q) ||
+      (sub.department || '').toLowerCase().includes(q) ||
+      (sub.sections || []).join(' ').toLowerCase().includes(q);
+    return matchesDept && matchesSearch;
+  });
+
+  const SUBJECT_DEPARTMENTS = [
+    'ALL',
+    'Jabatan Pengajian Am',
+    'Jabatan Perakaunan',
+    'Jabatan Pengurusan Perniagaan',
+    'Jabatan Teknologi Maklumat'
+  ];
+
   // Calculate personal attendance rate
   const getStudentStats = (studentId: string, className: string) => {
     const applicableSessions = sessions.filter((s) => !s.className || s.className === className);
@@ -239,6 +278,51 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     const template = generateLecturerTemplateCSV();
     downloadCSV(template, 'Templat_Senarai_Pensyarah_KPM.csv');
     soundService.playClick();
+  };
+
+  const handleExportSubjectsCSV = () => {
+    if (!isAdmin && !activeLecturer) {
+      onRequestAdminAccess('Eksport Data Senarai Kursus / Subjek (CSV)');
+      return;
+    }
+    const csvContent = exportSubjectsToCSV(filteredSubjects);
+    const filename = `Senarai_Subjek_KPM_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(csvContent, filename);
+    soundService.playClick();
+  };
+
+  const handleDownloadSubjectTemplate = () => {
+    const template = generateSubjectTemplateCSV();
+    downloadCSV(template, 'Templat_Senarai_Kursus_KPM.csv');
+    soundService.playClick();
+  };
+
+  const handleCreateSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subCode || !subName) {
+      alert('Sila lengkapkan Kod Kursus dan Nama Kursus');
+      return;
+    }
+    const cleanCode = subCode.trim().toUpperCase();
+    const cleanName = subName.trim().toUpperCase();
+    const secList = subSections.split(/[,;|]/).map((s) => s.trim().toUpperCase()).filter((s) => s.length > 0);
+
+    const newSub: Subject = {
+      id: `SUB-${cleanCode.replace(/[^A-Z0-9]/g, '')}-${Date.now()}`,
+      code: cleanCode,
+      name: cleanName,
+      department: subDepartment,
+      sections: secList.length > 0 ? secList : ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B']
+    };
+
+    if (onAddSubject) {
+      onAddSubject(newSub);
+    }
+    setIsAddSubjectOpen(false);
+    setSubCode('');
+    setSubName('');
+    setSubSections('DIA_1A, DIA_1B, DIA_2A, DIA_2B');
+    soundService.playSuccess();
   };
 
   const toggleShowPin = (lecId: string) => {
@@ -367,13 +451,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   KPM Bandar Penawar
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Padanan Emel + No. IC Pensyarah untuk kebenaran pengubahsuaian data pelajar, pendaftaran kelas, dan cipta Kod QR.
-              </p>
             </div>
 
-            {/* Main Tabs: Pelajar vs Pensyarah */}
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto">
+            {/* Main Tabs: Pelajar vs Pensyarah vs Subjek */}
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto flex-wrap gap-1">
               <button
                 type="button"
                 onClick={() => {
@@ -387,7 +468,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 }`}
               >
                 <GraduationCap className="w-4 h-4" />
-                <span>Direktori Pelajar ({students.length})</span>
+                <span>Pelajar ({students.length})</span>
               </button>
               <button
                 type="button"
@@ -402,7 +483,23 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 }`}
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Senarai Pensyarah ({lecturers.length})</span>
+                <span>Pensyarah ({lecturers.length})</span>
+              </button>
+              <button
+                type="button"
+                id="btn-tab-subjects"
+                onClick={() => {
+                  setActiveMainTab('SUBJECTS');
+                  soundService.playClick();
+                }}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  activeMainTab === 'SUBJECTS'
+                    ? 'bg-teal-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>Subjek &amp; Kursus ({subjects.length})</span>
               </button>
             </div>
           </div>
@@ -426,21 +523,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
                 {/* Actions for Students */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    id="btn-import-csv"
-                    onClick={() => {
-                      if (!activeLecturer) {
-                        onRequestAdminAccess('Import Fail CSV Pelajar');
-                      } else {
-                        onOpenCSVImport();
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV Pelajar</span>
-                  </button>
-
                   <button
                     id="btn-export-csv"
                     onClick={handleExportCSV}
@@ -476,6 +558,21 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       <span>{isCleaningRedundant ? 'Sedang Bersihkan...' : 'Bersihkan Redundant'}</span>
                     </button>
                   )}
+
+                  <button
+                    id="btn-import-csv"
+                    onClick={() => {
+                      if (!activeLecturer) {
+                        onRequestAdminAccess('Import Fail CSV Pelajar');
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import CSV</span>
+                  </button>
                 </div>
               </div>
 
@@ -541,6 +638,16 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 {/* Actions for Lecturers */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <button
+                    type="button"
+                    onClick={handleExportLecturersCSV}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai direktori pensyarah ke fail CSV'}
+                  >
+                    {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
+                    <span>Eksport CSV</span>
+                  </button>
+
+                  <button
                     id="btn-generate-lecturer-qr"
                     type="button"
                     onClick={() => setIsGenerateQRModalOpen(true)}
@@ -602,21 +709,11 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         onOpenCSVImport();
                       }
                     }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
                     title="Import fail CSV senarai pensyarah"
                   >
-                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                    <Upload className="w-3.5 h-3.5" />
                     <span>Import CSV</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportLecturersCSV}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                    title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai direktori pensyarah ke fail CSV'}
-                  >
-                    {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>Eksport CSV</span>
                   </button>
                 </div>
               </div>
@@ -630,131 +727,312 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </div>
             </div>
           )}
+
+          {/* Sub-header Controls: SUBJECTS TAB */}
+          {activeMainTab === 'SUBJECTS' && (
+            <div className="space-y-3.5 pt-3 border-t border-slate-800/80">
+              {/* Row 1: Search Box and Primary Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Search Box */}
+                <div className="relative w-full sm:w-80 lg:w-96">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari kod kursus, nama kursus, jabatan..."
+                    value={subjectSearch}
+                    onChange={(e) => setSubjectSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors"
+                  />
+                </div>
+
+                {/* Actions for Subjects */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    id="btn-export-subject-csv"
+                    type="button"
+                    onClick={handleExportSubjectsCSV}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai kursus ke fail CSV'}
+                  >
+                    {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
+                    <span>Eksport CSV</span>
+                  </button>
+
+                  <button
+                    id="btn-download-subject-template"
+                    type="button"
+                    onClick={handleDownloadSubjectTemplate}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                    title="Muat turun templat CSV rasmi untuk kursus/subjek"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Template CSV</span>
+                  </button>
+
+                  <button
+                    id="btn-manual-add-subject"
+                    type="button"
+                    onClick={() => {
+                      if (!activeLecturer) {
+                        onRequestAdminAccess('Tambah Kursus / Subjek Baharu');
+                      } else {
+                        setIsAddSubjectOpen(true);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title="Tambah kursus baharu secara manual"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Tambah Kursus</span>
+                  </button>
+
+                  {isAdmin && onResetSubjects && (
+                    <button
+                      id="btn-reset-kpm-subjects"
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Adakah anda pasti untuk mengeset semula senarai kursus kepada 46 subjek standard KPM?')) {
+                          onResetSubjects();
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all cursor-pointer"
+                      title="Set semula kepada 46 Kursus Rasmi KPM"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Set Semula 46 Subjek</span>
+                    </button>
+                  )}
+
+                  <button
+                    id="btn-import-subject-csv"
+                    type="button"
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Kursus');
+                        return;
+                      }
+                      if (onOpenSubjectCSVImport) {
+                        onOpenSubjectCSVImport();
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-teal-600/30 transition-all cursor-pointer"
+                    title="Import fail CSV senarai subjek / kursus"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: Department Filter Tabs */}
+              <div className="flex items-center gap-2 pt-1 overflow-x-auto w-full pb-1 no-scrollbar">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-teal-400" />
+                  Jabatan:
+                </span>
+                {SUBJECT_DEPARTMENTS.map((dept, deptIdx) => {
+                  const count = dept === 'ALL' ? subjects.length : subjects.filter((s) => s.department === dept).length;
+                  const label = dept === 'ALL' ? 'Semua Jabatan' : dept.replace('Jabatan ', '');
+                  return (
+                    <button
+                      key={`dept-tab-${dept}-${deptIdx}`}
+                      onClick={() => setSelectedSubjectDepartment(dept)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                        selectedSubjectDepartment === dept
+                          ? 'bg-teal-600 text-white font-bold shadow-md shadow-teal-600/20'
+                          : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800'
+                      }`}
+                    >
+                      <span>{label}</span>
+                      <span className="ml-1.5 text-[10px] opacity-80">({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ===================== VIEW 1: STUDENTS GRID ===================== */}
+        {/* ===================== VIEW 1: STUDENTS DATA TABLE ===================== */}
         {activeMainTab === 'STUDENTS' && (
           <div>
             {filteredStudents.length === 0 ? (
-              <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 text-slate-500 text-xs">
-                Tiada rekod pelajar sepadan dengan kriteria carian.
+              <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-8 text-slate-400 text-xs space-y-2">
+                <GraduationCap className="w-8 h-8 text-slate-600 mx-auto" />
+                <p className="font-semibold text-white">Tiada rekod pelajar dijumpai</p>
+                <p className="text-slate-500 text-[11px]">
+                  {searchQuery
+                    ? `Tiada rekod sepadan dengan carian "${searchQuery}" atau kelas yang dipilih.`
+                    : 'Tiada rekod pelajar dalam senarai atau kelas yang dipilih.'}
+                </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredStudents.map((student) => {
-                  const stats = getStudentStats(student.id, student.className);
+              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[760px]">
+                    <thead>
+                      <tr className="border-b border-slate-800 bg-slate-950/70 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="py-3.5 px-4 w-36">No. Pelajar</th>
+                        <th className="py-3.5 px-4 min-w-[220px]">Nama Pelajar</th>
+                        <th className="py-3.5 px-4 w-28">Kelas</th>
+                        <th className="py-3.5 px-4 w-36">No. Telefon</th>
+                        <th className="py-3.5 px-4 min-w-[180px]">Emel</th>
+                        <th className="py-3.5 px-4 w-32">Kehadiran</th>
+                        <th className="py-3.5 px-4 w-28 text-right">Tindakan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-xs">
+                      {filteredStudents.map((student) => {
+                        const stats = getStudentStats(student.id, student.className);
 
-                  return (
-                    <div
-                      key={student.id}
-                      className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3 shadow-md"
-                    >
-                      <div className="flex items-start justify-between gap-2.5 min-w-0">
-                        <div className="flex items-center space-x-3 min-w-0 flex-1">
-                          <div
-                            className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getStudentColor(
-                              student.name
-                            )} flex items-center justify-center font-bold text-white text-xs shadow-md shrink-0`}
+                        return (
+                          <tr
+                            key={student.id}
+                            className="hover:bg-slate-800/40 transition-colors group"
                           >
-                            {getInitials(student.name)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h4
-                              className="font-bold text-xs sm:text-sm text-white line-clamp-2 leading-snug break-words"
-                              title={student.name}
-                            >
-                              {student.name}
-                            </h4>
-                            <p className="text-[11px] font-mono text-indigo-400 font-semibold truncate mt-0.5">{student.studentId}</p>
-                          </div>
-                        </div>
+                            {/* No. Pelajar */}
+                            <td className="py-3 px-4 font-mono font-semibold text-indigo-400 text-xs whitespace-nowrap">
+                              {student.studentId || student.id}
+                            </td>
 
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${getClassBadgeColor(
-                            student.className
-                          )}`}
-                        >
-                          {student.className}
-                        </span>
-                      </div>
-
-                      {/* Bottom Row: Attendance Stat (Left) + Actions (Right) */}
-                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                        {/* Attendance stats (Left) */}
-                        <div className="flex items-center gap-1.5 text-xs min-w-0">
-                          {stats.hasSessions ? (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-14 sm:w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            {/* Nama Pelajar */}
+                            <td className="py-3 px-4">
+                              <div className="flex items-center space-x-2.5 min-w-0">
                                 <div
-                                  className={`h-full rounded-full ${
-                                    stats.rate >= 80 ? 'bg-emerald-500' : stats.rate >= 60 ? 'bg-amber-500' : 'bg-rose-500'
-                                  }`}
-                                  style={{ width: `${stats.rate}%` }}
-                                />
+                                  className={`w-7 h-7 rounded-lg bg-gradient-to-br ${getStudentColor(
+                                    student.name
+                                  )} flex items-center justify-center font-bold text-white text-[10px] shadow-sm shrink-0`}
+                                >
+                                  {getInitials(student.name)}
+                                </div>
+                                <span
+                                  className="font-semibold text-white truncate max-w-[200px] lg:max-w-[260px] block"
+                                  title={student.name}
+                                >
+                                  {student.name}
+                                </span>
                               </div>
-                              <span
-                                className={`font-bold font-mono text-[11px] ${
-                                  stats.rate >= 80 ? 'text-emerald-400' : stats.rate >= 60 ? 'text-amber-400' : 'text-rose-400'
-                                }`}
-                              >
-                                {stats.rate}%
+                            </td>
+
+                            {/* Kelas */}
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <span className="px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 text-[11px] font-mono font-bold">
+                                {student.className}
                               </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-[11px] italic">
-                              Tiada Sesi
-                            </span>
-                          )}
-                        </div>
+                            </td>
 
-                        {/* Actions (Right) */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (window.confirm(`Adakah anda pasti untuk memadam rekod pelajar ${student.name}?`)) {
-                                  onDeleteStudent(student.id);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
-                              title="Padam Pelajar"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                            {/* No. Telefon */}
+                            <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-300 text-xs">
+                              {student.phone ? (
+                                <span>{student.phone}</span>
+                              ) : (
+                                <span className="text-slate-600 italic">-</span>
+                              )}
+                            </td>
 
-                          {student.phone && (
-                            <a
-                              href={generateWhatsAppWarningLink({
-                                student,
-                                className: student.className,
-                                presentCount: stats.present,
-                                totalSessions: stats.total,
-                                rate: stats.rate
-                              })}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs transition-colors flex items-center justify-center cursor-pointer"
-                              title={`Buka WhatsApp untuk hubungi ${student.name}`}
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </a>
-                          )}
+                            {/* Emel */}
+                            <td className="py-3 px-4 text-slate-400 text-xs">
+                              {student.email ? (
+                                <span
+                                  className="truncate block max-w-[180px] lg:max-w-[220px]"
+                                  title={student.email}
+                                >
+                                  {student.email}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 italic">-</span>
+                              )}
+                            </td>
 
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStudentForQR(student)}
-                            className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs transition-colors flex items-center justify-center cursor-pointer"
-                            title="Papar Kad QR Pelajar"
-                          >
-                            <QrCode className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                            {/* Kehadiran */}
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              {stats.hasSessions ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-12 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        stats.rate >= 80 ? 'bg-emerald-500' : stats.rate >= 60 ? 'bg-amber-500' : 'bg-rose-500'
+                                      }`}
+                                      style={{ width: `${stats.rate}%` }}
+                                    />
+                                  </div>
+                                  <span
+                                    className={`font-bold font-mono text-[11px] ${
+                                      stats.rate >= 80 ? 'text-emerald-400' : stats.rate >= 60 ? 'text-amber-400' : 'text-rose-400'
+                                    }`}
+                                  >
+                                    {stats.rate}%
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 text-[11px] italic">
+                                  Tiada Sesi
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Tindakan */}
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm(`Adakah anda pasti untuk memadam rekod pelajar ${student.name}?`)) {
+                                        onDeleteStudent(student.id);
+                                      }
+                                    }}
+                                    className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                                    title="Padam Pelajar"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
+                                {student.phone && (
+                                  <a
+                                    href={generateWhatsAppWarningLink({
+                                      student,
+                                      className: student.className,
+                                      presentCount: stats.present,
+                                      totalSessions: stats.total,
+                                      rate: stats.rate
+                                    })}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-colors flex items-center justify-center cursor-pointer"
+                                    title={`Buka WhatsApp untuk hubungi ${student.name}`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedStudentForQR(student)}
+                                  className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 transition-colors flex items-center justify-center cursor-pointer"
+                                  title="Papar Kad QR Pelajar"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Table Footer with quick summary count */}
+                <div className="py-2.5 px-4 bg-slate-950/60 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                  <span>Menunjukkan <strong className="text-white font-mono">{filteredStudents.length}</strong> daripada <strong className="text-white font-mono">{students.length}</strong> rekod pelajar</span>
+                  {selectedSet !== 'ALL' && (
+                    <span className="text-indigo-400 font-mono">Kelas: {selectedSet}</span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1228,7 +1506,260 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
             )}
           </div>
         )}
+
+        {/* ===================== VIEW 3: SUBJECTS GRID ===================== */}
+        {activeMainTab === 'SUBJECTS' && (
+          <div className="space-y-5">
+            {filteredSubjects.length === 0 ? (
+              <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-8 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-teal-500/10 border border-teal-500/20 text-teal-400 mx-auto flex items-center justify-center">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">Tiada Kursus / Subjek Ditemui</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Anda boleh memuat naik senarai kursus menggunakan fail CSV atau menambah kursus baharu secara manual.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Akses Admin Diperlukan untuk Memuat Naik CSV Kursus');
+                        return;
+                      }
+                      if (onOpenSubjectCSVImport) {
+                        onOpenSubjectCSVImport();
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-lg shadow-teal-600/30 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Import Fail CSV Kursus</span>
+                  </button>
+                  {isAdmin && onResetSubjects && (
+                    <button
+                      type="button"
+                      onClick={() => onResetSubjects()}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4 text-amber-400" />
+                      <span>Set Semula 46 Kursus KPM</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredSubjects.map((sub) => {
+                  const lecturersTeaching = lecturers.filter((l) => {
+                    const matchDirect = (l.assignedSubjects || []).some(
+                      (s) => s.includes(sub.code) || s.toLowerCase().includes(sub.name.toLowerCase())
+                    );
+                    const matchTa = teachingAssignments.some(
+                      (ta) => ta.lecturerId === l.id && ta.subjectCode === sub.code
+                    );
+                    return matchDirect || matchTa;
+                  });
+
+                  // Color scheme by department
+                  const getDeptBadgeStyle = (deptName?: string) => {
+                    if (!deptName) return 'bg-slate-800 text-slate-300 border-slate-700';
+                    if (deptName.includes('Perakaunan')) return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+                    if (deptName.includes('Pengajian Am')) return 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+                    if (deptName.includes('Pengurusan Perniagaan')) return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                    if (deptName.includes('Teknologi Maklumat')) return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+                    return 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40';
+                  };
+
+                  return (
+                    <div
+                      key={sub.id || sub.code}
+                      className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 shadow-md"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-mono font-black text-xs px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                            {sub.code}
+                          </span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${getDeptBadgeStyle(
+                              sub.department
+                            )}`}
+                          >
+                            {sub.department ? sub.department.replace('Jabatan ', '') : 'KPM'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-sm text-white line-clamp-2 leading-snug break-words" title={sub.name}>
+                            {sub.name}
+                          </h4>
+                        </div>
+
+                        {/* Sections info */}
+                        {sub.sections && sub.sections.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                              Seksyen / Kelas Ditawarkan:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {sub.sections.map((sec, sIdx) => (
+                                <span
+                                  key={`sec-${sub.code}-${sec}-${sIdx}`}
+                                  className="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 text-[10px] font-mono font-medium"
+                                >
+                                  {sec}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Assigned Lecturers */}
+                        <div className="pt-2 border-t border-slate-800/60">
+                          <span className="text-[10px] text-slate-500 block mb-1">
+                            Pensyarah Mengajar ({lecturersTeaching.length}):
+                          </span>
+                          {lecturersTeaching.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {lecturersTeaching.map((l) => (
+                                <span
+                                  key={`lec-badge-${sub.code}-${l.id}`}
+                                  className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 text-[10px] font-medium truncate max-w-[180px]"
+                                  title={l.name}
+                                >
+                                  {l.name.split(' ')[0]} {l.name.split(' ')[1] || ''}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 italic">Belum ada pensyarah ditugaskan</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Footer Actions */}
+                      {isAdmin && onDeleteSubject && (
+                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Padam kursus ${sub.code} - ${sub.name}?`)) {
+                                onDeleteSubject(sub.id || sub.code);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Padam Kursus"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ===================== MODAL: TAMBAH KURSUS / SUBJEK ===================== */}
+      {isAddSubjectOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-white">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-teal-500/20 text-teal-300 rounded-xl">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Tambah Kursus / Subjek Baharu</h3>
+                  <p className="text-[11px] text-slate-400">Senarai rujukan subjek pensyarah KPM</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddSubjectOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubject} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-300">Kod Kursus *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: COM2512 atau ACC1013"
+                  value={subCode}
+                  onChange={(e) => setSubCode(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300">Nama Kursus *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: MEETING AND INTERVIEW SKILLS"
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300">Jabatan</label>
+                <select
+                  value={subDepartment}
+                  onChange={(e) => setSubDepartment(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-teal-500 cursor-pointer"
+                >
+                  <option value="Jabatan Pengajian Am">Jabatan Pengajian Am</option>
+                  <option value="Jabatan Perakaunan">Jabatan Perakaunan</option>
+                  <option value="Jabatan Pengurusan Perniagaan">Jabatan Pengurusan Perniagaan</option>
+                  <option value="Jabatan Teknologi Maklumat">Jabatan Teknologi Maklumat</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300">Seksyen / Kelas (Dipisahkan koma)</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: DIA_1A, DIA_1B, DIA_2A, DIA_2B"
+                  value={subSections}
+                  onChange={(e) => setSubSections(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddSubjectOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-teal-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Simpan Kursus</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ===================== MODAL: TAMBAH PENSYARAH ===================== */}
       {isAddLecturerOpen && (

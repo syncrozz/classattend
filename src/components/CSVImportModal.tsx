@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { Student, Lecturer } from '../types';
+import { Student, Lecturer, Subject } from '../types';
 import {
   parseStudentCSVWithReport,
   parseLecturerCSV,
+  parseSubjectCSVWithReport,
   generateClassTemplateCSV,
   generateLecturerTemplateCSV,
+  generateSubjectTemplateCSV,
   downloadCSV,
-  StudentCSVParseResult
+  StudentCSVParseResult,
+  SubjectCSVParseResult
 } from '../utils/csvHelper';
 import {
   Upload,
-  FileText,
   CheckCircle2,
   AlertCircle,
   X,
@@ -18,11 +20,10 @@ import {
   Users,
   UserCheck,
   BookOpen,
-  Sparkles,
-  ShieldCheck,
   GraduationCap,
   RefreshCw,
-  Layers
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 
@@ -31,7 +32,8 @@ interface CSVImportModalProps {
   onClose: () => void;
   onImport: (students: Student[], replaceAll?: boolean) => void;
   onImportLecturers?: (lecturers: Lecturer[]) => void;
-  initialMode?: 'STUDENT' | 'LECTURER';
+  onImportSubjects?: (subjects: Subject[], replaceAll?: boolean) => void;
+  initialMode?: 'STUDENT' | 'LECTURER' | 'SUBJECT';
 }
 
 export const CSVImportModal: React.FC<CSVImportModalProps> = ({
@@ -39,17 +41,33 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
   onClose,
   onImport,
   onImportLecturers,
+  onImportSubjects,
   initialMode = 'STUDENT'
 }) => {
-  const [importMode, setImportMode] = useState<'STUDENT' | 'LECTURER'>(initialMode);
+  const [importMode, setImportMode] = useState<'STUDENT' | 'LECTURER' | 'SUBJECT'>(initialMode);
   const [dragActive, setDragActive] = useState(false);
   const [parsedStudents, setParsedStudents] = useState<Student[]>([]);
   const [studentReport, setStudentReport] = useState<StudentCSVParseResult | null>(null);
   const [parsedLecturers, setParsedLecturers] = useState<Lecturer[]>([]);
+  const [parsedSubjects, setParsedSubjects] = useState<Subject[]>([]);
+  const [subjectReport, setSubjectReport] = useState<SubjectCSVParseResult | null>(null);
   const [targetClass, setTargetClass] = useState<string>('KEKAL');
   const [replaceExisting, setReplaceExisting] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setImportMode(initialMode);
+      setParsedStudents([]);
+      setStudentReport(null);
+      setParsedLecturers([]);
+      setParsedSubjects([]);
+      setSubjectReport(null);
+      setError(null);
+      setFileName('');
+    }
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -71,9 +89,10 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             setParsedStudents(report.students);
             setStudentReport(report);
             setParsedLecturers([]);
+            setParsedSubjects([]);
             soundService.playSuccess();
           }
-        } else {
+        } else if (importMode === 'LECTURER') {
           const lecturers = parseLecturerCSV(text);
           if (lecturers.length === 0) {
             setError('Gagal membaca rekod pensyarah daripada fail CSV. Sila pastikan terdapat lajur Nama, Email KPM (@bpenawar.kpm.edu.my), dan No. IC.');
@@ -81,11 +100,26 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
           } else {
             setParsedLecturers(lecturers);
             setParsedStudents([]);
+            setParsedSubjects([]);
+            setStudentReport(null);
+            soundService.playSuccess();
+          }
+        } else {
+          // SUBJECT mode
+          const report = parseSubjectCSVWithReport(text);
+          if (report.subjects.length === 0) {
+            setError('Gagal membaca senarai subjek/kursus. Pastikan format mempunyai Kod Kursus dan Nama Kursus (cth: ACC1013 FINANCIAL ACCOUNTING 1).');
+            soundService.playError();
+          } else {
+            setParsedSubjects(report.subjects);
+            setSubjectReport(report);
+            setParsedStudents([]);
+            setParsedLecturers([]);
             setStudentReport(null);
             soundService.playSuccess();
           }
         }
-      } catch (err) {
+      } catch {
         setError('Ralat semasa memproses fail CSV.');
         soundService.playError();
       }
@@ -137,6 +171,12 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
       }
       soundService.playSuccess();
       onClose();
+    } else if (importMode === 'SUBJECT' && parsedSubjects.length > 0) {
+      if (onImportSubjects) {
+        onImportSubjects(parsedSubjects, replaceExisting);
+      }
+      soundService.playSuccess();
+      onClose();
     }
   };
 
@@ -144,14 +184,22 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
     if (importMode === 'STUDENT') {
       const template = generateClassTemplateCSV('DIA_4A');
       downloadCSV(template, 'Templat_Kehadiran_Kelas_KPM.csv');
-    } else {
+    } else if (importMode === 'LECTURER') {
       const template = generateLecturerTemplateCSV();
       downloadCSV(template, 'Templat_Senarai_Pensyarah_KPM.csv');
+    } else {
+      const template = generateSubjectTemplateCSV();
+      downloadCSV(template, 'Templat_Senarai_Kursus_KPM.csv');
     }
     soundService.playClick();
   };
 
-  const hasData = importMode === 'STUDENT' ? parsedStudents.length > 0 : parsedLecturers.length > 0;
+  const hasData =
+    importMode === 'STUDENT'
+      ? parsedStudents.length > 0
+      : importMode === 'LECTURER'
+      ? parsedLecturers.length > 0
+      : parsedSubjects.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
@@ -165,17 +213,24 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   <Users className="w-5 h-5 text-indigo-400" />
                   <span>Import Data Pelajar Kelas (CSV)</span>
                 </>
-              ) : (
+              ) : importMode === 'LECTURER' ? (
                 <>
                   <UserCheck className="w-5 h-5 text-emerald-400" />
                   <span>Import Senarai Pensyarah (CSV)</span>
                 </>
+              ) : (
+                <>
+                  <BookOpen className="w-5 h-5 text-teal-400" />
+                  <span>Import Kod & Nama Kursus / Subjek (CSV)</span>
+                </>
               )}
             </h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 mt-0.5">
               {importMode === 'STUDENT'
                 ? 'Muat naik fail CSV untuk mengisi atau mengemas kini pangkalan data pelajar'
-                : 'Muat naik fail CSV pensyarah (Emel, No IC, Kelas) untuk padanan akses'}
+                : importMode === 'LECTURER'
+                ? 'Muat naik fail CSV pensyarah (Emel, No IC, Kelas, Subjek) untuk padanan akses'
+                : 'Muat naik fail CSV senarai subjek/kursus agar pensyarah dapat memilih subjek dengan tepat'}
             </p>
           </div>
           <button
@@ -188,7 +243,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
 
         {/* Mode Selector Tabs */}
         {!hasData && (
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs gap-1">
             <button
               type="button"
               onClick={() => {
@@ -215,6 +270,19 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               <UserCheck className="w-4 h-4" />
               <span>Import Pensyarah</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setImportMode('SUBJECT');
+                setError(null);
+              }}
+              className={`flex-1 py-2 rounded-lg font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                importMode === 'SUBJECT' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Import Subjek</span>
+            </button>
           </div>
         )}
 
@@ -228,25 +296,39 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               onDrop={handleDrop}
               className={`p-8 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
                 dragActive
-                  ? 'border-indigo-500 bg-indigo-500/10'
+                  ? 'border-teal-500 bg-teal-500/10'
                   : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
               }`}
             >
-              <Upload className={`w-10 h-10 mb-3 ${importMode === 'STUDENT' ? 'text-indigo-400' : 'text-emerald-400'}`} />
+              <Upload
+                className={`w-10 h-10 mb-3 ${
+                  importMode === 'STUDENT'
+                    ? 'text-indigo-400'
+                    : importMode === 'LECTURER'
+                    ? 'text-emerald-400'
+                    : 'text-teal-400'
+                }`}
+              />
               <h4 className="text-sm font-bold text-white mb-1">
-                Tarik & Lepaskan fail CSV {importMode === 'STUDENT' ? 'pelajar' : 'pensyarah'} di sini
+                Tarik & Lepaskan fail CSV {importMode === 'STUDENT' ? 'pelajar' : importMode === 'LECTURER' ? 'pensyarah' : 'subjek/kursus'} di sini
               </h4>
               <p className="text-xs text-slate-400 mb-4">
-                Menyokong fail CSV dengan pemisah koma (,), koma bertindih (;), atau tab
+                Menyokong fail CSV dengan pemisah koma (,), koma bertindih (;), tab, atau senarai teks kod & nama kursus
               </p>
 
-              <label className={`px-4 py-2.5 rounded-xl text-white text-xs font-semibold cursor-pointer shadow-lg transition-all flex items-center gap-2 ${
-                importMode === 'STUDENT'
-                  ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
-                  : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
-              }`}>
+              <label
+                className={`px-4 py-2.5 rounded-xl text-white text-xs font-semibold cursor-pointer shadow-lg transition-all flex items-center gap-2 ${
+                  importMode === 'STUDENT'
+                    ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
+                    : importMode === 'LECTURER'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : 'bg-teal-600 hover:bg-teal-500 shadow-teal-600/30'
+                }`}
+              >
                 <Upload className="w-4 h-4" />
-                <span>Pilih Fail CSV {importMode === 'STUDENT' ? 'Pelajar' : 'Pensyarah'}</span>
+                <span>
+                  Pilih Fail CSV {importMode === 'STUDENT' ? 'Pelajar' : importMode === 'LECTURER' ? 'Pensyarah' : 'Subjek / Kursus'}
+                </span>
                 <input
                   type="file"
                   accept=".csv,text/csv,text/plain"
@@ -270,16 +352,20 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 <div className="text-[11px] font-mono text-slate-400 mt-0.5">
                   {importMode === 'STUDENT'
                     ? 'Bil, No_Pelajar, Nama_Pelajar, Kelas, No_Telefon, Email, Program'
-                    : 'Bil, Nama_Pensyarah, Email_KPM, No_IC, Kelas, Subjek_Diajar, Jabatan'}
+                    : importMode === 'LECTURER'
+                    ? 'Bil, Nama_Pensyarah, Email_KPM, No_IC, Kelas, Subjek_Diajar, Jabatan'
+                    : 'Bil, Kod_Kursus, Nama_Kursus, Jabatan, Kelas_Seksyen'}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold cursor-pointer shrink-0 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 font-semibold cursor-pointer shrink-0 transition-colors"
               >
                 <Download className="w-4 h-4" />
-                <span>Muat Turun Templat CSV ({importMode === 'STUDENT' ? 'Pelajar' : 'Pensyarah'})</span>
+                <span>
+                  Muat Turun Templat ({importMode === 'STUDENT' ? 'Pelajar' : importMode === 'LECTURER' ? 'Pensyarah' : 'Subjek'})
+                </span>
               </button>
             </div>
           </div>
@@ -291,7 +377,11 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>
                   <strong>
-                    {importMode === 'STUDENT' ? `${parsedStudents.length} pelajar` : `${parsedLecturers.length} pensyarah`}
+                    {importMode === 'STUDENT'
+                      ? `${parsedStudents.length} pelajar`
+                      : importMode === 'LECTURER'
+                      ? `${parsedLecturers.length} pensyarah`
+                      : `${parsedSubjects.length} subjek/kursus`}
                   </strong>{' '}
                   berjaya dibaca daripada fail <strong>{fileName}</strong>
                 </span>
@@ -301,6 +391,8 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   setParsedStudents([]);
                   setStudentReport(null);
                   setParsedLecturers([]);
+                  setParsedSubjects([]);
+                  setSubjectReport(null);
                   setFileName('');
                 }}
                 className="text-[11px] underline hover:text-white cursor-pointer text-left"
@@ -309,7 +401,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               </button>
             </div>
 
-            {/* If duplicate IDs were automatically resolved */}
+            {/* If duplicate warnings */}
             {importMode === 'STUDENT' && studentReport && studentReport.duplicateCount > 0 && (
               <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
@@ -319,14 +411,23 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               </div>
             )}
 
-            {/* Target Class & Storage Mode Options */}
-            {importMode === 'STUDENT' && (
+            {importMode === 'SUBJECT' && subjectReport && subjectReport.duplicateCount > 0 && (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>
+                  {subjectReport.duplicateCount} kod kursus pendua telah dikesan dan diselaraskan secara automatik.
+                </span>
+              </div>
+            )}
+
+            {/* Storage Mode Options (Students & Subjects) */}
+            {(importMode === 'STUDENT' || importMode === 'SUBJECT') && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {/* Mode Replace vs Merge */}
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-xs">
                     <span className="text-slate-300 font-semibold flex items-center gap-1.5">
-                      <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
+                      <RefreshCw className="w-3.5 h-3.5 text-teal-400" />
                       Kaedah Simpanan:
                     </span>
                     <div className="space-y-1 text-[11px]">
@@ -334,51 +435,63 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                         <input
                           type="radio"
                           name="importStorageMode"
-                          checked={replaceExisting}
-                          onChange={() => setReplaceExisting(true)}
-                          className="text-indigo-600 focus:ring-0"
+                          checked={!replaceExisting}
+                          onChange={() => setReplaceExisting(false)}
+                          className="text-teal-600 focus:ring-0"
                         />
                         <span>
-                          <strong>Gantikan Pangkalan Data</strong> (Jumlah jadi {parsedStudents.length} orang)
+                          <strong>Gabungkan</strong> dengan senarai sedia ada
                         </span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer text-slate-300">
                         <input
                           type="radio"
                           name="importStorageMode"
-                          checked={!replaceExisting}
-                          onChange={() => setReplaceExisting(false)}
-                          className="text-indigo-600 focus:ring-0"
+                          checked={replaceExisting}
+                          onChange={() => setReplaceExisting(true)}
+                          className="text-teal-600 focus:ring-0"
                         />
                         <span>
-                          <strong>Gabungkan</strong> dengan senarai sedia ada
+                          <strong>Gantikan Keseluruhan</strong> (Jumlah jadi {importMode === 'STUDENT' ? parsedStudents.length : parsedSubjects.length})
                         </span>
                       </label>
                     </div>
                   </div>
 
-                  {/* Target Class Assignment Override */}
-                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col justify-between gap-1.5 text-xs">
-                    <span className="text-slate-300 font-semibold flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                      Tentukan Kelas:
-                    </span>
-                    <select
-                      value={targetClass}
-                      onChange={(e) => setTargetClass(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-indigo-500 w-full"
-                    >
-                      <option value="KEKAL">Gunakan Kelas Dari Fail CSV</option>
-                      <option value="DIA_3A">Tetapkan ke DIA_3A</option>
-                      <option value="DIA_3B">Tetapkan ke DIA_3B</option>
-                      <option value="DIA_3C">Tetapkan ke DIA_3C</option>
-                      <option value="DIA_3D">Tetapkan ke DIA_3D</option>
-                      <option value="DIA_4A">Tetapkan ke DIA_4A</option>
-                      <option value="DIA_4B">Tetapkan ke DIA_4B</option>
-                      <option value="DIA_4C">Tetapkan ke DIA_4C</option>
-                      <option value="DIA_4D">Tetapkan ke DIA_4D</option>
-                    </select>
-                  </div>
+                  {/* Target Class Assignment Override for Students */}
+                  {importMode === 'STUDENT' ? (
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col justify-between gap-1.5 text-xs">
+                      <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                        Tentukan Kelas:
+                      </span>
+                      <select
+                        value={targetClass}
+                        onChange={(e) => setTargetClass(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-indigo-500 w-full"
+                      >
+                        <option value="KEKAL">Gunakan Kelas Dari Fail CSV</option>
+                        <option value="DIA_3A">Tetapkan ke DIA_3A</option>
+                        <option value="DIA_3B">Tetapkan ke DIA_3B</option>
+                        <option value="DIA_3C">Tetapkan ke DIA_3C</option>
+                        <option value="DIA_3D">Tetapkan ke DIA_3D</option>
+                        <option value="DIA_4A">Tetapkan ke DIA_4A</option>
+                        <option value="DIA_4B">Tetapkan ke DIA_4B</option>
+                        <option value="DIA_4C">Tetapkan ke DIA_4C</option>
+                        <option value="DIA_4D">Tetapkan ke DIA_4D</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col justify-between gap-1.5 text-xs">
+                      <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                        Pilihan Penugasan:
+                      </span>
+                      <p className="text-[11px] text-slate-400">
+                        Subjek ini akan serta-merta tersedia dalam pilihan Pendaftaran Kendiri Pensyarah dan Sesi Kuliah.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -412,7 +525,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                     ))}
                   </tbody>
                 </table>
-              ) : (
+              ) : importMode === 'LECTURER' ? (
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-900 text-slate-400 text-[10px] font-bold sticky top-0 uppercase tracking-wider">
                     <tr>
@@ -445,6 +558,37 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                     ))}
                   </tbody>
                 </table>
+              ) : (
+                /* SUBJECTS TABLE PREVIEW */
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-900 text-slate-400 text-[10px] font-bold sticky top-0 uppercase tracking-wider">
+                    <tr>
+                      <th className="py-2.5 px-3">Bil</th>
+                      <th className="py-2.5 px-3">Kod Kursus</th>
+                      <th className="py-2.5 px-3">Nama Kursus</th>
+                      <th className="py-2.5 px-3">Jabatan</th>
+                      <th className="py-2.5 px-3">Kelas / Seksyen</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                    {parsedSubjects.map((sub, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/50">
+                        <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
+                        <td className="py-2 px-3 font-bold text-teal-300">{sub.code}</td>
+                        <td className="py-2 px-3 font-sans font-semibold text-white">{sub.name}</td>
+                        <td className="py-2 px-3 font-sans text-slate-300">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px]">
+                            {sub.department || 'Jabatan Perakaunan'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 font-sans text-slate-400 text-[10px]">
+                          {(sub.sections || []).slice(0, 3).join(', ')}
+                          {(sub.sections || []).length > 3 ? ` +${sub.sections.length - 3}` : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
 
@@ -462,12 +606,14 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                 className={`px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   importMode === 'STUDENT'
                     ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
-                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : importMode === 'LECTURER'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : 'bg-teal-600 hover:bg-teal-500 shadow-teal-600/30'
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>
-                  Simpan {importMode === 'STUDENT' ? `${parsedStudents.length} Pelajar` : `${parsedLecturers.length} Pensyarah`} ke Pangkalan Data
+                  Simpan {importMode === 'STUDENT' ? `${parsedStudents.length} Pelajar` : importMode === 'LECTURER' ? `${parsedLecturers.length} Pensyarah` : `${parsedSubjects.length} Subjek`} ke Pangkalan Data
                 </span>
               </button>
             </div>
@@ -477,5 +623,3 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
     </div>
   );
 };
-
-

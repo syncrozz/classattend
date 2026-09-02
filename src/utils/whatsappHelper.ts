@@ -1,20 +1,9 @@
 import { Student } from '../types';
+import { normalizePhoneNumber } from './phoneHelper';
 
 export function formatWhatsAppPhone(rawPhone?: string): string {
   if (!rawPhone) return '';
-  // Strip all non-numeric characters
-  let cleaned = rawPhone.replace(/\D/g, '');
-  if (!cleaned) return '';
-
-  // Handle local Malaysian mobile numbers
-  if (cleaned.startsWith('0')) {
-    cleaned = '60' + cleaned.slice(1);
-  } else if (cleaned.startsWith('60')) {
-    // Already in international format
-  } else if (cleaned.length >= 9 && !cleaned.startsWith('60')) {
-    cleaned = '60' + cleaned;
-  }
-  return cleaned;
+  return normalizePhoneNumber(rawPhone);
 }
 
 export interface WhatsAppAttendanceWarningParams {

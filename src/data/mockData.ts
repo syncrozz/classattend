@@ -3,55 +3,59 @@ import { Student, AttendanceSession, AttendanceRecord, Lecturer, Subject } from 
 export const INITIAL_LECTURERS: Lecturer[] = [];
 
 export const INITIAL_SUBJECTS: Subject[] = [
-  {
-    id: 'SUB-MPU2163',
-    code: 'MPU 2163',
-    name: 'Pengajian Malaysia 2',
-    department: 'Jabatan Pengajian Am',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-ACC2103',
-    code: 'ACC 2103',
-    name: 'Perakaunan Kewangan 2',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-TAX3103',
-    code: 'TAX 3103',
-    name: 'Percukaian 1',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-AUD3903',
-    code: 'AUD 3903',
-    name: 'Pengauditan',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-FAR2103',
-    code: 'FAR 2103',
-    name: 'Pelaporan Kewangan 1',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-MAF2513',
-    code: 'MAF 2513',
-    name: 'Perakaunan Pengurusan 1',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  },
-  {
-    id: 'SUB-QBM1013',
-    code: 'QBM 1013',
-    name: 'Kaedah Kuantitatif Perniagaan',
-    department: 'Jabatan Perakaunan',
-    sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']
-  }
+  // Jabatan Pengajian Am / Bahasa / Komunikasi
+  { id: 'SUB-COM2512', code: 'COM2512', name: 'MEETING AND INTERVIEW SKILLS', department: 'Jabatan Pengajian Am', sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ENG1453', code: 'ENG1453', name: 'IEP READING', department: 'Jabatan Pengajian Am', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ENG1473', code: 'ENG1473', name: 'IEP LISTENING AND SPEAKING', department: 'Jabatan Pengajian Am', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ENG1483', code: 'ENG1483', name: 'IEP GRAMMAR', department: 'Jabatan Pengajian Am', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ENG1674', code: 'ENG1674', name: 'IEP WRITING', department: 'Jabatan Pengajian Am', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-FLG1202', code: 'FLG1202', name: 'MANDARIN 1', department: 'Jabatan Pengajian Am', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-FLG1212', code: 'FLG1212', name: 'MANDARIN 2', department: 'Jabatan Pengajian Am', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ISL1092', code: 'ISL1092', name: 'PENDIDIKAN ISLAM 1', department: 'Jabatan Pengajian Am', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-ISL1102', code: 'ISL1102', name: 'PENDIDIKAN ISLAM 2', department: 'Jabatan Pengajian Am', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-MPU2162', code: 'MPU2162', name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am', sections: ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-MPU2232', code: 'MPU2232', name: 'PUBLIC SPEAKING AND COMMUNICATION', department: 'Jabatan Pengajian Am', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-MPU2372', code: 'MPU2372', name: 'DINAMIKA ISLAM DI MALAYSIA', department: 'Jabatan Pengajian Am', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-MPU2482', code: 'MPU2482', name: 'KEMAHIRAN & TANGGUNGJAWAB SOSIAL KORPORAT', department: 'Jabatan Pengajian Am', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+
+  // Jabatan Perakaunan & Kewangan
+  { id: 'SUB-ACC1013', code: 'ACC1013', name: 'FINANCIAL ACCOUNTING 1', department: 'Jabatan Perakaunan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-ACC1033', code: 'ACC1033', name: 'FINANCIAL ACCOUNTING 2', department: 'Jabatan Perakaunan', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ACC1133', code: 'ACC1133', name: 'COST ACCOUNTING 1', department: 'Jabatan Perakaunan', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ACC1173', code: 'ACC1173', name: 'FINANCIAL REPORTING 1', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2203', code: 'ACC2203', name: 'FINANCIAL REPORTING 2', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2223', code: 'ACC2223', name: 'FINANCIAL REPORTING 3', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ACC2423', code: 'ACC2423', name: 'FINANCIAL REPORTING 4', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ACC2533', code: 'ACC2533', name: 'MANAGEMENT ACCOUNTING', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2543', code: 'ACC2543', name: 'ACCOUNTING INFORMATION SYSTEM', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2613', code: 'ACC2613', name: 'TAXATION 1', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2653', code: 'ACC2653', name: 'COST ACCOUNTING 2', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2663', code: 'ACC2663', name: 'COMPUTERISED ACCOUNTING', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-ACC2673', code: 'ACC2673', name: 'FUNDAMENTAL OF FINANCIAL ACCOUNTING', department: 'Jabatan Perakaunan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-ACC2682', code: 'ACC2682', name: 'PRINCIPLES OF ISLAMIC ACCOUNTING', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ACC3553', code: 'ACC3553', name: 'FINANCIAL ACCOUNTING 5', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ACC3573', code: 'ACC3573', name: 'AUDITING', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-ACC3623', code: 'ACC3623', name: 'TAXATION 2', department: 'Jabatan Perakaunan', sections: ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'] },
+  { id: 'SUB-FIN3513', code: 'FIN3513', name: 'FINANCIAL MANAGEMENT', department: 'Jabatan Perakaunan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+
+  // Jabatan Perniagaan, Pengurusan & Logistik
+  { id: 'SUB-BUS1013', code: 'BUS1013', name: 'INTRODUCTION TO BUSINESS', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-ECO1013', code: 'ECO1013', name: 'MICROECONOMICS', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-ECO1043', code: 'ECO1043', name: 'BUSINESS ECONOMICS', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ECO2023', code: 'ECO2023', name: 'MACROECONOMICS', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-ETR2583', code: 'ETR2583', name: 'E-ENTREPRENEURSHIP', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-HLC2593', code: 'HLC2593', name: 'HALAL LOGISTICS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-LOG2063', code: 'LOG2063', name: 'PRINCIPLES OF PURCHASING MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-LOG2603', code: 'LOG2603', name: 'PRINCIPLES OF OPERATIONS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-MAT1013', code: 'MAT1013', name: 'BUSINESS MATHEMATICS', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-MGT1013', code: 'MGT1013', name: 'PRINCIPLES OF MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B'] },
+  { id: 'SUB-MGT2513', code: 'MGT2513', name: 'HUMAN RESOURCE MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-MKT2013', code: 'MKT2013', name: 'PRINCIPLES OF MARKETING', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] },
+  { id: 'SUB-LAW2053', code: 'LAW2053', name: 'INTRODUCTION TO PARTNERSHIP LAW', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+  { id: 'SUB-LAW2523', code: 'LAW2523', name: 'BUSINESS LAW', department: 'Jabatan Pengurusan Perniagaan', sections: ['DIA_3A', 'DIA_3B', 'DIA_4A', 'DIA_4B'] },
+
+  // Jabatan Teknologi Maklumat
+  { id: 'SUB-ITE1133', code: 'ITE1133', name: 'INTRODUCTION OF INFORMATION TECHNOLOGY APPLICATIONS AND COMPUTER CONCEPTS', department: 'Jabatan Teknologi Maklumat', sections: ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B'] }
 ];
 
 export const INITIAL_STUDENTS: Student[] = [

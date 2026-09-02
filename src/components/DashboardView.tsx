@@ -307,11 +307,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       ) : (
         <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="space-y-1 text-center sm:text-left">
+          <div className="text-center sm:text-left">
             <h3 className="text-lg font-bold text-white">Tiada Sesi Kuliah / Kelas Sedang Dibuka</h3>
-            <p className="text-xs text-slate-400">
-              Pilih satu subjek atau cipta sesi kuliah baharu untuk memulakan pengimbasan kehadiran pelajar mengikut kelas.
-            </p>
           </div>
           <button
             id="dashboard-btn-goto-activities"

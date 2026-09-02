@@ -13,20 +13,30 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 let firestoreInstance: Firestore;
 const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== '' 
-  ? firebaseConfig.firestoreDatabaseId 
+  ? firebaseConfig.firestoreDatabaseId.trim() 
   : undefined;
 
 try {
-  firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
-  }, dbId);
+  firestoreInstance = dbId
+    ? initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      }, dbId)
+    : initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      });
 } catch (e1) {
   try {
-    firestoreInstance = initializeFirestore(app, {
-      localCache: memoryLocalCache()
-    }, dbId);
+    firestoreInstance = dbId
+      ? initializeFirestore(app, {
+          localCache: memoryLocalCache()
+        }, dbId)
+      : initializeFirestore(app, {
+          localCache: memoryLocalCache()
+        });
   } catch (e2) {
     firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
   }

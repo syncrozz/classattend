@@ -1,4 +1,225 @@
-import { Student, AttendanceRecord, AttendanceSession, Lecturer } from '../types';
+import { Student, AttendanceRecord, AttendanceSession, Lecturer, Subject } from '../types';
+import { normalizePhoneNumber } from './phoneHelper';
+
+export * from './phoneHelper';
+
+/**
+ * Generate standard CSV template for Kursus / Subjek
+ */
+export const generateSubjectTemplateCSV = (): string => {
+  const headers = ['Bil', 'Kod_Kursus', 'Nama_Kursus', 'Jabatan', 'Kelas_Seksyen'];
+  const sampleRows = [
+    [1, 'ACC1013', 'FINANCIAL ACCOUNTING 1', 'Jabatan Perakaunan', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B'],
+    [2, 'COM2512', 'MEETING AND INTERVIEW SKILLS', 'Jabatan Pengajian Am', 'DIA_3A, DIA_3B, DIA_4A, DIA_4B'],
+    [3, 'MGT1013', 'PRINCIPLES OF MANAGEMENT', 'Jabatan Pengurusan Perniagaan', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B'],
+    [4, 'ITE1133', 'INTRODUCTION OF INFORMATION TECHNOLOGY APPLICATIONS', 'Jabatan Teknologi Maklumat', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B']
+  ];
+
+  const content = [
+    headers.join(','),
+    ...sampleRows.map((r) => r.map((cell) => `"${cell}"`).join(','))
+  ].join('\n');
+
+  return content;
+};
+
+/**
+ * Export Subject List to CSV
+ */
+export const exportSubjectsToCSV = (subjects: Subject[]): string => {
+  const headers = ['Bil', 'Kod_Kursus', 'Nama_Kursus', 'Jabatan', 'Kelas_Seksyen'];
+  const rows = subjects.map((sub, idx) => [
+    idx + 1,
+    `"${(sub.code || '').toUpperCase().trim()}"`,
+    `"${(sub.name || '').replace(/"/g, '""').toUpperCase().trim()}"`,
+    `"${(sub.department || 'Jabatan Perakaunan').replace(/"/g, '""')}"`,
+    `"${(sub.sections || []).join(', ')}"`
+  ]);
+
+  return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+};
+
+/**
+ * Helper to deduce department from course code
+ */
+export const deduceDepartmentFromCode = (code: string): string => {
+  const upper = code.toUpperCase().trim();
+  if (/^(ACC|TAX|AUD|FAR|MAF|FIN|QBM)/.test(upper)) {
+    return 'Jabatan Perakaunan';
+  }
+  if (/^(MPU|ENG|FLG|ISL|COM|PEN)/.test(upper)) {
+    return 'Jabatan Pengajian Am';
+  }
+  if (/^(ITE|CSC|ICT|BIT)/.test(upper)) {
+    return 'Jabatan Teknologi Maklumat';
+  }
+  if (/^(ECO|MGT|MKT|LOG|BUS|LAW|ETR|MAT|HLC|HRM|OPM)/.test(upper)) {
+    return 'Jabatan Pengurusan Perniagaan';
+  }
+  return 'Jabatan Pengajian Am';
+};
+
+export interface SubjectCSVParseResult {
+  subjects: Subject[];
+  totalRowsRead: number;
+  duplicateCount: number;
+  skippedCount: number;
+}
+
+/**
+ * Robust Subject CSV and Plain Text Parser
+ * Supports:
+ * - Comma / Semicolon / Tab separated CSV
+ * - Plain lines like "COM2512 MEETING AND INTERVIEW SKILLS"
+ * - Headers with Code / Kursus / Name / Subjek / Jabatan / Kelas
+ */
+export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResult => {
+  const rawLines = csvText
+    .split(/\r\n|\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (rawLines.length === 0) {
+    return { subjects: [], totalRowsRead: 0, duplicateCount: 0, skippedCount: 0 };
+  }
+
+  // Detect if first line is a header
+  const firstLine = rawLines[0];
+  const isHeader = /bil|kod|code|kursus|nama|name|subjek|subject|jabatan|dept|kelas|section/i.test(firstLine);
+  
+  let headerIndex = -1;
+  let codeCol = -1;
+  let nameCol = -1;
+  let deptCol = -1;
+  let sectionCol = -1;
+
+  if (isHeader) {
+    headerIndex = 0;
+    const headerCols = splitCSVRow(firstLine).map((h) => h.toLowerCase().trim());
+    codeCol = headerCols.findIndex((h) => h.includes('kod') || h.includes('code'));
+    nameCol = headerCols.findIndex((h) => h.includes('nama') || h.includes('name') || h.includes('tajuk') || h.includes('title'));
+    deptCol = headerCols.findIndex((h) => h.includes('jabatan') || h.includes('dept') || h.includes('department') || h.includes('program'));
+    sectionCol = headerCols.findIndex((h) => h.includes('kelas') || h.includes('seksyen') || h.includes('section') || h.includes('class'));
+  }
+
+  const resultSubjects: Subject[] = [];
+  const seenCodes = new Set<string>();
+  let duplicates = 0;
+  let skipped = 0;
+
+  const startLine = headerIndex >= 0 ? headerIndex + 1 : 0;
+
+  for (let i = startLine; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (!line || line.startsWith('#')) {
+      skipped++;
+      continue;
+    }
+
+    let code = '';
+    let name = '';
+    let department = '';
+    let sections: string[] = ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+
+    // Check if line is CSV separated or simple text like "COM2512 MEETING AND INTERVIEW SKILLS"
+    const cols = splitCSVRow(line);
+
+    if (cols.length >= 2 && (codeCol >= 0 || nameCol >= 0 || cols[0].length <= 15)) {
+      // CSV column based
+      if (codeCol >= 0 && cols[codeCol]) {
+        code = cols[codeCol].trim().toUpperCase();
+      } else if (cols[1] && /^[A-Z]{2,4}\s?[0-9]{3,5}/i.test(cols[1].trim())) {
+        code = cols[1].trim().toUpperCase();
+      } else if (cols[0] && /^[A-Z]{2,4}\s?[0-9]{3,5}/i.test(cols[0].trim())) {
+        code = cols[0].trim().toUpperCase();
+      }
+
+      if (nameCol >= 0 && cols[nameCol]) {
+        name = cols[nameCol].trim().toUpperCase();
+      } else if (cols[2] && code) {
+        name = cols[2].trim().toUpperCase();
+      } else if (cols[1] && cols[0] === code) {
+        name = cols[1].trim().toUpperCase();
+      }
+
+      if (deptCol >= 0 && cols[deptCol]) {
+        department = cols[deptCol].trim();
+      }
+
+      if (sectionCol >= 0 && cols[sectionCol]) {
+        const secList = cols[sectionCol]
+          .split(/[,;|]/)
+          .map((s) => s.trim().toUpperCase().replace(/\s+/g, '_'))
+          .filter((s) => s.length > 0);
+        if (secList.length > 0) sections = secList;
+      }
+    }
+
+    // Fallback: Check if line matches Regex format "CODE NAME..."
+    if (!code || !name) {
+      // Regex matches: [3-4 Letters][3-5 Digits] followed by space and name
+      const match = line.match(/^([A-Za-z]{2,5}\s?[0-9]{3,5})\s*[:\-\t, ]\s*(.+)$/);
+      if (match) {
+        code = match[1].replace(/\s+/g, '').toUpperCase();
+        name = match[2].trim().toUpperCase();
+      } else {
+        // Try simple split by first space
+        const firstSpaceIdx = line.indexOf(' ');
+        if (firstSpaceIdx > 2 && firstSpaceIdx <= 10) {
+          const possibleCode = line.slice(0, firstSpaceIdx).trim().toUpperCase();
+          if (/^[A-Za-z0-9]+$/.test(possibleCode)) {
+            code = possibleCode;
+            name = line.slice(firstSpaceIdx + 1).trim().toUpperCase();
+          }
+        }
+      }
+    }
+
+    // Clean up code & name
+    code = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    name = name.replace(/^["']|["']$/g, '').trim().toUpperCase();
+
+    if (!code || code.length < 3) {
+      skipped++;
+      continue;
+    }
+
+    if (!name) {
+      name = `KURSUS ${code}`;
+    }
+
+    if (seenCodes.has(code)) {
+      duplicates++;
+      continue;
+    }
+
+    seenCodes.add(code);
+
+    if (!department) {
+      department = deduceDepartmentFromCode(code);
+    }
+
+    resultSubjects.push({
+      id: `SUB-${code}`,
+      code: code,
+      name: name,
+      department: department,
+      sections: sections,
+      status: 'ACTIVE'
+    });
+  }
+
+  return {
+    subjects: resultSubjects,
+    totalRowsRead: rawLines.length - (headerIndex >= 0 ? 1 : 0),
+    duplicateCount: duplicates,
+    skippedCount: skipped
+  };
+};
+
+export const parseSubjectCSV = (csvText: string): Subject[] => {
+  return parseSubjectCSVWithReport(csvText).subjects;
+};
 
 /**
  * Generate standard CSV template for lecturer to download and fill in (Students)
@@ -73,6 +294,7 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
   let nameIndex = headers.findIndex((h) => h.includes('nama'));
   let emailIndex = headers.findIndex((h) => h.includes('email') || h.includes('emel') || h.includes('mel'));
   let icIndex = headers.findIndex((h) => h.includes('ic') || h.includes('kad_pengenalan') || h.includes('kp') || h.includes('nric'));
+  let phoneIndex = headers.findIndex((h) => h.includes('telefon') || h.includes('phone') || h.includes('tel') || h.includes('hp'));
   let pinIndex = headers.findIndex((h) => h.includes('pin'));
   let sectionIndex = headers.findIndex((h) => h.includes('kelas') || h.includes('seksyen') || h.includes('section'));
   let subjectIndex = headers.findIndex((h) => h.includes('subjek') || h.includes('kursus') || h.includes('subject'));
@@ -93,6 +315,8 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
     const name = nameIndex >= 0 && rawCols[nameIndex] ? rawCols[nameIndex].trim().toUpperCase() : `Pensyarah ${i}`;
     const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim().toLowerCase() : '';
     const icNumber = icIndex >= 0 && rawCols[icIndex] ? rawCols[icIndex].trim() : '';
+    const rawPhone = phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex] : '';
+    const phone = normalizePhoneNumber(rawPhone);
     const customPin = pinIndex >= 0 && rawCols[pinIndex] ? rawCols[pinIndex].trim() : '';
     const sectionsRaw = sectionIndex >= 0 && rawCols[sectionIndex] ? rawCols[sectionIndex].trim() : 'DIA_4A';
     const subjectsRaw = subjectIndex >= 0 && rawCols[subjectIndex] ? rawCols[subjectIndex].trim() : '';
@@ -122,6 +346,7 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
       email,
       icNumber: icNumber || `${derivedPin}`,
       pin: derivedPin,
+      phone: phone || undefined,
       department,
       assignedSections: sections.length > 0 ? sections : ['DIA_4A'],
       assignedClasses: sections.length > 0 ? sections : ['DIA_4A'],
@@ -198,6 +423,190 @@ export const exportSessionAttendanceToCSV = (
   });
 
   return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+};
+
+/**
+ * Backup only successfully scanned attendees (Status HADIR) for a specific session
+ */
+export const exportScannedAttendeesOnlyToCSV = (
+  session: AttendanceSession,
+  students: Student[],
+  records: AttendanceRecord[]
+): string => {
+  const headers = [
+    'Bil',
+    'No_Pelajar',
+    'Nama_Pelajar',
+    'Kelas',
+    'No_Telefon',
+    'Email',
+    'Kod_Subjek',
+    'Nama_Subjek',
+    'Pensyarah',
+    'Tarikh_Kelas',
+    'Masa_Imbasan',
+    'Kaedah_Imbasan',
+    'Status',
+    'ID_Rekod'
+  ];
+
+  const sessionRecords = records.filter(
+    (r) => r.sessionId === session.id && (r.status === 'PRESENT' || !r.status)
+  );
+
+  const studentMap = new Map<string, Student>();
+  students.forEach((s) => studentMap.set(s.id, s));
+
+  const rows = sessionRecords.map((rec, idx) => {
+    const s = studentMap.get(rec.studentId);
+    const scanDate = new Date(rec.timestamp);
+    const scanTimeStr = !isNaN(scanDate.getTime())
+      ? scanDate.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '-';
+
+    return [
+      idx + 1,
+      `"${s?.studentId || rec.studentId}"`,
+      `"${(s?.name || rec.studentId).replace(/"/g, '""')}"`,
+      `"${s?.className || rec.className || session.className || ''}"`,
+      `"${s?.phone || ''}"`,
+      `"${s?.email || ''}"`,
+      `"${session.subjectCode || rec.subjectCode || ''}"`,
+      `"${session.subjectName || ''}"`,
+      `"${session.lecturerName || ''}"`,
+      `"${session.date || ''}"`,
+      `"${scanTimeStr}"`,
+      `"${rec.method === 'CAMERA_SCAN' ? 'Imbasan Kamera' : rec.method === 'QR' ? 'Imbasan QR Kendiri' : rec.method === 'MANUAL' ? 'Manual' : rec.method || 'Imbasan'}"`,
+      `"HADIR"`,
+      `"${rec.id}"`
+    ];
+  });
+
+  return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+};
+
+/**
+ * Backup ALL successfully recorded attendances college-wide to CSV
+ */
+export const exportAllAttendanceRecordsToCSV = (
+  records: AttendanceRecord[],
+  students: Student[],
+  sessions: AttendanceSession[]
+): string => {
+  const headers = [
+    'Bil',
+    'No_Pelajar',
+    'Nama_Pelajar',
+    'Kelas_Pelajar',
+    'No_Telefon',
+    'Email',
+    'Kod_Subjek',
+    'Nama_Subjek',
+    'Nama_Sesi',
+    'Pensyarah',
+    'Tarikh_Sesi',
+    'Masa_Imbasan',
+    'Kaedah_Imbasan',
+    'Status_Kehadiran',
+    'ID_Sesi',
+    'ID_Rekod'
+  ];
+
+  const studentMap = new Map<string, Student>();
+  students.forEach((s) => studentMap.set(s.id, s));
+
+  const sessionMap = new Map<string, AttendanceSession>();
+  sessions.forEach((sess) => sessionMap.set(sess.id, sess));
+
+  const sortedRecords = [...records].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  const rows = sortedRecords.map((rec, idx) => {
+    const s = studentMap.get(rec.studentId);
+    const sess = sessionMap.get(rec.sessionId);
+    const scanDate = new Date(rec.timestamp);
+    const scanTimeStr = !isNaN(scanDate.getTime())
+      ? scanDate.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '-';
+
+    return [
+      idx + 1,
+      `"${s?.studentId || rec.studentId}"`,
+      `"${(s?.name || rec.studentId).replace(/"/g, '""')}"`,
+      `"${s?.className || rec.className || sess?.className || ''}"`,
+      `"${s?.phone || ''}"`,
+      `"${s?.email || ''}"`,
+      `"${sess?.subjectCode || rec.subjectCode || ''}"`,
+      `"${sess?.subjectName || ''}"`,
+      `"${(sess?.sessionName || '').replace(/"/g, '""')}"`,
+      `"${sess?.lecturerName || ''}"`,
+      `"${sess?.date || ''}"`,
+      `"${scanTimeStr}"`,
+      `"${rec.method === 'CAMERA_SCAN' ? 'Imbasan Kamera' : rec.method === 'QR' ? 'Imbasan QR Kendiri' : rec.method === 'MANUAL' ? 'Manual' : rec.method || 'Imbasan'}"`,
+      `"${rec.status === 'PRESENT' ? 'HADIR' : rec.status || 'HADIR'}"`,
+      `"${rec.sessionId}"`,
+      `"${rec.id}"`
+    ];
+  });
+
+  return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+};
+
+/**
+ * Generate full JSON Backup file of attendance records with metadata
+ */
+export const generateAttendanceBackupJSON = (
+  records: AttendanceRecord[],
+  students: Student[],
+  sessions: AttendanceSession[],
+  lecturerName?: string
+): string => {
+  const studentMap = new Map<string, Student>();
+  students.forEach((s) => studentMap.set(s.id, s));
+
+  const sessionMap = new Map<string, AttendanceSession>();
+  sessions.forEach((sess) => sessionMap.set(sess.id, sess));
+
+  const detailedRecords = records.map((rec) => {
+    const student = studentMap.get(rec.studentId);
+    const session = sessionMap.get(rec.sessionId);
+    return {
+      recordId: rec.id,
+      timestamp: rec.timestamp,
+      method: rec.method,
+      status: rec.status,
+      student: {
+        id: rec.studentId,
+        studentId: student?.studentId || rec.studentId,
+        name: student?.name || '',
+        className: student?.className || rec.className || '',
+        phone: student?.phone || '',
+        email: student?.email || ''
+      },
+      session: {
+        id: rec.sessionId,
+        sessionName: session?.sessionName || '',
+        subjectCode: session?.subjectCode || rec.subjectCode || '',
+        subjectName: session?.subjectName || '',
+        className: session?.className || '',
+        lecturerName: session?.lecturerName || '',
+        date: session?.date || ''
+      }
+    };
+  });
+
+  const backupData = {
+    app: 'ClassAttend — Sistem Kehadiran Pelajar',
+    version: '4.4',
+    exportedAt: new Date().toISOString(),
+    exportedBy: lecturerName || 'Pentadbir Kolej',
+    totalRecords: records.length,
+    totalSessions: sessions.length,
+    records: detailedRecords
+  };
+
+  return JSON.stringify(backupData, null, 2);
 };
 
 /**
@@ -439,7 +848,8 @@ export const parseStudentCSVWithReport = (csvText: string): StudentCSVParseResul
     }
 
     const className = setIndex >= 0 && rawCols[setIndex] && rawCols[setIndex].trim() ? rawCols[setIndex].trim() : 'DIA_4A';
-    const phone = phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex].trim() : '';
+    const rawPhone = phoneIndex >= 0 && rawCols[phoneIndex] !== undefined ? rawCols[phoneIndex] : '';
+    const phone = normalizePhoneNumber(rawPhone);
     const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim() : '';
     const department = deptIndex >= 0 && rawCols[deptIndex] && rawCols[deptIndex].trim() ? rawCols[deptIndex].trim() : 'Diploma Perakaunan';
 
@@ -500,6 +910,18 @@ export const parseStudentCSV = (csvText: string): Student[] => {
 
 export const downloadCSV = (content: string, filename: string) => {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+export const downloadJSON = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);

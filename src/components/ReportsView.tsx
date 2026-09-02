@@ -14,7 +14,11 @@ import {
 } from '../utils/studentUtils';
 import {
   exportSessionAttendanceToCSV,
-  downloadCSV
+  exportScannedAttendeesOnlyToCSV,
+  exportAllAttendanceRecordsToCSV,
+  generateAttendanceBackupJSON,
+  downloadCSV,
+  downloadJSON
 } from '../utils/csvHelper';
 import {
   generateWhatsAppWarningLink
@@ -31,7 +35,10 @@ import {
   Layers,
   BarChart3,
   Users,
-  Lock
+  Lock,
+  FileSpreadsheet,
+  HardDrive,
+  ShieldCheck
 } from 'lucide-react';
 import {
   BarChart,
@@ -70,6 +77,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [filterSet, setFilterSet] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [backupToast, setBackupToast] = useState<string | null>(null);
 
   const currentSession = sortedSessions.find((s) => s.id === selectedSessionId) || sortedSessions[0];
 
@@ -139,6 +147,48 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     }
     const csvContent = exportSessionAttendanceToCSV(currentSession, students, attendanceRecords);
     downloadCSV(csvContent, `Laporan_Kehadiran_Kelas_${currentSession.sessionName.replace(/\s+/g, '_')}.csv`);
+  };
+
+  // Handle Backup Scanned Attendees for Selected Session
+  const handleBackupCurrentSessionScannedCSV = () => {
+    if (!currentSession) return;
+    const csvContent = exportScannedAttendeesOnlyToCSV(currentSession, students, attendanceRecords);
+    const dateStr = currentSession.date || new Date().toISOString().split('T')[0];
+    const subStr = (currentSession.subjectCode || currentSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
+    downloadCSV(csvContent, `Backup_Pelajar_Hadir_${subStr}_${dateStr}.csv`);
+    setBackupToast(`Backup kehadiran (${presentCount} pelajar hadir) berjaya dimuat turun!`);
+    setTimeout(() => setBackupToast(null), 4000);
+  };
+
+  // Handle Backup ALL Attendance Records College-Wide to CSV
+  const handleBackupAllAttendanceCSV = () => {
+    if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
+      onRequestAdminAccess('Backup Semua Rekod Kehadiran Kolej');
+      return;
+    }
+    const csvContent = exportAllAttendanceRecordsToCSV(attendanceRecords, students, sessions);
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadCSV(csvContent, `Backup_Semua_Rekod_Kehadiran_Kolej_${dateStr}.csv`);
+    setBackupToast(`Backup keseluruhan (${attendanceRecords.length} rekod) berjaya dimuat turun!`);
+    setTimeout(() => setBackupToast(null), 4000);
+  };
+
+  // Handle Full JSON Backup
+  const handleBackupAllAttendanceJSON = () => {
+    if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
+      onRequestAdminAccess('Backup JSON Penuh Sistem');
+      return;
+    }
+    const jsonContent = generateAttendanceBackupJSON(
+      attendanceRecords,
+      students,
+      sessions,
+      activeLecturer?.name || 'Pentadbir'
+    );
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadJSON(jsonContent, `Arkib_Backup_Kehadiran_ClassAttend_${dateStr}.json`);
+    setBackupToast('Arkib fail JSON penuh berjaya disimpan & dimuat turun!');
+    setTimeout(() => setBackupToast(null), 4000);
   };
 
   // Class-Perspective Data Calculations
@@ -223,15 +273,38 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     <div className="space-y-6 printable-report-container">
       {/* Top Header & Perspective Switcher */}
       <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4 no-print shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Laporan & Analitik Kehadiran Kelas</h2>
-            <p className="text-xs text-slate-400">
-              Analisis peratus kehadiran mengikut kelas masing-masing, sesi kuliah, dan profil pelajar
-            </p>
+            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <span>Laporan & Analitik Kehadiran Pelajar</span>
+            </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Backup & Export Quick Action Group */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
+              <button
+                type="button"
+                id="btn-backup-all-records-csv"
+                onClick={handleBackupAllAttendanceCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all cursor-pointer"
+                title="Muat turun & simpan backup semua rekod kehadiran pelajar yang telah diimbas (.CSV)"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Backup Semua (.CSV)</span>
+              </button>
+              <button
+                type="button"
+                id="btn-backup-all-records-json"
+                onClick={handleBackupAllAttendanceJSON}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                title="Muat turun fail arkib JSON lengkap untuk keselamatan data"
+              >
+                <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Backup JSON</span>
+              </button>
+            </div>
+
             {/* Perspective Toggle (3 Perspectives: CLASS, SESSION, STUDENT) */}
             <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1">
               <button
@@ -882,6 +955,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </table>
             </div>
           </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {backupToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{backupToast}</span>
         </div>
       )}
     </div>

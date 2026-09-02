@@ -29,9 +29,16 @@ import {
   GraduationCap,
   AlertCircle,
   History,
-  LayoutDashboard
+  LayoutDashboard,
+  HardDrive
 } from 'lucide-react';
 import { getInitials } from '../utils/studentUtils';
+import {
+  exportAllAttendanceRecordsToCSV,
+  generateAttendanceBackupJSON,
+  downloadCSV,
+  downloadJSON
+} from '../utils/csvHelper';
 import { GenerateLecturerQRModal } from './GenerateLecturerQRModal';
 import { AuditLogSection } from './AuditLogSection';
 
@@ -75,6 +82,23 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'AUDIT_LOG'>('OVERVIEW');
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [backupToast, setBackupToast] = useState<string | null>(null);
+
+  const handleBackupAllCSV = () => {
+    const csvContent = exportAllAttendanceRecordsToCSV(attendanceRecords, students, sessions);
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadCSV(csvContent, `Backup_Semua_Kehadiran_Kolej_${dateStr}.csv`);
+    setBackupToast(`Backup CSV (${attendanceRecords.length} rekod) berjaya dimuat turun!`);
+    setTimeout(() => setBackupToast(null), 4000);
+  };
+
+  const handleBackupAllJSON = () => {
+    const jsonContent = generateAttendanceBackupJSON(attendanceRecords, students, sessions, 'Pentadbir Kolej');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadJSON(jsonContent, `Arkib_Backup_Kehadiran_Kolej_${dateStr}.json`);
+    setBackupToast('Arkib fail JSON lengkap berjaya dimuat turun!');
+    setTimeout(() => setBackupToast(null), 4000);
+  };
 
   // 1. Pending Lecturers for Approval
   const pendingLecturers = lecturers.filter((l) => l.status === 'PENDING');
@@ -137,12 +161,19 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
             <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
               Pusat Kawalan
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Kolej Profesional MARA Bandar Penawar • Pengawasan Sistem & Kelulusan Pensyarah
-            </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              id="btn-admin-backup-records-header"
+              onClick={handleBackupAllCSV}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              title="Backup semua rekod kehadiran pelajar yang telah diimbas (.CSV)"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              <span>Backup Kehadiran</span>
+            </button>
             <button
               type="button"
               id="btn-admin-generate-qr"
@@ -150,7 +181,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
               className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <QrCode className="w-4 h-4" />
-              <span>Jana QR Pendaftaran</span>
+              <span>Jana QR</span>
             </button>
             <button
               type="button"
@@ -432,7 +463,21 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
       </div>
 
       {/* 5. Tindakan Pantas Pentadbir (Admin Actions) */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+        <button
+          type="button"
+          onClick={handleBackupAllCSV}
+          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
+        >
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Download className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white">Backup Rekod</div>
+            <div className="text-[11px] text-emerald-400 font-medium">Muat turun CSV</div>
+          </div>
+        </button>
+
         <button
           type="button"
           onClick={() => setIsQRModalOpen(true)}
@@ -583,6 +628,14 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
         isOpen={isQRModalOpen}
         onClose={() => setIsQRModalOpen(false)}
       />
+
+      {/* Backup Toast Notification */}
+      {backupToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{backupToast}</span>
+        </div>
+      )}
     </div>
   );
 };

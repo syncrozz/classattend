@@ -242,9 +242,6 @@ export const AuditLogSection: React.FC<AuditLogSectionProps> = ({
               <History className="w-6 h-6 text-indigo-400" />
               <span>Audit Log Pentadbir (System Audit Trail)</span>
             </h2>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              Jejak masa nyata semua tindakan kritikal seperti import CSV, pemadaman sesi, kelulusan pensyarah, dan pengubahsuaian Master Data kolej.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">

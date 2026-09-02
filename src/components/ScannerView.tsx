@@ -17,6 +17,13 @@ import {
   sortSessionsLatestFirst
 } from '../utils/studentUtils';
 import {
+  exportScannedAttendeesOnlyToCSV,
+  exportSessionAttendanceToCSV,
+  generateAttendanceBackupJSON,
+  downloadCSV,
+  downloadJSON
+} from '../utils/csvHelper';
+import {
   Camera,
   CameraOff,
   CheckCircle2,
@@ -45,7 +52,10 @@ import {
   UserCheck,
   QrCode,
   Lock,
-  RotateCcw
+  RotateCcw,
+  Download,
+  FileSpreadsheet,
+  HardDrive
 } from 'lucide-react';
 
 export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
@@ -155,6 +165,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   });
   const [showPaceSettings, setShowPaceSettings] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [backupToast, setBackupToast] = useState<string | null>(null);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const qrRegionId = 'qr-reader-studentattend';
@@ -425,6 +436,31 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     })
     .slice(0, 6);
 
+  // Backup Scanned Attendance Handlers
+  const handleBackupSessionCSV = () => {
+    if (!currentSession) return;
+    const content = exportScannedAttendeesOnlyToCSV(currentSession, students, attendanceRecords);
+    const dateStr = currentSession.date || new Date().toISOString().split('T')[0];
+    const subStr = (currentSession.subjectCode || currentSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
+    const classStr = (currentSession.className || 'Semua').replace(/[\s/]/g, '_');
+    const filename = `Backup_Kehadiran_${subStr}_${classStr}_${dateStr}.csv`;
+    downloadCSV(content, filename);
+    setBackupToast(`Backup CSV (${matchingPresentRecords.length} pelajar hadir) berjaya dimuat turun!`);
+    setTimeout(() => setBackupToast(null), 4000);
+  };
+
+  const handleBackupSessionJSON = () => {
+    if (!currentSession) return;
+    const sessionRecords = attendanceRecords.filter((r) => r.sessionId === currentSession.id);
+    const content = generateAttendanceBackupJSON(sessionRecords, students, [currentSession], currentSession.lecturerName);
+    const dateStr = currentSession.date || new Date().toISOString().split('T')[0];
+    const subStr = (currentSession.subjectCode || currentSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
+    const filename = `Backup_Penuh_Kehadiran_${subStr}_${dateStr}.json`;
+    downloadJSON(content, filename);
+    setBackupToast('Backup JSON lengkap berjaya dimuat turun!');
+    setTimeout(() => setBackupToast(null), 4000);
+  };
+
   // Close Session Handler
   const handleConfirmCloseSession = () => {
     if (!currentSession) return;
@@ -501,6 +537,18 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 })}
               </span>
             </div>
+
+            {/* Quick Backup CSV Button in Header */}
+            <button
+              type="button"
+              id="btn-quick-backup-session-header"
+              onClick={handleBackupSessionCSV}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              title="Muat turun & simpan fail backup kehadiran sesi ini (.CSV)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Backup CSV</span>
+            </button>
 
             {/* Sound Toggle */}
             <button
@@ -1101,16 +1149,40 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         {/* RIGHT COLUMN: LIVE ATTENDEES STREAM & LOG (5 COLS) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-4 flex flex-col h-full shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 gap-2">
               <div>
                 <h3 className="text-sm font-extrabold text-white">Log Kehadiran Langsung</h3>
                 <p className="text-[11px] text-slate-400">
                   {matchingPresentRecords.length} pelajar hadir bagi sesi ini
                 </p>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono">
-                {matchingPresentRecords.length}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  id="btn-backup-scanned-stream-csv"
+                  onClick={handleBackupSessionCSV}
+                  disabled={matchingPresentRecords.length === 0}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Simpan / Backup rekod kehadiran sesi ini ke fail CSV"
+                >
+                  <Download className="w-3 h-3 text-emerald-400" />
+                  <span>Backup .CSV</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-backup-scanned-stream-json"
+                  onClick={handleBackupSessionJSON}
+                  disabled={matchingPresentRecords.length === 0}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Muat turun fail backup JSON penuh untuk arkib"
+                >
+                  <HardDrive className="w-3 h-3 text-indigo-400" />
+                  <span className="hidden sm:inline">JSON</span>
+                </button>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono">
+                  {matchingPresentRecords.length}
+                </span>
+              </div>
             </div>
 
             {/* Attendees Stream List */}
@@ -1270,6 +1342,15 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             <div className="flex flex-col gap-2.5">
               <button
                 type="button"
+                id="btn-backup-summary-csv"
+                onClick={handleBackupSessionCSV}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Download className="w-4 h-4 text-emerald-400" />
+                <span>Muat Turun Backup Kehadiran (.CSV)</span>
+              </button>
+              <button
+                type="button"
                 id="btn-return-workspace"
                 onClick={() => {
                   setClosedSessionSummary(null);
@@ -1292,6 +1373,14 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Backup Download Toast Notification */}
+      {backupToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{backupToast}</span>
         </div>
       )}
     </div>

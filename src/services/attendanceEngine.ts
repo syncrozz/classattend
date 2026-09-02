@@ -937,6 +937,75 @@ class AttendanceEngine {
     }
   }
 
+  public saveSubjectsList(newSubjects: Subject[], replaceAll: boolean = true) {
+    if (replaceAll) {
+      this.subjects = newSubjects;
+    } else {
+      const existingMap = new Map<string, Subject>(this.subjects.map((s) => [(s.code || s.id).toUpperCase(), s]));
+      newSubjects.forEach((s) => existingMap.set((s.code || s.id).toUpperCase(), s));
+      this.subjects = Array.from(existingMap.values());
+    }
+    this.saveSubjectsLocally();
+
+    if (db && this.subjects.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        this.subjects.forEach((subject) => {
+          batch.set(doc(db, 'subjects', subject.id), sanitizeForFirestore(subject), { merge: true });
+        });
+        batch.commit().catch((err) => {
+          console.warn('Error batch-saving subjects to Firestore:', err?.message || err);
+        });
+      } catch (err) {
+        console.warn('Batch subjects write notice:', err);
+      }
+    }
+  }
+
+  public saveSubject(subject: Subject) {
+    const existingIdx = this.subjects.findIndex((s) => s.id === subject.id || s.code === subject.code);
+    if (existingIdx >= 0) {
+      this.subjects[existingIdx] = subject;
+    } else {
+      this.subjects.push(subject);
+    }
+    this.saveSubjectsLocally();
+
+    if (db) {
+      setDoc(doc(db, 'subjects', subject.id), sanitizeForFirestore(subject), { merge: true }).catch(console.warn);
+    }
+  }
+
+  public addSubject(subject: Subject) {
+    this.saveSubject(subject);
+  }
+
+  public deleteSubject(subjectId: string) {
+    this.subjects = this.subjects.filter((s) => s.id !== subjectId);
+    this.saveSubjectsLocally();
+
+    if (db) {
+      deleteDoc(doc(db, 'subjects', subjectId)).catch(console.warn);
+    }
+  }
+
+  public resetSubjectsToDefault() {
+    this.subjects = [...INITIAL_SUBJECTS];
+    this.saveSubjectsLocally();
+
+    if (db) {
+      try {
+        const batch = writeBatch(db);
+        INITIAL_SUBJECTS.forEach((sub) => {
+          batch.set(doc(db, 'subjects', sub.id), sanitizeForFirestore(sub), { merge: true });
+        });
+        batch.commit().catch(console.warn);
+      } catch (e) {
+        console.warn('Reset subjects batch error:', e);
+      }
+    }
+  }
+
   public deleteLecturer(lecturerId: string) {
     this.lecturers = this.lecturers.filter((l) => l.id !== lecturerId);
     this.saveLecturersLocally();
@@ -1357,24 +1426,6 @@ class AttendanceEngine {
       } catch (err) {
         console.warn('Batch subjects write notice:', err);
       }
-    }
-  }
-
-  public addSubject(subject: Subject) {
-    this.subjects = [subject, ...this.subjects.filter((s) => s.id !== subject.id)];
-    this.saveSubjectsLocally();
-
-    if (db) {
-      setDoc(doc(db, 'subjects', subject.id), sanitizeForFirestore(subject), { merge: true }).catch(console.warn);
-    }
-  }
-
-  public deleteSubject(subjectId: string) {
-    this.subjects = this.subjects.filter((s) => s.id !== subjectId);
-    this.saveSubjectsLocally();
-
-    if (db) {
-      deleteDoc(doc(db, 'subjects', subjectId)).catch(console.warn);
     }
   }
 

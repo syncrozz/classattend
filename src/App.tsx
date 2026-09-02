@@ -505,6 +505,45 @@ export default function App() {
     });
   };
 
+  // Import CSV Subjects
+  const handleImportSubjects = (newSubjectsList: Subject[], replaceAll: boolean = false) => {
+    let finalList: Subject[] = [];
+    if (replaceAll) {
+      finalList = newSubjectsList;
+    } else {
+      const existingMap = new Map<string, Subject>(subjects.map((s) => [s.code.toUpperCase(), s]));
+      newSubjectsList.forEach((s) => existingMap.set(s.code.toUpperCase(), s));
+      finalList = Array.from(existingMap.values());
+    }
+
+    attendanceEngine.saveSubjectsList(finalList);
+    setSubjects(attendanceEngine.getSubjects());
+    soundService.playSuccess();
+    auditLogger.log({
+      category: 'CSV_IMPORT',
+      action: replaceAll ? 'Import Senarai Kursus CSV (Ganti Semua)' : 'Import Senarai Kursus CSV (Gabung Rekod)',
+      details: `Berjaya memproses ${newSubjectsList.length} kursus melalui fail CSV. Jumlah kursus tersenarai: ${finalList.length}.`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: `${newSubjectsList.length} Rekod Kursus`,
+      severity: 'SUCCESS'
+    });
+  };
+
+  // Reset Subjects to default 46 KPM subjects
+  const handleResetSubjects = () => {
+    attendanceEngine.resetSubjectsToDefault();
+    setSubjects(attendanceEngine.getSubjects());
+    soundService.playSuccess();
+    auditLogger.log({
+      category: 'MASTER_DATA',
+      action: 'Reset Senarai Kursus KPM',
+      details: 'Senarai subjek telah diset semula kepada 46 kursus rasmi KPM.',
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: 'Senarai 46 Kursus KPM',
+      severity: 'INFO'
+    });
+  };
+
   // Add Single Lecturer
   const handleAddLecturer = (newLecturer: Lecturer) => {
     const updated = [...lecturers.filter((l) => l.email.toLowerCase() !== newLecturer.email.toLowerCase()), newLecturer];
@@ -736,6 +775,9 @@ export default function App() {
               onDeleteStudent={handleDeleteStudent}
               onAddLecturer={handleAddLecturer}
               onDeleteLecturer={handleDeleteLecturer}
+              onAddSubject={handleCreateSubject}
+              onDeleteSubject={handleDeleteSubject}
+              onResetSubjects={handleResetSubjects}
               onSelectActiveLecturer={handleSelectActiveLecturer}
               onOpenCSVImport={() => {
                 setCsvImportInitialMode('STUDENT');
@@ -743,6 +785,10 @@ export default function App() {
               }}
               onOpenLecturerCSVImport={() => {
                 setCsvImportInitialMode('LECTURER');
+                setIsCSVModalOpen(true);
+              }}
+              onOpenSubjectCSVImport={() => {
+                setCsvImportInitialMode('SUBJECT');
                 setIsCSVModalOpen(true);
               }}
               onRequestAdminAccess={handleRequestAdminAccess}
@@ -858,13 +904,14 @@ export default function App() {
         />
       )}
 
-      {/* CSV Import Modal (Dual-mode: Students & Lecturers) */}
+      {/* CSV Import Modal (Tri-mode: Students, Lecturers & Subjects) */}
       <CSVImportModal
         isOpen={isCSVModalOpen}
         onClose={() => setIsCSVModalOpen(false)}
         initialMode={csvImportInitialMode}
         onImport={handleImportStudents}
         onImportLecturers={handleImportLecturers}
+        onImportSubjects={handleImportSubjects}
       />
 
       {/* PWA Install Modal */}

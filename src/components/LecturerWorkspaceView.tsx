@@ -24,9 +24,18 @@ import {
   AlertCircle,
   ExternalLink,
   GraduationCap,
-  Play
+  Play,
+  Download,
+  HardDrive
 } from 'lucide-react';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import {
+  exportScannedAttendeesOnlyToCSV,
+  exportAllAttendanceRecordsToCSV,
+  generateAttendanceBackupJSON,
+  downloadCSV,
+  downloadJSON
+} from '../utils/csvHelper';
 import { StartAttendanceModal } from './StartAttendanceModal';
 
 interface LecturerWorkspaceViewProps {
@@ -69,6 +78,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onSwitchToAdminMode
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
+  const [backupToast, setBackupToast] = useState<string | null>(null);
   const [startModalContext, setStartModalContext] = useState<{
     subjectCode: string;
     subjectName: string;
@@ -252,7 +262,26 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                id="btn-workspace-backup-active-csv"
+                onClick={() => {
+                  const csvContent = exportScannedAttendeesOnlyToCSV(activeSession, students, attendanceRecords);
+                  const dateStr = activeSession.date || new Date().toISOString().split('T')[0];
+                  const subStr = (activeSession.subjectCode || activeSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
+                  downloadCSV(csvContent, `Backup_Kehadiran_${subStr}_${dateStr}.csv`);
+                  setBackupToast(`Backup CSV (${activeSessionRecords.length} pelajar hadir) berjaya dimuat turun!`);
+                  setTimeout(() => setBackupToast(null), 4000);
+                }}
+                disabled={activeSessionRecords.length === 0}
+                className="px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Backup rekod pelajar hadir sesi ini (.CSV)"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Backup CSV</span>
+              </button>
+
               <button
                 type="button"
                 id="btn-workspace-continue-attendance"
@@ -603,6 +632,14 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             }
           }}
         />
+      )}
+
+      {/* Backup Toast Notification */}
+      {backupToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{backupToast}</span>
+        </div>
       )}
     </div>
   );

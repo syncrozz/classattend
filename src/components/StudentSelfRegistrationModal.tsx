@@ -10,6 +10,7 @@ import {
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import { normalizePhoneNumber } from '../utils/phoneHelper';
 import {
   GraduationCap,
   QrCode,
@@ -126,7 +127,7 @@ export const StudentSelfRegistrationModal: React.FC<StudentSelfRegistrationModal
         studentId: cleanId,
         name: cleanName,
         email: email.trim().toLowerCase(),
-        phone: phone.trim(),
+        phone: normalizePhoneNumber(phone),
         className: cleanClass,
         department: department.trim(),
         subjectCode: context.subjectCode,
