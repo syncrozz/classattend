@@ -1515,6 +1515,80 @@ class AttendanceEngine {
     }
   }
 
+  /**
+   * Batch enroll students from master roster into a subject based on their class.
+   * Enables 1-click sync between master student records (83 students) and subject enrollment.
+   */
+  public async batchEnrollStudentsForSubject(params: {
+    subjectCode: string;
+    subjectName: string;
+    classNames?: string[];
+    lecturerName?: string;
+    lecturerEmail?: string;
+  }): Promise<{ count: number; message: string }> {
+    const rawSubCode = (params.subjectCode || '').trim().toUpperCase();
+    const rawSubName = (params.subjectName || '').trim();
+    const targetClasses = (params.classNames || []).map((c) => c.trim().toUpperCase());
+
+    // Filter students from master list
+    const candidateStudents = this.students.filter((s) => {
+      if (!s.className) return false;
+      const sClass = s.className.trim().toUpperCase();
+      if (targetClasses.length === 0 || targetClasses.includes('ALL')) return true;
+      return targetClasses.some((tc) => tc === sClass || tc.replace(/_/g, ' ') === sClass.replace(/_/g, ' '));
+    });
+
+    let newCount = 0;
+    const now = new Date().toISOString();
+
+    for (const student of candidateStudents) {
+      const rawStudentId = (student.studentId || student.id).trim().toUpperCase();
+      const rawClassName = (student.className || 'DIA_4A').trim().toUpperCase();
+      const cleanSubCodeKey = rawSubCode.replace(/[^A-Z0-9]/g, '');
+      const cleanClassKey = rawClassName.replace(/[^A-Z0-9]/g, '');
+      const cleanStudentKey = rawStudentId.replace(/[^A-Z0-9]/g, '');
+      const enrollmentId = `ENR_${cleanStudentKey}_${cleanSubCodeKey}_${cleanClassKey}`;
+
+      const existingIndex = this.enrollments.findIndex(
+        (e) =>
+          e.id === enrollmentId ||
+          (e.studentId.toUpperCase() === rawStudentId &&
+            e.subjectCode.toUpperCase() === rawSubCode &&
+            e.className.toUpperCase() === rawClassName)
+      );
+
+      const record: Enrollment = {
+        id: enrollmentId,
+        studentId: rawStudentId,
+        subjectCode: rawSubCode,
+        subjectName: rawSubName,
+        className: rawClassName,
+        section: rawClassName,
+        lecturerEmail: params.lecturerEmail || '',
+        lecturerName: params.lecturerName || '',
+        enrolledAt: existingIndex >= 0 ? this.enrollments[existingIndex].enrolledAt : now,
+        status: 'ACTIVE'
+      };
+
+      if (existingIndex >= 0) {
+        this.enrollments[existingIndex] = record;
+      } else {
+        this.enrollments = [record, ...this.enrollments];
+        newCount++;
+      }
+
+      if (db) {
+        await setDoc(doc(db, 'enrollments', record.id), sanitizeForFirestore(record), { merge: true }).catch(console.warn);
+      }
+    }
+
+    this.saveEnrollmentsLocally();
+    return {
+      count: candidateStudents.length,
+      message: `Berjaya menyelaraskan & mendaftarkan ${candidateStudents.length} pelajar induk ke dalam subjek ${rawSubCode}.`
+    };
+  }
+
   // --- Mutation Methods ---
   public async saveStudentsList(students: Student[], replaceAll: boolean = true) {
     // Deduplicate by clean ID so each student has exactly 1 record and 1 QR code
