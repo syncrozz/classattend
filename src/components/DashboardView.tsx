@@ -651,7 +651,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {sub.code}
                   </span>
                   <span className="text-[10px] font-semibold text-slate-400">
-                    {sub.sections.length} Kelas Terlibat
+                    {(sub.sections || []).length > 0 ? `${sub.sections.length} Kelas Terlibat` : 'Katalog Terbuka'}
                   </span>
                 </div>
                 <div className="text-xs font-bold text-white truncate">{sub.name}</div>
@@ -660,11 +660,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span>{sub.lecturerName || 'Pensyarah Kursus'}</span>
                 </div>
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {Array.from(new Set<string>(sub.sections || [])).map((sec, secIdx) => (
-                    <span key={`dash-sub-${sub.id}-sec-${sec}-${secIdx}`} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
-                      {sec}
+                  {(sub.sections || []).length > 0 ? (
+                    Array.from(new Set<string>(sub.sections || [])).map((sec, secIdx) => (
+                      <span key={`dash-sub-${sub.id}-sec-${sec}-${secIdx}`} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
+                        {sec}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-teal-400/80 font-medium">
+                      Ditentukan oleh Pensyarah
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
             ))}

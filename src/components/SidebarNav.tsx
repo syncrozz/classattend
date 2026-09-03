@@ -21,6 +21,7 @@ interface SidebarNavProps {
   totalStudentsCount?: number;
   currentRole?: UserRole;
   onOpenPWAInstall?: () => void;
+  onOpenQrPortal?: () => void;
 }
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({
@@ -30,7 +31,8 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   totalRecordsCount,
   totalStudentsCount,
   currentRole = 'ADMIN',
-  onOpenPWAInstall
+  onOpenPWAInstall,
+  onOpenQrPortal
 }) => {
   const navItems = [
     {
@@ -38,13 +40,6 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       label: currentRole === 'ADMIN' ? 'Pusat Kawalan' : 'Ruang Kerja',
       icon: LayoutDashboard,
       badge: undefined
-    },
-    {
-      id: 'scanner' as ActiveTab,
-      label: 'Imbasan QR Kelas',
-      icon: QrCode,
-      badge: activeSessionName ? 'LIVE' : undefined,
-      badgeColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
     },
     {
       id: 'activities' as ActiveTab,
@@ -122,6 +117,23 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
       {/* Footer Info Card */}
       <div className="space-y-2 mt-6">
+        {onOpenQrPortal && (
+          <button
+            id="sidebar-btn-qr-portal"
+            onClick={onOpenQrPortal}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-950/30 hover:bg-teal-900/40 border border-teal-500/30 text-teal-300 text-xs font-semibold transition-all cursor-pointer group"
+            title="Buka Student QR Access Portal (/qr)"
+          >
+            <div className="flex items-center gap-2.5">
+              <QrCode className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform shrink-0" />
+              <span>Portal Kod QR</span>
+            </div>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-mono font-bold">
+              /qr
+            </span>
+          </button>
+        )}
+
         {onOpenPWAInstall && (
           <button
             id="sidebar-btn-pwa-install"

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Subject,
@@ -7,11 +7,13 @@ import {
   Lecturer,
   Student,
   EventStatus,
-  Enrollment
+  Enrollment,
+  TeachingAssignment
 } from '../types';
 import { getClassBadgeColor, sortSessionsLatestFirst } from '../utils/studentUtils';
 import { GenerateEnrollmentQRModal } from './GenerateEnrollmentQRModal';
 import { EnrolledStudentsModal } from './EnrolledStudentsModal';
+import { LecturerManageSubjectsModal } from './LecturerManageSubjectsModal';
 import {
   BookOpen,
   Plus,
@@ -40,7 +42,9 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowRight,
-  Calendar
+  Calendar,
+  CalendarPlus,
+  Settings
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 
@@ -51,6 +55,7 @@ interface ClassManagementViewProps {
   students?: Student[];
   lecturers?: Lecturer[];
   enrollments?: Enrollment[];
+  teachingAssignments?: TeachingAssignment[];
   activeLecturer: Lecturer | null;
   isAdmin: boolean;
   onSetSessionStatus: (sessionId: string, newStatus: EventStatus) => void;
@@ -78,6 +83,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   students: propStudents,
   lecturers: propLecturers,
   enrollments: propEnrollments,
+  teachingAssignments: propTeachingAssignments,
   activeLecturer,
   isAdmin,
   onSetSessionStatus,
@@ -151,17 +157,85 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   const [newSessionName, setNewSessionName] = useState<string>('');
   const [newSessionClass, setNewSessionClass] = useState<string>('');
 
-  // Filtered Subjects
-  const filteredSubjects = subjects.filter((sub) => {
+  // Lecturer Manage Subjects Modal
+  const [isManageSubjectsModalOpen, setIsManageSubjectsModalOpen] = useState<boolean>(false);
+
+  // Active lecturer teaching assignment codes
+  const myAssignedCodes = useMemo(() => {
+    if (!activeLecturer) return new Set<string>();
+    const codes = new Set<string>();
+    const lecName = (activeLecturer.name || '').trim().toLowerCase();
+    const lecEmail = (activeLecturer.email || '').trim().toLowerCase();
+    const lecId = (activeLecturer.id || '').trim().toLowerCase();
+
+    // 1. From teaching assignments prop or engine
+    const assignments = (propTeachingAssignments && propTeachingAssignments.length > 0)
+      ? propTeachingAssignments
+      : attendanceEngine.getTeachingAssignmentsForLecturer(activeLecturer.id || activeLecturer.email);
+
+    assignments.forEach((ta) => {
+      const matchId = ta.lecturerId && ta.lecturerId.toLowerCase() === lecId;
+      const matchEmail = ta.lecturerEmail && ta.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = ta.lecturerName && ta.lecturerName.toLowerCase().includes(lecName);
+      if (matchId || matchEmail || matchName) {
+        if (ta.subjectCode) codes.add(ta.subjectCode.trim().toUpperCase());
+      }
+    });
+
+    // 2. From activeLecturer.assignedSubjects
+    (activeLecturer.assignedSubjects || []).forEach((subStr) => {
+      const code = subStr.includes('-') ? subStr.split('-')[0].trim().toUpperCase() : subStr.trim().toUpperCase();
+      if (code) codes.add(code);
+    });
+
+    // 3. From subjects list where lecturer matches
+    subjects.forEach((s) => {
+      const matchId = s.lecturerId && s.lecturerId.toLowerCase() === lecId;
+      const matchEmail = s.lecturerEmail && s.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = s.lecturerName && s.lecturerName.toLowerCase().includes(lecName);
+      if (matchId || matchEmail || matchName) {
+        codes.add(s.code.trim().toUpperCase());
+      }
+    });
+
+    return codes;
+  }, [activeLecturer, propTeachingAssignments, subjects]);
+
+  // Determine subject view scope:
+  // When activeLecturer is present and !isAdmin, default strictly to lecturer's own subjects ('MY_SUBJECTS')
+  const [subjectViewScope, setSubjectViewScope] = useState<'MY_SUBJECTS' | 'ALL_SUBJECTS'>(
+    !isAdmin && activeLecturer ? 'MY_SUBJECTS' : 'ALL_SUBJECTS'
+  );
+
+  // Sync default scope when activeLecturer changes
+  useEffect(() => {
+    if (!isAdmin && activeLecturer) {
+      setSubjectViewScope('MY_SUBJECTS');
+    }
+  }, [activeLecturer, isAdmin]);
+
+  // Scoped subjects list based on active view scope
+  const scopedSubjects = useMemo(() => {
+    if (!activeLecturer || subjectViewScope === 'ALL_SUBJECTS') {
+      return subjects;
+    }
+    // Strictly return only subjects taught by this lecturer (by individu sahaja)
+    return subjects.filter((s) => myAssignedCodes.has(s.code.trim().toUpperCase()));
+  }, [subjects, activeLecturer, subjectViewScope, myAssignedCodes]);
+
+  // Filtered Subjects with search query
+  const filteredSubjects = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      sub.code.toLowerCase().includes(q) ||
-      sub.name.toLowerCase().includes(q) ||
-      (sub.lecturerName && sub.lecturerName.toLowerCase().includes(q)) ||
-      (sub.sections && sub.sections.some((sec) => sec.toLowerCase().includes(q)))
-    );
-  });
+    return scopedSubjects.filter((sub) => {
+      if (!q) return true;
+      return (
+        sub.code.toLowerCase().includes(q) ||
+        sub.name.toLowerCase().includes(q) ||
+        (sub.lecturerName && sub.lecturerName.toLowerCase().includes(q)) ||
+        (sub.sections && sub.sections.some((sec) => sec.toLowerCase().includes(q)))
+      );
+    });
+  }, [scopedSubjects, searchQuery]);
 
   // Handle Submit New Subject
   const handleSubmitSubject = (e: React.FormEvent) => {
@@ -296,8 +370,19 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
   // Global Active Sessions (Level 1: NOW / ACTIVE)
   const activeSessionsList = useMemo(() => {
-    return sessions.filter((s) => s.status === 'OPEN');
-  }, [sessions]);
+    const openSessions = sessions.filter((s) => s.status === 'OPEN');
+    if (!activeLecturer || subjectViewScope === 'ALL_SUBJECTS') {
+      return openSessions;
+    }
+    const lecName = (activeLecturer.name || '').trim().toLowerCase();
+    const lecEmail = (activeLecturer.email || '').trim().toLowerCase();
+    return openSessions.filter((s) => {
+      const matchSubject = s.subjectCode && myAssignedCodes.has(s.subjectCode.trim().toUpperCase());
+      const matchEmail = s.lecturerEmail && s.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = s.lecturerName && s.lecturerName.toLowerCase().includes(lecName);
+      return matchSubject || matchEmail || matchName;
+    });
+  }, [sessions, activeLecturer, subjectViewScope, myAssignedCodes]);
 
   // State to toggle past sessions for subjects (Progressive Disclosure)
   const [expandedPastSubjects, setExpandedPastSubjects] = useState<Record<string, boolean>>({});
@@ -499,6 +584,74 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       )}
 
       {/* ========================================================
+          LECTURER PERSONAL FILTER & SCOPE BANNER
+          ======================================================== */}
+      {activeLecturer && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-300 shrink-0">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-white">Paparan Khusus Pensyarah:</span>
+                <span className="text-xs font-black text-indigo-300 font-mono bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-500/30">
+                  {activeLecturer.name}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                {subjectViewScope === 'MY_SUBJECTS'
+                  ? `Memaparkan ${scopedSubjects.length} subjek pengajaran anda sahaja (by individu) bagi memudahkan capaian sesi kuliah.`
+                  : `Memaparkan katalog keseluruhan (${subjects.length} subjek) kolej.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                id="btn-scope-my-subjects"
+                onClick={() => setSubjectViewScope('MY_SUBJECTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  subjectViewScope === 'MY_SUBJECTS'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BookMarked className="w-3.5 h-3.5" />
+                <span>Subjek Saya ({myAssignedCodes.size})</span>
+              </button>
+              <button
+                type="button"
+                id="btn-scope-all-subjects"
+                onClick={() => setSubjectViewScope('ALL_SUBJECTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  subjectViewScope === 'ALL_SUBJECTS'
+                    ? 'bg-slate-800 text-white border border-slate-700'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Semua Subjek ({subjects.length})</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              id="btn-open-manage-subjects-from-event-view"
+              onClick={() => setIsManageSubjectsModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Pilih atau tetapkan subjek pengajaran anda"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Pilih / Urus Subjek</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
           LEVEL 2-4: SUBJECTS LIST WITH PROGRESSIVE DISCLOSURE
           ======================================================== */}
       <div className="space-y-4">
@@ -506,11 +659,26 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center space-y-3">
             <BookOpen className="w-10 h-10 text-indigo-500/40" />
             <div className="space-y-1">
-              <h4 className="text-sm font-bold text-white">Belum Ada Subjek Didaftarkan</h4>
+              <h4 className="text-sm font-bold text-white">
+                {activeLecturer && subjectViewScope === 'MY_SUBJECTS'
+                  ? `Tiada Subjek Ditugaskan untuk ${activeLecturer.name}`
+                  : 'Tiada Subjek Dijumpai'}
+              </h4>
               <p className="text-xs text-slate-400 max-w-md">
-                Gunakan butang <strong>"Daftar Subjek Baharu"</strong> di bahagian atas untuk mula mendaftarkan subjek dan membuka sesi kuliah.
+                {activeLecturer && subjectViewScope === 'MY_SUBJECTS'
+                  ? 'Anda belum menetapkan subjek pengajaran bagi semester ini. Klik butang di bawah untuk memilih subjek yang anda ajar daripada senarai master kolej.'
+                  : 'Gunakan butang "Daftar Subjek Baharu" di bahagian atas untuk mula mendaftarkan subjek dan membuka sesi kuliah.'}
               </p>
             </div>
+            {activeLecturer && subjectViewScope === 'MY_SUBJECTS' && (
+              <button
+                type="button"
+                onClick={() => setIsManageSubjectsModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
+              >
+                Pilih Subjek Pengajaran Anda Sekarang
+              </button>
+            )}
           </div>
         ) : (
           filteredSubjects.map((subject) => {
@@ -550,10 +718,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   <div className="space-y-2 flex-1">
                     {/* Main Category Identifier Badge */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 text-xs font-black uppercase tracking-wider shadow-sm">
-                        <BookOpen className="w-3.5 h-3.5 text-indigo-300" />
-                        <span>KATEGORI UTAMA</span>
-                      </span>
                       <span className="text-sm font-mono font-black px-3 py-1 rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
                         {subject.code}
                       </span>
@@ -582,11 +746,11 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     <button
                       id={`btn-add-session-${subject.id}`}
                       onClick={() => handleOpenAddSession(subject.id)}
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95 border border-indigo-500/50"
                       title="Cipta & jadualkan sesi kuliah/amali baharu untuk subjek ini"
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>+ Tambah Jadual Sesi</span>
+                      <CalendarPlus className="w-3.5 h-3.5 text-indigo-200" />
+                      <span>+ Jadualkan Sesi</span>
                     </button>
 
                     {/* Secondary: Enrolled Students List */}
@@ -639,23 +803,33 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>SUB-KATEGORI: SESI & JADUAL KELAS</span>
+                      <span>SESI & JADUAL KELAS</span>
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
                       {subjectSessions.length} sesi dicipta
                     </span>
                   </div>
                   {subjectSessions.length === 0 ? (
-                    <div className="p-6 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2.5">
-                      <p className="text-xs text-slate-400">
-                        Belum ada sesi kuliah dibuka bagi subjek ini.
-                      </p>
+                    <div className="p-6 rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-center space-y-3">
+                      <div className="w-9 h-9 mx-auto rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <Play className="w-4 h-4 fill-emerald-400/20 text-emerald-400 ml-0.5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-medium text-slate-300">
+                          Belum ada sesi kuliah atau amali dibuka bagi subjek ini.
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Mulakan sesi pertama sekarang untuk jana rekod kehadiran dan imbasan QR.
+                        </p>
+                      </div>
                       <button
+                        id={`btn-empty-start-session-${subject.id}`}
                         onClick={() => handleOpenAddSession(subject.id)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 hover:text-emerald-200 border border-emerald-500/40 hover:border-emerald-400/60 text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
+                        title="Buka dan mulakan sesi kuliah pertama bagi subjek ini"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Cipta Jadual Sesi Pertama</span>
+                        <Play className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
+                        <span>Buka Sesi Kuliah Pertama</span>
                       </button>
                     </div>
                   ) : (
@@ -972,7 +1146,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300">Catatan Tambahan (Opsional)</label>
+                <label className="text-xs font-semibold text-slate-300">Catatan Tambahan (Tidak Wajib)</label>
                 <textarea
                   rows={2}
                   placeholder="Catatan kursus atau silibus..."
@@ -1173,6 +1347,19 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           setIsGenerateQRModalOpen(true);
         }}
       />
+
+      {/* LECTURER MANAGE SUBJECTS MODAL */}
+      {activeLecturer && (
+        <LecturerManageSubjectsModal
+          isOpen={isManageSubjectsModalOpen}
+          onClose={() => setIsManageSubjectsModalOpen(false)}
+          lecturer={activeLecturer}
+          allSubjects={subjects}
+          onSaved={() => {
+            setIsManageSubjectsModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

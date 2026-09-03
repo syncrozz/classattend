@@ -499,7 +499,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 }`}
               >
                 <BookOpen className="w-4 h-4" />
-                <span>Subjek &amp; Kursus ({subjects.length})</span>
+                <span>Subjek ({subjects.length})</span>
               </button>
             </div>
           </div>
@@ -543,7 +543,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title="Cetak Kad ID / Kod QR mengikut Kategori Kelas atau Semua Pelajar"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Cetak Kad ID (QR)</span>
+                    <span>Cetak QR</span>
                   </button>
 
                   {(isAdmin || (activeLecturer && activeLecturer.role === 'ADMIN')) && (
@@ -1547,7 +1547,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
                     >
                       <RefreshCw className="w-4 h-4 text-amber-400" />
-                      <span>Set Semula 46 Kursus KPM</span>
+                      <span>Set Semula 47 Kursus KPM</span>
                     </button>
                   )}
                 </div>
@@ -1601,7 +1601,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         </div>
 
                         {/* Sections info */}
-                        {sub.sections && sub.sections.length > 0 && (
+                        {sub.sections && sub.sections.length > 0 ? (
                           <div className="space-y-1">
                             <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
                               Seksyen / Kelas Ditawarkan:
@@ -1615,6 +1615,15 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                                   {sec}
                                 </span>
                               ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                              Agihan Kelas:
+                            </span>
+                            <div className="text-[11px] text-teal-400 font-medium">
+                              Terbuka (Dipilih oleh Pensyarah)
                             </div>
                           </div>
                         )}

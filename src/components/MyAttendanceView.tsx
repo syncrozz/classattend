@@ -25,7 +25,8 @@ import {
   Camera,
   FileText,
   FileCheck,
-  ShieldCheck
+  ShieldCheck,
+  Smartphone
 } from 'lucide-react';
 
 interface MyAttendanceViewProps {
@@ -34,6 +35,7 @@ interface MyAttendanceViewProps {
   subjects?: Subject[];
   attendanceRecords: AttendanceRecord[];
   onOpenStudentCheckin?: (context?: any) => void;
+  onOpenQrPortal?: () => void;
 }
 
 export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
@@ -41,7 +43,8 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
   sessions,
   subjects = [],
   attendanceRecords,
-  onOpenStudentCheckin
+  onOpenStudentCheckin,
+  onOpenQrPortal
 }) => {
   // Check if student identity was saved in local storage
   const savedStudentId = typeof window !== 'undefined' ? localStorage.getItem('classattend_saved_student_id') : null;
@@ -364,13 +367,37 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               <div className="text-[10px] text-slate-400">Kelas {currentStudent.className}</div>
             </div>
 
-            <button
-              onClick={() => setIsPrintModalOpen(true)}
-              className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer flex items-center justify-center gap-2 no-print"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Cetak Kad ID Pelajar</span>
-            </button>
+            <div className="w-full space-y-2 no-print">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenQrPortal) {
+                    onOpenQrPortal();
+                  } else {
+                    try {
+                      window.history.pushState(null, '', '/qr');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    } catch {
+                      window.location.href = '/qr';
+                    }
+                  }
+                }}
+                className="w-full py-2 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 hover:text-teal-200 text-xs font-semibold border border-teal-500/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+                title="Buka Student QR Access Portal (/qr) untuk paparan pantas di telefon"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-teal-400" />
+                <span>Portal Telefon (/qr)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Cetak Kad ID Pelajar</span>
+              </button>
+            </div>
           </div>
         </div>
 

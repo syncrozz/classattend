@@ -947,14 +947,16 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                     <span>{copiedLink ? '✓ Pautan Disalin!' : '📋 Salin Pautan Kelas (WhatsApp / Telegram)'}</span>
                   </button>
 
-                  <a
-                    href={studentWebUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                  <button
+                    type="button"
+                    id="btn-test-student-checkin"
+                    onClick={() => {
+                      window.location.hash = `#attend?session=${currentSession.id}&subject=${encodeURIComponent(currentSession.subjectCode || '')}&class=${encodeURIComponent(currentSession.className || '')}&lecturer=${encodeURIComponent(currentSession.lecturerName || '')}&subjectName=${encodeURIComponent(currentSession.subjectName || '')}`;
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-600/30 active:scale-95"
                   >
-                    <span>↗ Uji Paparan Pelajar</span>
-                  </a>
+                    <span>🧪 Uji Paparan Pelajar (Buka Sini)</span>
+                  </button>
                 </div>
 
                 {/* Session Meta on Projector */}

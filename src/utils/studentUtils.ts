@@ -1,4 +1,4 @@
-import { ActivityCategory, AttendanceSession } from '../types';
+import { ActivityCategory, AttendanceSession, Student } from '../types';
 
 export const sortSessionsLatestFirst = (sessions: AttendanceSession[]): AttendanceSession[] => {
   return [...sessions].sort((a, b) => {
@@ -125,3 +125,59 @@ export const getClassBadgeColor = (className?: string): string => {
 
 // Aliases for backward compatibility
 export const getStaffColor = getStudentColor;
+
+/**
+ * Extracts 3-digit suffix for student ID
+ * e.g., 'PDA-2502-001' -> '001'
+ * e.g., '001' -> '001'
+ */
+export const getStudentIdSuffix = (studentId?: string): string => {
+  if (!studentId) return '';
+  const digits = studentId.replace(/\D/g, '');
+  if (digits.length >= 3) {
+    return digits.slice(-3);
+  }
+  return digits.padStart(3, '0');
+};
+
+/**
+ * Extracts 3-digit suffix for phone number
+ * e.g., '601110571550' -> '550'
+ * e.g., '+60 11-1057 1550' -> '550'
+ */
+export const getStudentPhoneSuffix = (phone?: string): string => {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length >= 3) {
+    return digits.slice(-3);
+  }
+  return digits;
+};
+
+/**
+ * Matches a 6-digit access code (3-digit Student ID suffix + 3-digit Phone suffix)
+ * to an existing student in the database.
+ */
+export const findStudentByAccessCode = (students: Student[], code: string): Student | null => {
+  const sanitized = (code || '').trim().replace(/\D/g, '');
+  if (sanitized.length !== 6) return null;
+
+  const targetIdSuffix = sanitized.slice(0, 3);
+  const targetPhoneSuffix = sanitized.slice(3, 6);
+
+  const matched = students.find((s) => {
+    const idDigits = (s.studentId || s.id || '').replace(/\D/g, '');
+    const phoneDigits = (s.phone || '').replace(/\D/g, '');
+
+    const idSuffix = idDigits.length >= 3 ? idDigits.slice(-3) : idDigits.padStart(3, '0');
+    const rawIdSuffix = (s.studentId || s.id || '').trim().slice(-3);
+    const phoneSuffix = phoneDigits.length >= 3 ? phoneDigits.slice(-3) : '';
+
+    const idMatches = idSuffix === targetIdSuffix || rawIdSuffix === targetIdSuffix;
+    const phoneMatches = phoneSuffix === targetPhoneSuffix;
+
+    return idMatches && phoneMatches;
+  });
+
+  return matched || null;
+};

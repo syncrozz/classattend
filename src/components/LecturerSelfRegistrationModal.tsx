@@ -112,22 +112,10 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
       setDepartment('Jabatan Perakaunan (JP)');
       setErrorMsg(null);
       setSubmittedResult(null);
-
-      // Pre-select the first subject if available to make UX fast
-      if (masterSubjects.length > 0 && selectedSubjectGroups.length === 0) {
-        const firstSub = masterSubjects[0];
-        setSelectedSubjectGroups([
-          {
-            subjectId: firstSub.id,
-            subjectCode: firstSub.code,
-            subjectName: firstSub.name,
-            department: firstSub.department,
-            selectedClasses: ['DIA_4A', 'DIA_4B'] // sensible default
-          }
-        ]);
-      }
+      // Let lecturers decide their subjects and classes manually - no automatic pre-allocation
+      setSelectedSubjectGroups([]);
     }
-  }, [isOpen, masterSubjects]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -150,7 +138,7 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
         subjectCode: foundSub.code,
         subjectName: foundSub.name,
         department: foundSub.department,
-        selectedClasses: ['DIA_4A', 'DIA_4B']
+        selectedClasses: [] // Pensyarah tentukan sendiri kelas yang diajar
       }
     ]);
     setCurrentlyAddingSubjectId('');
@@ -631,13 +619,21 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                       onChange={(e) => setCurrentlyAddingSubjectId(e.target.value)}
                       className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-teal-500 outline-none"
                     >
-                      <option value="">-- Pilih Subjek Untuk Ditambah --</option>
-                      {masterSubjects.map((sub) => {
-                        const isAlreadyAdded = selectedSubjectGroups.some((sg) => sg.subjectCode === sub.code);
+                      <option value="">-- Pilih Kursus Daripada Senarai 47 Kursus Kolej --</option>
+                      {['Jabatan Perakaunan', 'Jabatan Pengajian Am', 'Jabatan Pengurusan Perniagaan', 'Jabatan Teknologi Maklumat'].map((dept) => {
+                        const deptSubjects = masterSubjects.filter((s) => (s.department || '').includes(dept) || (dept === 'Jabatan Perakaunan' && !s.department));
+                        if (deptSubjects.length === 0) return null;
                         return (
-                          <option key={sub.id} value={sub.id} disabled={isAlreadyAdded}>
-                            {sub.code} - {sub.name} {isAlreadyAdded ? '(Sudah Dipilih)' : ''}
-                          </option>
+                          <optgroup key={dept} label={`${dept} (${deptSubjects.length} Kursus)`}>
+                            {deptSubjects.map((sub) => {
+                              const isAlreadyAdded = selectedSubjectGroups.some((sg) => sg.subjectCode === sub.code);
+                              return (
+                                <option key={sub.id || sub.code} value={sub.id || sub.code} disabled={isAlreadyAdded}>
+                                  {sub.code} - {sub.name} {isAlreadyAdded ? '(Sudah Dipilih)' : ''}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
                         );
                       })}
                     </select>

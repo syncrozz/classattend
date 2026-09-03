@@ -14,6 +14,7 @@ import {
   INITIAL_STUDENTS,
   INITIAL_LECTURERS,
   INITIAL_SUBJECTS,
+  INITIAL_TEACHING_ASSIGNMENTS,
   INITIAL_SESSIONS,
   INITIAL_ATTENDANCE_RECORDS
 } from '../data/mockData';
@@ -98,16 +99,73 @@ class AttendanceEngine {
         this.lecturers = storedLecturers
           ? JSON.parse(storedLecturers).filter((l: Lecturer) => !DUMMY_LECTURER_IDS.includes(l.id))
           : [];
+        if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
+          this.lecturers = [...INITIAL_LECTURERS];
+          this.saveLecturersLocally();
+        } else {
+          // Always ensure Ahmad Khairi Bin Mohd exists in lecturers
+          const khairiInList = this.lecturers.find(
+            (l) => l.id === 'LEC-KHAIRI' || l.name.toUpperCase().includes('AHMAD KHAIRI')
+          );
+          if (!khairiInList && INITIAL_LECTURERS.length > 0) {
+            this.lecturers.push(...INITIAL_LECTURERS);
+            this.saveLecturersLocally();
+          } else if (khairiInList) {
+            khairiInList.assignedSubjects = [
+              'MPU2162 - PENGAJIAN MALAYSIA 2',
+              'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'
+            ];
+            khairiInList.assignedClasses = ['DIA_4A', 'DIA_4B'];
+            khairiInList.assignedSections = ['DIA_4A', 'DIA_4B'];
+            this.saveLecturersLocally();
+          }
+        }
         this.subjects = storedSubjects ? JSON.parse(storedSubjects) : [];
         if (this.subjects.length === 0 && INITIAL_SUBJECTS.length > 0) {
           this.subjects = [...INITIAL_SUBJECTS];
           this.saveSubjectsLocally();
+        } else {
+          // Ensure all 47 standard courses from INITIAL_SUBJECTS are available
+          const existingCodes = new Set(this.subjects.map((s) => s.code.toUpperCase()));
+          const missing = INITIAL_SUBJECTS.filter((s) => !existingCodes.has(s.code.toUpperCase()));
+          if (missing.length > 0) {
+            this.subjects.push(...missing);
+          }
+          // Do not automatically allocate sections to master course list; lecturers decide what they teach
+          const initialCodesSet = new Set(INITIAL_SUBJECTS.map((s) => s.code.toUpperCase()));
+          this.subjects = this.subjects.map((sub) => {
+            if (initialCodesSet.has(sub.code.toUpperCase()) && (sub.sections || []).length > 0) {
+              return { ...sub, sections: [] };
+            }
+            return sub;
+          });
+          this.saveSubjectsLocally();
         }
         this.sessions = storedSessions ? JSON.parse(storedSessions) : [];
+        if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
+          this.sessions = [...INITIAL_SESSIONS];
+          this.saveSessionsLocally();
+        }
         this.attendanceRecords = storedRecords ? JSON.parse(storedRecords) : [];
         this.enrollments = storedEnrollments ? JSON.parse(storedEnrollments) : [];
         this.teachingAssignments = storedAssignments ? JSON.parse(storedAssignments) : [];
+        if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+          this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+          this.saveTeachingAssignmentsLocally();
+        } else {
+          const hasKhairiTa = this.teachingAssignments.some(
+            (ta) => ta.lecturerId === 'LEC-KHAIRI' || ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI')
+          );
+          if (!hasKhairiTa && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+            this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
+            this.saveTeachingAssignmentsLocally();
+          }
+        }
         this.activeLecturer = storedActiveLecturer ? JSON.parse(storedActiveLecturer) : null;
+        if (!this.activeLecturer && this.lecturers.length > 0) {
+          this.activeLecturer = this.lecturers.find((l) => l.id === 'LEC-KHAIRI') || this.lecturers[0];
+          this.saveActiveLecturerLocally();
+        }
       } catch (e) {
         console.warn('Error reading from localStorage, resetting to clean ClassAttend data', e);
         this.resetToDefaultData();
@@ -186,14 +244,14 @@ class AttendanceEngine {
   }
 
   public resetToDefaultData() {
-    this.students = [];
-    this.lecturers = [];
-    this.subjects = [];
-    this.sessions = [];
+    this.students = [...INITIAL_STUDENTS];
+    this.lecturers = [...INITIAL_LECTURERS];
+    this.subjects = [...INITIAL_SUBJECTS];
+    this.sessions = [...INITIAL_SESSIONS];
     this.attendanceRecords = [];
     this.enrollments = [];
-    this.teachingAssignments = [];
-    this.activeLecturer = null;
+    this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+    this.activeLecturer = this.lecturers.find((l) => l.id === 'LEC-KHAIRI') || this.lecturers[0] || null;
 
     this.saveStudentsLocally();
     this.saveLecturersLocally();
@@ -330,9 +388,30 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const data = snapshot.docs
+          if (snapshot.empty) {
+            this.resetSubjectsToDefault();
+            callback(this.subjects);
+            return;
+          }
+          let data = snapshot.docs
             .map((docSnap) => docSnap.data() as Subject)
             .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
+
+          const initialCodesSet = new Set(INITIAL_SUBJECTS.map((s) => s.code.toUpperCase()));
+          const existingCodes = new Set(data.map((d) => d.code.toUpperCase()));
+          const missing = INITIAL_SUBJECTS.filter((s) => !existingCodes.has(s.code.toUpperCase()));
+          if (missing.length > 0) {
+            data = [...data, ...missing];
+          }
+
+          // Ensure standard catalog courses have sections: [] (not automatically pre-assigned to classes)
+          data = data.map((sub) => {
+            if (initialCodesSet.has(sub.code.toUpperCase()) && (sub.sections || []).length > 0) {
+              return { ...sub, sections: [] };
+            }
+            return sub;
+          });
+
           this.subjects = data;
           this.saveSubjectsLocally();
           callback(this.subjects);
@@ -856,6 +935,103 @@ class AttendanceEngine {
     }
   }
 
+  /**
+   * Allows a lecturer to configure and save which subjects and classes they teach.
+   * Eliminates automatic system assignment - autonomy given to lecturers.
+   */
+  public async updateLecturerTeachingAssignments(
+    lecturerId: string,
+    subjectAssignments: {
+      subjectCode: string;
+      subjectName: string;
+      department?: string;
+      classes: string[];
+    }[]
+  ): Promise<{ success: boolean; message: string }> {
+    const targetLecturerIndex = this.lecturers.findIndex((l) => l.id === lecturerId);
+    if (targetLecturerIndex < 0) {
+      return { success: false, message: 'Rekod pensyarah tidak dijumpai.' };
+    }
+
+    const lecturer = this.lecturers[targetLecturerIndex];
+    const oldAssignments = this.teachingAssignments.filter((ta) => ta.lecturerId === lecturerId);
+
+    // Filter out old assignments for this lecturer
+    this.teachingAssignments = this.teachingAssignments.filter((ta) => ta.lecturerId !== lecturerId);
+
+    const newAssignments: TeachingAssignment[] = [];
+    const allAssignedClasses = new Set<string>();
+    const allAssignedSubjects = new Set<string>();
+    const createdTimestamp = new Date().toISOString();
+
+    subjectAssignments.forEach((sg) => {
+      const subCode = sg.subjectCode.trim().toUpperCase();
+      const subName = sg.subjectName.trim() || subCode;
+      const fullSubLabel = `${subCode} - ${subName}`;
+      allAssignedSubjects.add(fullSubLabel);
+
+      sg.classes.forEach((cls) => {
+        const cleanClass = cls.trim().toUpperCase().replace(/\s+/g, '_');
+        allAssignedClasses.add(cleanClass);
+        const assignmentId = `TA_${lecturerId}_${subCode.replace(/\s+/g, '_')}_${cleanClass}`;
+        const assignmentObj: TeachingAssignment = {
+          id: assignmentId,
+          lecturerId,
+          lecturerEmail: lecturer.email,
+          lecturerName: lecturer.name,
+          subjectId: `SUB-${subCode.replace(/\s+/g, '_')}`,
+          subjectCode: subCode,
+          subjectName: subName,
+          className: cleanClass,
+          status: 'ACTIVE',
+          createdAt: createdTimestamp
+        };
+        newAssignments.push(assignmentObj);
+        this.teachingAssignments.push(assignmentObj);
+      });
+    });
+
+    const updatedLecturer: Lecturer = {
+      ...lecturer,
+      assignedClasses: Array.from(allAssignedClasses),
+      assignedSections: Array.from(allAssignedClasses),
+      assignedSubjects: Array.from(allAssignedSubjects)
+    };
+
+    this.lecturers[targetLecturerIndex] = updatedLecturer;
+    if (this.activeLecturer?.id === lecturerId) {
+      this.activeLecturer = updatedLecturer;
+      this.saveActiveLecturerLocally();
+    }
+
+    this.saveLecturersLocally();
+    this.saveTeachingAssignmentsLocally();
+
+    if (db) {
+      try {
+        const batch = writeBatch(db);
+        // Remove old assignments from Firestore
+        oldAssignments.forEach((ta) => {
+          batch.delete(doc(db!, 'teaching_assignments', ta.id));
+        });
+        // Save new assignments to Firestore
+        newAssignments.forEach((ta) => {
+          batch.set(doc(db!, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+        });
+        // Update lecturer profile with their assigned subjects & classes
+        batch.set(doc(db!, 'lecturers', lecturerId), sanitizeForFirestore(updatedLecturer), { merge: true });
+        await batch.commit();
+      } catch (err) {
+        console.warn('Firestore update teaching assignments error:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Penugasan subjek dan kelas pengajaran anda berjaya disimpan.'
+    };
+  }
+
   public getTeachingAssignments(): TeachingAssignment[] {
     return [...this.teachingAssignments];
   }
@@ -868,6 +1044,48 @@ class AttendanceEngine {
         ta.lecturerEmail.toLowerCase() === query ||
         ta.lecturerName.toLowerCase().includes(query)
     );
+  }
+
+  public getLecturerAssignedSubjectCodes(lecturer: Lecturer | null | undefined): string[] {
+    if (!lecturer) return [];
+    const codes = new Set<string>();
+    const lecId = (lecturer.id || '').trim().toLowerCase();
+    const lecEmail = (lecturer.email || '').trim().toLowerCase();
+    const lecName = (lecturer.name || '').trim().toLowerCase();
+
+    // 1. From teaching assignments
+    this.teachingAssignments.forEach((ta) => {
+      const matchId = ta.lecturerId && ta.lecturerId.toLowerCase() === lecId;
+      const matchEmail = ta.lecturerEmail && ta.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = ta.lecturerName && ta.lecturerName.toLowerCase().includes(lecName);
+      if (matchId || matchEmail || matchName) {
+        if (ta.subjectCode) codes.add(ta.subjectCode.trim().toUpperCase());
+      }
+    });
+
+    // 2. From lecturer.assignedSubjects
+    (lecturer.assignedSubjects || []).forEach((subStr) => {
+      const code = subStr.includes('-') ? subStr.split('-')[0].trim().toUpperCase() : subStr.trim().toUpperCase();
+      if (code) codes.add(code);
+    });
+
+    // 3. From subjects master list matching lecturer
+    this.subjects.forEach((s) => {
+      const matchId = s.lecturerId && s.lecturerId.toLowerCase() === lecId;
+      const matchEmail = s.lecturerEmail && s.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = s.lecturerName && s.lecturerName.toLowerCase().includes(lecName);
+      if (matchId || matchEmail || matchName) {
+        codes.add(s.code.trim().toUpperCase());
+      }
+    });
+
+    return Array.from(codes);
+  }
+
+  public getSubjectsForLecturer(lecturer: Lecturer | null | undefined): Subject[] {
+    if (!lecturer) return [];
+    const codes = new Set(this.getLecturerAssignedSubjectCodes(lecturer));
+    return this.subjects.filter((s) => codes.has(s.code.trim().toUpperCase()));
   }
 
   public getPendingLecturers(): Lecturer[] {

@@ -38,10 +38,28 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrationModal';
 import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
 import { StudentCheckinModal, StudentCheckinContext } from './components/StudentCheckinModal';
+import { StudentQrPortalView } from './components/StudentQrPortalView';
 import { accessManager } from './services/accessManager';
 import { auditLogger } from './services/auditLogger';
 
 export default function App() {
+  const checkIsQrRoute = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    return (
+      path === '/qr' ||
+      path === '/qr/' ||
+      path.startsWith('/qr') ||
+      hash === '#qr' ||
+      hash === '#/qr' ||
+      hash.startsWith('#qr') ||
+      hash.startsWith('#/qr')
+    );
+  };
+
+  const [isQrRoute, setIsQrRoute] = useState<boolean>(checkIsQrRoute);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     if (typeof window !== 'undefined' && window.location.hash === '#support') {
       return 'support';
@@ -160,16 +178,19 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    const handleHashChange = () => {
+    const handleLocationChange = () => {
+      setIsQrRoute(checkIsQrRoute());
       parseHashRouting();
     };
 
-    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
-      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
     };
   }, []);
 
@@ -642,6 +663,34 @@ export default function App() {
     setActiveTab(tab);
   };
 
+  const handleOpenQrPortal = () => {
+    try {
+      window.history.pushState(null, '', '/qr');
+    } catch {
+      window.location.hash = '#qr';
+    }
+    setIsQrRoute(true);
+  };
+
+  const handleReturnFromQr = () => {
+    try {
+      window.history.pushState(null, '', '/');
+    } catch {
+      window.location.hash = '';
+    }
+    setIsQrRoute(false);
+    setActiveTab('dashboard');
+  };
+
+  if (isQrRoute) {
+    return (
+      <StudentQrPortalView
+        students={students}
+        onReturnToMain={handleReturnFromQr}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
       {/* App Header */}
@@ -669,6 +718,7 @@ export default function App() {
           totalStudentsCount={students.length}
           currentRole={currentRole}
           onOpenPWAInstall={() => setIsPWAInstallModalOpen(true)}
+          onOpenQrPortal={handleOpenQrPortal}
         />
 
         {/* Main Content Body */}
@@ -740,6 +790,7 @@ export default function App() {
               students={students}
               lecturers={lecturers}
               enrollments={enrollments}
+              teachingAssignments={teachingAssignments}
               activeLecturer={activeLecturer}
               isAdmin={isAdmin}
               onSetSessionStatus={handleSetSessionStatus}
@@ -806,6 +857,7 @@ export default function App() {
                 setStudentCheckinContext(ctx || null);
                 setIsStudentCheckinOpen(true);
               }}
+              onOpenQrPortal={handleOpenQrPortal}
             />
           )}
 

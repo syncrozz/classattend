@@ -7,12 +7,12 @@ export * from './phoneHelper';
  * Generate standard CSV template for Kursus / Subjek
  */
 export const generateSubjectTemplateCSV = (): string => {
-  const headers = ['Bil', 'Kod_Kursus', 'Nama_Kursus', 'Jabatan', 'Kelas_Seksyen'];
+  const headers = ['Bil', 'Kod_Kursus', 'Nama_Kursus', 'Jabatan'];
   const sampleRows = [
-    [1, 'ACC1013', 'FINANCIAL ACCOUNTING 1', 'Jabatan Perakaunan', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B'],
-    [2, 'COM2512', 'MEETING AND INTERVIEW SKILLS', 'Jabatan Pengajian Am', 'DIA_3A, DIA_3B, DIA_4A, DIA_4B'],
-    [3, 'MGT1013', 'PRINCIPLES OF MANAGEMENT', 'Jabatan Pengurusan Perniagaan', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B'],
-    [4, 'ITE1133', 'INTRODUCTION OF INFORMATION TECHNOLOGY APPLICATIONS', 'Jabatan Teknologi Maklumat', 'DIA_1A, DIA_1B, DIA_2A, DIA_2B']
+    [1, 'ACC1013', 'FINANCIAL ACCOUNTING 1', 'Jabatan Perakaunan'],
+    [2, 'COM2512', 'MEETING AND INTERVIEW SKILLS', 'Jabatan Pengajian Am'],
+    [3, 'MGT1013', 'PRINCIPLES OF MANAGEMENT', 'Jabatan Pengurusan Perniagaan'],
+    [4, 'ITE1133', 'INTRODUCTION OF INFORMATION TECHNOLOGY APPLICATIONS', 'Jabatan Teknologi Maklumat']
   ];
 
   const content = [
@@ -119,7 +119,7 @@ export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResul
     let code = '';
     let name = '';
     let department = '';
-    let sections: string[] = ['DIA_1A', 'DIA_1B', 'DIA_2A', 'DIA_2B', 'DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+    let sections: string[] = [];
 
     // Check if line is CSV separated or simple text like "COM2512 MEETING AND INTERVIEW SKILLS"
     const cols = splitCSVRow(line);
