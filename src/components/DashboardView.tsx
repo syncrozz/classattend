@@ -389,62 +389,105 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* 3. DEDICATED SECTION: STATISTIK % KEHADIRAN MENGIKUT SETIAP KELAS */}
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 sm:p-6 space-y-6 shadow-xl">
-        <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-          <div className="space-y-1.5 flex-1 min-w-0">
-            <div className="flex items-center gap-2.5">
-              <BarChart3 className="w-5 h-5 text-indigo-400 shrink-0" />
-              <h3 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight">
-                Statistik % Kehadiran Mengikut Setiap Kelas
-              </h3>
+        {/* Header Title & Controls Section */}
+        <div className="border-b border-slate-800/80 pb-5 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0 shadow-sm mt-0.5">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white tracking-tight">
+                    Statistik % Kehadiran Mengikut Setiap Kelas
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider">
+                    KPI 80% KPM
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-2xl">
+                  Analisis kadar kehadiran (%) terperinci mengikut kelas masing-masing bagi pemantauan pensyarah
+                </p>
+              </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-3xl">
-              Analisis kadar kehadiran (%) terperinci mengikut kelas masing-masing bagi pemantauan pensyarah
-            </p>
+
+            {/* Benchmark Standard Badge */}
+            <div className="hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/70 border border-slate-800 shrink-0 self-start lg:self-auto">
+              <div className="text-left sm:text-right">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Sasaran Piawaian</div>
+                <div className="text-xs font-bold text-emerald-400">≥ 80% Kehadiran Minimum</div>
+              </div>
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+            </div>
           </div>
 
-          {/* Controls: Scope & Subject Filter */}
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {/* Scope Switcher */}
-            <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1">
+          {/* Interactive Filter & Scope Toolbar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
+            {/* Scope Switcher: Segmented Control */}
+            <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800 gap-1 self-start sm:self-auto">
               <button
                 type="button"
+                id="btn-scope-cumulative"
                 onClick={() => setClassStatScope('CUMULATIVE')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   classStatScope === 'CUMULATIVE'
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
               >
-                📊 Kumulatif Semua Sesi
+                <Layers className="w-3.5 h-3.5" />
+                <span>Kumulatif Semua Sesi</span>
               </button>
               <button
                 type="button"
+                id="btn-scope-active"
                 onClick={() => setClassStatScope('ACTIVE_SESSION')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   classStatScope === 'ACTIVE_SESSION'
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
               >
-                ⚡ Sesi Semasa
+                <Clock className="w-3.5 h-3.5" />
+                <span>Sesi Semasa</span>
               </button>
             </div>
 
-            {/* Subject Filter Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
-              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <select
-                value={selectedSubjectFilter}
-                onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL">Semua Subjek</option>
-                {subjects.map((sub) => (
-                  <option key={sub.id} value={sub.code}>
-                    {sub.code} - {sub.name}
-                  </option>
-                ))}
-              </select>
+            {/* Subject Filter with Clear Label & Constrained Width */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <span className="text-xs text-slate-400 font-medium hidden sm:inline-block shrink-0">
+                Tapis Subjek:
+              </span>
+              <div className="relative flex-1 sm:flex-initial sm:w-72 min-w-[200px]">
+                <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 transition-colors">
+                  <Filter className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <select
+                    id="select-subject-filter"
+                    value={selectedSubjectFilter}
+                    onChange={(e) => setSelectedSubjectFilter(e.target.value)}
+                    className="w-full bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer truncate pr-2"
+                  >
+                    <option value="ALL" className="bg-slate-900 text-slate-200">Semua Subjek Kursus</option>
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.code} className="bg-slate-900 text-slate-200">
+                        {sub.code} - {sub.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {selectedSubjectFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubjectFilter('ALL')}
+                  className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer shrink-0"
+                  title="Reset tapisan subjek"
+                >
+                  Reset
+                </button>
+              )}
             </div>
           </div>
         </div>
