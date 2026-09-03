@@ -42,7 +42,7 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
   onClose,
   lecturer,
   allSubjects,
-  allClasses = DEFAULT_CLASSES,
+  allClasses,
   onSaved
 }) => {
   const [selectedGroups, setSelectedGroups] = useState<SubjectGroupState[]>([]);
@@ -50,6 +50,20 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Dynamic class pool: retrieve real classes from system & lecturer
+  const availableClasses = useMemo(() => {
+    const engineClasses = attendanceEngine.getUniqueClasses();
+    const lecturerClasses = lecturer?.assignedClasses || lecturer?.assignedSections || [];
+    const passedClasses = allClasses || [];
+    const pool = new Set<string>([
+      ...engineClasses,
+      ...lecturerClasses,
+      ...passedClasses,
+      ...DEFAULT_CLASSES
+    ]);
+    return Array.from(pool).filter(Boolean).sort();
+  }, [lecturer, allClasses]);
 
   // Initialize selected subjects from current lecturer assignments
   useEffect(() => {
@@ -157,7 +171,7 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
     setSelectedGroups((prev) =>
       prev.map((g) => {
         if (g.subjectCode.toUpperCase() !== subjectCode.toUpperCase()) return g;
-        return { ...g, selectedClasses: [...allClasses] };
+        return { ...g, selectedClasses: [...availableClasses] };
       })
     );
   };
@@ -370,11 +384,11 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {allClasses.map((cls) => {
+                      {availableClasses.map((cls, clsIdx) => {
                         const isChecked = group.selectedClasses.includes(cls);
                         return (
                           <button
-                            key={cls}
+                            key={`manage-sub-${group.subjectCode}-${cls}-${clsIdx}`}
                             type="button"
                             onClick={() => handleToggleClass(group.subjectCode, cls)}
                             className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center justify-between transition cursor-pointer ${

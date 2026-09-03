@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 import { QRCodeSVG } from 'qrcode.react';
@@ -221,19 +221,26 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     : [];
 
   // Strictly target students of the same class for Class/Lecture sessions
+  const sessionAllowedClasses = useMemo(() => {
+    if (!currentSession?.className || currentSession.className === 'ALL' || currentSession.className === 'SEMUA') {
+      return null;
+    }
+    return currentSession.className.split(',').map((c) => c.trim().toUpperCase());
+  }, [currentSession?.className]);
+
   const targetStudents = currentSession
-    ? currentSession.className && currentSession.className !== 'ALL' && currentSession.className !== 'SEMUA'
-      ? students.filter((s) => s.className.toUpperCase() === currentSession.className?.toUpperCase())
+    ? sessionAllowedClasses
+      ? students.filter((s) => sessionAllowedClasses.includes(s.className.toUpperCase()))
       : selectedClassFilter !== 'ALL'
       ? students.filter((s) => s.className.toUpperCase() === selectedClassFilter.toUpperCase())
       : students
     : [];
 
   // Present records strictly matching the target class (if class session)
-  const matchingPresentRecords = currentSession?.className && currentSession.className !== 'ALL' && currentSession.className !== 'SEMUA'
+  const matchingPresentRecords = sessionAllowedClasses
     ? sessionRecords.filter((r) => {
         const student = students.find((s) => s.id === r.studentId);
-        return student?.className.toUpperCase() === currentSession.className?.toUpperCase();
+        return student && sessionAllowedClasses.includes(student.className.toUpperCase());
       })
     : selectedClassFilter !== 'ALL'
     ? sessionRecords.filter((r) => {

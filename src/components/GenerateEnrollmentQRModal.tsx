@@ -107,7 +107,7 @@ export const GenerateEnrollmentQRModal: React.FC<GenerateEnrollmentQRModalProps>
   };
 
   const availableSections = currentSubject.sections && currentSubject.sections.length > 0
-    ? currentSubject.sections
+    ? Array.from(new Set(currentSubject.sections.map((s) => s.trim().toUpperCase()).filter(Boolean)))
     : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
 
   return (
@@ -196,9 +196,9 @@ export const GenerateEnrollmentQRModal: React.FC<GenerateEnrollmentQRModalProps>
                 Pilih Kelas / Seksyen
               </label>
               <div className="flex flex-wrap gap-2">
-                {availableSections.map((sec) => (
+                {availableSections.map((sec, secIdx) => (
                   <button
-                    key={sec}
+                    key={`gen-qr-sec-${sec}-${secIdx}`}
                     type="button"
                     onClick={() => setSelectedClass(sec)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${

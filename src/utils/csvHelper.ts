@@ -1,7 +1,9 @@
 import { Student, AttendanceRecord, AttendanceSession, Lecturer, Subject } from '../types';
 import { normalizePhoneNumber } from './phoneHelper';
+import { splitClassNames, normalizeClassCode } from './classHelper';
 
 export * from './phoneHelper';
+export * from './classHelper';
 
 /**
  * Generate standard CSV template for Kursus / Subjek
@@ -281,6 +283,73 @@ export const exportLecturersToCSV = (lecturers: Lecturer[]): string => {
   return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 };
 
+/**
+ * Known KPM curriculum course catalog mapping codes to official subject names & departments
+ */
+export const KNOWN_KPM_COURSES: Record<string, { name: string; department: string }> = {
+  // Jabatan Pengajian Am
+  'MPU2162': { name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am' },
+  'MPU2163': { name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am' },
+  'MPU2412': { name: 'KURSUS INTEGRITI DAN ANTI RASUAH', department: 'Jabatan Pengajian Am' },
+  'MPU2232': { name: 'PUBLIC SPEAKING AND COMMUNICATION', department: 'Jabatan Pengajian Am' },
+  'MPU2372': { name: 'DINAMIKA ISLAM DI MALAYSIA', department: 'Jabatan Pengajian Am' },
+  'MPU2482': { name: 'KEMAHIRAN & TANGGUNGJAWAB SOSIAL KORPORAT', department: 'Jabatan Pengajian Am' },
+  'COM2512': { name: 'MEETING AND INTERVIEW SKILLS', department: 'Jabatan Pengajian Am' },
+  'ENG1453': { name: 'IEP READING', department: 'Jabatan Pengajian Am' },
+  'ENG1473': { name: 'IEP LISTENING AND SPEAKING', department: 'Jabatan Pengajian Am' },
+  'ENG1483': { name: 'IEP GRAMMAR', department: 'Jabatan Pengajian Am' },
+  'ENG1674': { name: 'IEP WRITING', department: 'Jabatan Pengajian Am' },
+  'FLG1202': { name: 'MANDARIN 1', department: 'Jabatan Pengajian Am' },
+  'FLG1212': { name: 'MANDARIN 2', department: 'Jabatan Pengajian Am' },
+  'ISL1092': { name: 'PENDIDIKAN ISLAM 1', department: 'Jabatan Pengajian Am' },
+  'ISI1092': { name: 'PENDIDIKAN ISLAM 1', department: 'Jabatan Pengajian Am' },
+  'ISL1102': { name: 'PENDIDIKAN ISLAM 2', department: 'Jabatan Pengajian Am' },
+  'ISI1102': { name: 'PENDIDIKAN ISLAM 2', department: 'Jabatan Pengajian Am' },
+  'SOC1072': { name: 'SOSIOLOGI DAN HUBUNGAN ETNIK', department: 'Jabatan Pengajian Am' },
+
+  // Jabatan Perakaunan
+  'ACC1013': { name: 'FINANCIAL ACCOUNTING 1', department: 'Jabatan Perakaunan' },
+  'ACC1033': { name: 'FINANCIAL ACCOUNTING 2', department: 'Jabatan Perakaunan' },
+  'ACC1133': { name: 'COST ACCOUNTING 1', department: 'Jabatan Perakaunan' },
+  'ACC1173': { name: 'FINANCIAL REPORTING 1', department: 'Jabatan Perakaunan' },
+  'ACC2203': { name: 'FINANCIAL REPORTING 2', department: 'Jabatan Perakaunan' },
+  'ACC2223': { name: 'FINANCIAL REPORTING 3', department: 'Jabatan Perakaunan' },
+  'ACC2423': { name: 'FINANCIAL REPORTING 4', department: 'Jabatan Perakaunan' },
+  'ACC2533': { name: 'MANAGEMENT ACCOUNTING', department: 'Jabatan Perakaunan' },
+  'ACC2543': { name: 'ACCOUNTING INFORMATION SYSTEM', department: 'Jabatan Perakaunan' },
+  'ACC2613': { name: 'TAXATION 1', department: 'Jabatan Perakaunan' },
+  'ACC2653': { name: 'COST ACCOUNTING 2', department: 'Jabatan Perakaunan' },
+  'ACC2663': { name: 'COMPUTERISED ACCOUNTING', department: 'Jabatan Perakaunan' },
+  'ACC2673': { name: 'FUNDAMENTAL OF FINANCIAL ACCOUNTING', department: 'Jabatan Perakaunan' },
+  'ACC2682': { name: 'PRINCIPLES OF ISLAMIC ACCOUNTING', department: 'Jabatan Perakaunan' },
+  'ACC3553': { name: 'FINANCIAL ACCOUNTING 5', department: 'Jabatan Perakaunan' },
+  'ACC3573': { name: 'AUDITING', department: 'Jabatan Perakaunan' },
+  'ACC3623': { name: 'TAXATION 2', department: 'Jabatan Perakaunan' },
+  'FIN3513': { name: 'FINANCIAL MANAGEMENT', department: 'Jabatan Perakaunan' },
+
+  // Jabatan Pengurusan Perniagaan & Logistik
+  'BUS1013': { name: 'INTRODUCTION TO BUSINESS', department: 'Jabatan Pengurusan Perniagaan' },
+  'ECO1013': { name: 'MICROECONOMICS', department: 'Jabatan Pengurusan Perniagaan' },
+  'ECO1043': { name: 'BUSINESS ECONOMICS', department: 'Jabatan Pengurusan Perniagaan' },
+  'ECO2023': { name: 'MACROECONOMICS', department: 'Jabatan Pengurusan Perniagaan' },
+  'ETR2583': { name: 'E-ENTREPRENEURSHIP', department: 'Jabatan Pengurusan Perniagaan' },
+  'HLC2593': { name: 'HALAL LOGISTICS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'LOG1033': { name: 'INTRODUCTION TO LOGISTICS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'LOG2063': { name: 'PRINCIPLES OF PURCHASING MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'LOG2603': { name: 'PRINCIPLES OF OPERATIONS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'LOG2633': { name: 'INTERNATIONAL LOGISTICS & SUPPLY CHAIN', department: 'Jabatan Pengurusan Perniagaan' },
+  'LOG3533': { name: 'WAREHOUSING AND MATERIALS MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'MAT1013': { name: 'BUSINESS MATHEMATICS', department: 'Jabatan Pengurusan Perniagaan' },
+  'MGT1013': { name: 'PRINCIPLES OF MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'MGT2513': { name: 'HUMAN RESOURCE MANAGEMENT', department: 'Jabatan Pengurusan Perniagaan' },
+  'MKT2013': { name: 'PRINCIPLES OF MARKETING', department: 'Jabatan Pengurusan Perniagaan' },
+  'LAW2053': { name: 'INTRODUCTION TO PARTNERSHIP LAW', department: 'Jabatan Pengurusan Perniagaan' },
+  'LAW2523': { name: 'BUSINESS LAW', department: 'Jabatan Pengurusan Perniagaan' },
+
+  // Jabatan Teknologi Maklumat
+  'ITE1133': { name: 'INTRODUCTION OF INFORMATION TECHNOLOGY APPLICATIONS', department: 'Jabatan Teknologi Maklumat' }
+};
+
 export const parseLecturerCSV = (csvText: string): Lecturer[] => {
   const lines = csvText
     .split(/\r\n|\n/)
@@ -289,17 +358,19 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
 
   if (lines.length <= 1) return [];
 
-  const headers = lines[0].split(',').map((h) => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+  const headers = splitCSVRow(lines[0]).map((h) =>
+    h.replace(/^["']|["']$/g, '').trim().toLowerCase().replace(/[\s_]+/g, '_')
+  );
 
-  let nameIndex = headers.findIndex((h) => h.includes('nama'));
+  let nameIndex = headers.findIndex((h) => h.includes('nama') || h.includes('name'));
   let emailIndex = headers.findIndex((h) => h.includes('email') || h.includes('emel') || h.includes('mel'));
   let icIndex = headers.findIndex((h) => h.includes('ic') || h.includes('kad_pengenalan') || h.includes('kp') || h.includes('nric'));
   let phoneIndex = headers.findIndex((h) => h.includes('telefon') || h.includes('phone') || h.includes('tel') || h.includes('hp'));
   let pinIndex = headers.findIndex((h) => h.includes('pin'));
-  let sectionIndex = headers.findIndex((h) => h.includes('kelas') || h.includes('seksyen') || h.includes('section'));
-  let subjectIndex = headers.findIndex((h) => h.includes('subjek') || h.includes('kursus') || h.includes('subject'));
-  let deptIndex = headers.findIndex((h) => h.includes('jabatan') || h.includes('dept') || h.includes('department'));
-  let roleIndex = headers.findIndex((h) => h.includes('peranan') || h.includes('role'));
+  let sectionIndex = headers.findIndex((h) => h.includes('kelas') || h.includes('seksyen') || h.includes('section') || h.includes('class'));
+  let subjectIndex = headers.findIndex((h) => h.includes('subjek') || h.includes('kursus') || h.includes('subject') || h.includes('diajar'));
+  let deptIndex = headers.findIndex((h) => h.includes('jabatan') || h.includes('dept') || h.includes('department') || h.includes('bidang'));
+  let roleIndex = headers.findIndex((h) => h.includes('peranan') || h.includes('role') || h.includes('jawatan'));
 
   // Positional fallbacks if headers are simple
   if (nameIndex === -1 && headers.length >= 2) nameIndex = 1;
@@ -318,27 +389,46 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
     const rawPhone = phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex] : '';
     const phone = normalizePhoneNumber(rawPhone);
     const customPin = pinIndex >= 0 && rawCols[pinIndex] ? rawCols[pinIndex].trim() : '';
-    const sectionsRaw = sectionIndex >= 0 && rawCols[sectionIndex] ? rawCols[sectionIndex].trim() : 'DIA_4A';
+    const sectionsRaw = sectionIndex >= 0 && rawCols[sectionIndex] ? rawCols[sectionIndex].trim() : '';
     const subjectsRaw = subjectIndex >= 0 && rawCols[subjectIndex] ? rawCols[subjectIndex].trim() : '';
-    const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Perakaunan';
+    const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Jabatan Pengajian Am';
     const roleRaw = roleIndex >= 0 && rawCols[roleIndex] ? rawCols[roleIndex].trim().toUpperCase() : 'LECTURER';
 
     if (!name || !email) continue;
 
     const numericIC = icNumber.replace(/[^0-9]/g, '');
-    const derivedPin = customPin.length === 4 ? customPin : (numericIC.length >= 4 ? numericIC.slice(-4) : '5305');
+    const cleanPin = customPin.replace(/[^0-9]/g, '');
+    const derivedPin = cleanPin.length === 4 ? cleanPin : (numericIC.length >= 4 ? numericIC.slice(-4) : '5305');
 
-    const sections = sectionsRaw
-      .split(/[,;|]/)
-      .map((s) => s.trim().toUpperCase())
-      .filter((s) => s.length > 0);
+    // Parse classes into clean array (e.g. ['DIA4A', 'DIA4B', 'DIA4C', 'DIA3A'])
+    const sections = splitClassNames(sectionsRaw);
 
-    const subjects = subjectsRaw
+    // Parse subjects into clean array (e.g. ['MPU2162 - PENGAJIAN MALAYSIA 2', 'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'])
+    const rawSubjectEntries = subjectsRaw
       .split(/[,;|]/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const lecturerId = `LEC-${email.split('@')[0].toUpperCase()}`;
+    const formattedSubjects = Array.from(
+      new Set(
+        rawSubjectEntries.map((entry) => {
+          if (entry.includes('-')) {
+            const parts = entry.split('-');
+            const c = parts[0].trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const n = parts.slice(1).join('-').trim().toUpperCase();
+            return `${c} - ${n}`;
+          }
+          const cleanCode = entry.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const known = KNOWN_KPM_COURSES[cleanCode];
+          if (known) {
+            return `${cleanCode} - ${known.name}`;
+          }
+          return cleanCode;
+        })
+      )
+    );
+
+    const lecturerId = `LEC-${email.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
 
     resultLecturers.push({
       id: lecturerId,
@@ -348,10 +438,12 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
       pin: derivedPin,
       phone: phone || undefined,
       department,
-      assignedSections: sections.length > 0 ? sections : ['DIA_4A'],
-      assignedClasses: sections.length > 0 ? sections : ['DIA_4A'],
-      assignedSubjects: subjects.length > 0 ? subjects : ['MPU 2163 - Pengajian Malaysia 2'],
-      role: roleRaw === 'ADMIN' ? 'ADMIN' : 'LECTURER'
+      assignedSections: sections,
+      assignedClasses: sections,
+      assignedSubjects: formattedSubjects,
+      role: roleRaw === 'ADMIN' ? 'ADMIN' : 'LECTURER',
+      status: 'ACTIVE',
+      registeredAt: new Date().toISOString()
     });
   }
 

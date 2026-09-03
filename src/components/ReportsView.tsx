@@ -355,8 +355,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   onChange={(e) => setSelectedClassSection(e.target.value)}
                   className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
                 >
-                  {uniqueClasses.map((cls) => (
-                    <option key={cls} value={cls}>Kelas {cls}</option>
+                  {uniqueClasses.map((cls, clsIdx) => (
+                    <option key={`report-class-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
                   ))}
                 </select>
               </div>
@@ -391,8 +391,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
                 <option value="ALL">Semua Kelas</option>
-                {uniqueClasses.map((cls) => (
-                  <option key={cls} value={cls}>Kelas {cls}</option>
+                {uniqueClasses.map((cls, clsIdx) => (
+                  <option key={`report-filter-set-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
                 ))}
               </select>
             )}

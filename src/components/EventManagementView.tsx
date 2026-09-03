@@ -44,7 +44,8 @@ import {
   ArrowRight,
   Calendar,
   CalendarPlus,
-  Settings
+  Settings,
+  Check
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 
@@ -139,26 +140,57 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   }, [studentCountByClass]);
 
   // Modal States
-  const [isCreateSubjectOpen, setIsCreateSubjectOpen] = useState<boolean>(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState<boolean>(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [projectorSession, setProjectorSession] = useState<AttendanceSession | null>(null);
 
-  // New Subject Form State
-  const [newSubCode, setNewSubCode] = useState<string>('');
-  const [newSubName, setNewSubName] = useState<string>('');
-  const [newSubLecturer, setNewSubLecturer] = useState<string>(
-    activeLecturer?.name || (availableLecturers[0]?.name) || 'PENSYARAH'
-  );
-  const [newSubSections, setNewSubSections] = useState<string[]>([]);
-  const [newSubDesc, setNewSubDesc] = useState<string>('');
-
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
-  const [newSessionClass, setNewSessionClass] = useState<string>('');
+  const [newSessionClasses, setNewSessionClasses] = useState<string[]>([]);
+
+  // Available classes for selected subject in session modal
+  const targetClassesForModal = useMemo(() => {
+    const sub = subjects.find((s) => s.id === selectedSubjectId);
+    const subSections = (sub?.sections || []).filter(Boolean);
+    const combined = Array.from(new Set([
+      ...subSections,
+      ...classesWithData
+    ])).filter(Boolean);
+    return combined.length > 0 ? combined : (classesWithData.length > 0 ? classesWithData : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']);
+  }, [subjects, selectedSubjectId, classesWithData]);
+
+  // Toggle individual class in session modal
+  const handleToggleSessionClass = (cls: string) => {
+    setNewSessionClasses((prev) =>
+      prev.includes(cls) ? prev.filter((c) => c !== cls) : [...prev, cls]
+    );
+  };
+
+  const handleSelectAllSessionClasses = () => {
+    setNewSessionClasses([...targetClassesForModal]);
+  };
+
+  const handleClearSessionClasses = () => {
+    setNewSessionClasses([]);
+  };
+
+  const totalStudentsInTargetClasses = useMemo(() => {
+    return newSessionClasses.reduce(
+      (sum, cls) => sum + (studentCountByClass[cls.toUpperCase()] || 0),
+      0
+    );
+  }, [newSessionClasses, studentCountByClass]);
 
   // Lecturer Manage Subjects Modal
   const [isManageSubjectsModalOpen, setIsManageSubjectsModalOpen] = useState<boolean>(false);
+
+  // In-App Deletion Confirmation Modal State (replaces window.confirm which is blocked in iframes)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    type: 'SUBJECT' | 'SESSION';
+    id: string;
+    title: string;
+    detail: string;
+  } | null>(null);
 
   // Active lecturer teaching assignment codes
   const myAssignedCodes = useMemo(() => {
@@ -240,44 +272,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     });
   }, [scopedSubjects, searchQuery]);
 
-  // Handle Submit New Subject
-  const handleSubmitSubject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSubCode.trim() || !newSubName.trim()) return;
-
-    if (classesWithData.length === 0) {
-      alert('Tiada data kelas pelajar. Sila muat naik fail CSV data pelajar terlebih dahulu.');
-      return;
-    }
-
-    if (newSubSections.length === 0) {
-      alert('Sila pilih sekurang-kurangnya satu kelas yang mengambil subjek ini.');
-      return;
-    }
-
-    const matchedLec = availableLecturers.find((l) => l.name === newSubLecturer) || activeLecturer;
-
-    const newSub: Subject = {
-      id: `SUB-${newSubCode.trim().toUpperCase().replace(/\s+/g, '')}`,
-      code: newSubCode.trim().toUpperCase(),
-      name: newSubName.trim(),
-      lecturerId: matchedLec?.id || activeLecturer?.id || 'LEC-001',
-      lecturerName: newSubLecturer.trim() || matchedLec?.name || activeLecturer?.name || 'Pensyarah',
-      department: matchedLec?.department || 'Perakaunan',
-      sections: newSubSections,
-      description: newSubDesc.trim(),
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString()
-    };
-
-    onCreateSubject(newSub);
-    setIsCreateSubjectOpen(false);
-    setNewSubCode('');
-    setNewSubName('');
-    setNewSubDesc('');
-    setNewSubSections(classesWithData.slice(0, 1));
-  };
-
   // Open Create Session modal for specific subject
   const handleOpenAddSession = (subId: string) => {
     const sub = subjects.find((s) => s.id === subId);
@@ -286,8 +280,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       const existingSubSessions = sessions.filter((s) => s.subjectId === subId || s.activityId === subId);
       const nextWeekNum = existingSubSessions.length + 1;
       setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
-      const validClass = (sub.sections || []).find((sec) => classesWithData.includes(sec)) || sub.sections[0] || classesWithData[0] || 'ALL';
-      setNewSessionClass(validClass);
+      // Default: Tick all sections registered for this subject, or fallback to classes with data
+      const subSections = (sub.sections || []).filter(Boolean);
+      if (subSections.length > 0) {
+        setNewSessionClasses(subSections);
+      } else if (classesWithData.length > 0) {
+        setNewSessionClasses(classesWithData);
+      } else {
+        setNewSessionClasses(['DIA_4A']);
+      }
     }
     setIsCreateSessionOpen(true);
   };
@@ -297,7 +298,14 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     e.preventDefault();
     if (!newSessionName.trim() || !selectedSubjectId) return;
 
+    if (newSessionClasses.length === 0) {
+      alert('Sila tandakan (tick) sekurang-kurangnya satu kelas yang terlibat bagi sesi kuliah ini.');
+      return;
+    }
+
     const parentSub = subjects.find((s) => s.id === selectedSubjectId);
+    const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
+    const finalClassName = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
 
     const newSes: AttendanceSession = {
       id: `SES-${Date.now().toString(36).toUpperCase()}`,
@@ -315,7 +323,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       attendanceMethod: 'QR',
       organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
       lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-      className: newSessionClass,
+      className: finalClassName,
       createdAt: new Date().toISOString()
     };
 
@@ -329,12 +337,12 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       onRequestAdminAccess(`Padam Sesi Kelas (${session.sessionName})`);
       return;
     }
-    const confirmed = window.confirm(
-      `Adakah anda pasti untuk MEMADAM sesi kelas "${session.sessionName}"?`
-    );
-    if (confirmed && onDeleteSession) {
-      onDeleteSession(session.id);
-    }
+    setDeleteConfirmation({
+      type: 'SESSION',
+      id: session.id,
+      title: `Padam Sesi Kelas`,
+      detail: `Adakah anda pasti mahu memadamkan "${session.sessionName}" (${session.className || 'Semua Kelas'})? Sesi ini dan senarai semakannya akan dikeluarkan.`
+    });
   };
 
   // Handle Delete Subject
@@ -343,32 +351,27 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
       onRequestAdminAccess(`Padam Subjek (${subject.code})`);
       return;
     }
-    const confirmed = window.confirm(
-      `Adakah anda pasti untuk MEMADAM subjek "${subject.code} - ${subject.name}" dan semua rekod sesi kelasnya?`
-    );
-    if (confirmed && onDeleteSubject) {
-      onDeleteSubject(subject.id);
-    }
+    setDeleteConfirmation({
+      type: 'SUBJECT',
+      id: subject.id,
+      title: `Padam Subjek ${subject.code}`,
+      detail: `Adakah anda pasti mahu memadamkan subjek "${subject.code} - ${subject.name}"? Semua jadual sesi kelas di bawah subjek ini juga akan dipadamkan.`
+    });
   };
 
-  const toggleSectionSelect = (sec: string) => {
-    if (newSubSections.includes(sec)) {
-      if (newSubSections.length > 1) {
-        setNewSubSections(newSubSections.filter((s) => s !== sec));
+  // Execute Confirmed Delete
+  const handleExecuteDelete = () => {
+    if (!deleteConfirmation) return;
+    if (deleteConfirmation.type === 'SUBJECT') {
+      if (onDeleteSubject) {
+        onDeleteSubject(deleteConfirmation.id);
       }
-    } else {
-      setNewSubSections([...newSubSections, sec]);
+    } else if (deleteConfirmation.type === 'SESSION') {
+      if (onDeleteSession) {
+        onDeleteSession(deleteConfirmation.id);
+      }
     }
-  };
-
-  const handleOpenCreateSubjectModal = () => {
-    if (activeLecturer) {
-      setNewSubLecturer(activeLecturer.name);
-    }
-    if (classesWithData.length > 0 && newSubSections.length === 0) {
-      setNewSubSections(classesWithData.slice(0, 1));
-    }
-    setIsCreateSubjectOpen(true);
+    setDeleteConfirmation(null);
   };
 
   // Global Active Sessions (Level 1: NOW / ACTIVE)
@@ -421,17 +424,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             <p className="text-xs text-slate-400">
               Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan mingguan.
             </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 self-start md:self-center shrink-0">
-            <button
-              id="btn-create-new-subject"
-              onClick={handleOpenCreateSubjectModal}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer shrink-0 active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Daftar Subjek Baharu</span>
-            </button>
           </div>
         </div>
 
@@ -842,8 +834,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         const count = attendanceRecords.filter(
                           (r) => r.sessionId === session.id && r.status === 'PRESENT'
                         ).length;
-                        const classTarget = session.className && session.className !== 'ALL'
-                          ? (studentCountByClass[session.className.toUpperCase()] || 0)
+                        const classTarget = session.className && session.className !== 'ALL' && session.className !== 'SEMUA'
+                          ? session.className.split(',').reduce((sum, c) => sum + (studentCountByClass[c.trim().toUpperCase()] || 0), 0)
                           : totalSubjectStudents || availableStudents.length;
 
                         return (
@@ -956,8 +948,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                                 const count = attendanceRecords.filter(
                                   (r) => r.sessionId === session.id && r.status === 'PRESENT'
                                 ).length;
-                                const classTarget = session.className && session.className !== 'ALL'
-                                  ? (studentCountByClass[session.className.toUpperCase()] || 0)
+                                const classTarget = session.className && session.className !== 'ALL' && session.className !== 'SEMUA'
+                                  ? session.className.split(',').reduce((sum, c) => sum + (studentCountByClass[c.trim().toUpperCase()] || 0), 0)
                                   : totalSubjectStudents || availableStudents.length;
 
                                 return (
@@ -1011,179 +1003,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
         )}
       </div>
 
-      {/* CREATE SUBJECT MODAL */}
-      {isCreateSubjectOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 text-white">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-400" />
-                <span>Daftar Subjek & Kelas Baharu</span>
-              </h3>
-              <button
-                onClick={() => setIsCreateSubjectOpen(false)}
-                className="text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitSubject} className="space-y-3.5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-1">
-                  <label className="text-xs font-semibold text-slate-300">Kod Subjek *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="cth: FAR210"
-                    value={newSubCode}
-                    onChange={(e) => setNewSubCode(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono uppercase font-bold"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-semibold text-slate-300">Nama Subjek / Kursus *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="cth: Financial Accounting 2"
-                    value={newSubName}
-                    onChange={(e) => setNewSubName(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Pensyarah Mengajar *</label>
-                <select
-                  value={newSubLecturer}
-                  onChange={(e) => setNewSubLecturer(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  {availableLecturers.map((lec) => (
-                    <option key={lec.id} value={lec.name}>
-                      {lec.name} {lec.role === 'ADMIN' ? '(Pentadbir)' : ''} - {lec.department || 'Pensyarah'}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Dipilih terus daripada senarai pensyarah berdaftar dalam pangkalan data.
-                </p>
-              </div>
-
-              {/* Section Toggles (Only classes with actual student data in database) */}
-              <div>
-                {classesWithData.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 space-y-2.5">
-                    <div className="flex items-start gap-2.5">
-                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <div className="text-xs font-bold text-amber-300">
-                          Tiada Data Kelas Pelajar Dijumpai
-                        </div>
-                        <p className="text-[11px] leading-relaxed text-slate-300">
-                          Sebelum mendaftarkan subjek baharu, pensyarah/pentadbir perlu memuat naik senarai data pelajar mengikut kelas terlebih dahulu melalui fail CSV di tab <strong>Pangkalan Data</strong>.
-                        </p>
-                      </div>
-                    </div>
-                    {onOpenCSVImport && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCreateSubjectOpen(false);
-                          onOpenCSVImport();
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>Muat Naik CSV Data Pelajar Sekarang</span>
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-semibold text-slate-300">
-                        Kelas Terlibat (Mempunyai Data Pelajar) *
-                      </label>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {newSubSections.length} kelas dipilih
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {classesWithData.map((sec) => {
-                        const isSelected = newSubSections.includes(sec);
-                        const count = studentCountByClass[sec] || 0;
-                        return (
-                          <button
-                            key={`new-sub-sec-${sec}`}
-                            type="button"
-                            onClick={() => toggleSectionSelect(sec)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/50'
-                                : 'bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700'
-                            }`}
-                          >
-                            <span>Kelas {sec}</span>
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
-                                isSelected
-                                  ? 'bg-indigo-900/80 text-indigo-100'
-                                  : 'bg-slate-800 text-emerald-400'
-                              }`}
-                            >
-                              {count} Pelajar
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                      <span>💡 Sila daftarkan pelajar dahulu sebelum pilihan Kelas boleh muncul di sini.</span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Catatan Tambahan (Tidak Wajib)</label>
-                <textarea
-                  rows={2}
-                  placeholder="Catatan kursus atau silibus..."
-                  value={newSubDesc}
-                  onChange={(e) => setNewSubDesc(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateSubjectOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-all cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={classesWithData.length === 0 || newSubSections.length === 0}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all ${
-                    classesWithData.length === 0 || newSubSections.length === 0
-                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 cursor-pointer'
-                  }`}
-                >
-                  Daftar Subjek
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* CREATE SESSION MODAL */}
       {isCreateSessionOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1216,24 +1035,94 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Kelas Sasaran *</label>
-                <select
-                  value={newSessionClass}
-                  onChange={(e) => setNewSessionClass(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
-                >
-                  {/* Prioritize sections assigned to selected subject, then all available sections with student data */}
-                  {Array.from(new Set([
-                    ...(subjects.find((s) => s.id === selectedSubjectId)?.sections || []),
-                    ...classesWithData
-                  ])).map((sec) => (
-                    <option key={`session-target-class-${sec}`} value={sec}>
-                      Kelas {sec} {studentCountByClass[sec] ? `(${studentCountByClass[sec]} Pelajar)` : ''}
-                    </option>
-                  ))}
-                  <option value="ALL">Semua Kelas (Gabungan)</option>
-                </select>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                    <span>Kelas Sasaran Yang Terlibat *</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                      {newSessionClasses.length} kelas ditandakan
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      id="btn-select-all-classes-session"
+                      onClick={handleSelectAllSessionClasses}
+                      className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 hover:underline px-1.5 py-0.5 rounded transition cursor-pointer"
+                    >
+                      Pilih Semua
+                    </button>
+                    <span className="text-slate-600 text-xs">|</span>
+                    <button
+                      type="button"
+                      id="btn-clear-all-classes-session"
+                      onClick={handleClearSessionClasses}
+                      className="text-[11px] font-semibold text-slate-400 hover:text-rose-400 px-1.5 py-0.5 rounded transition cursor-pointer"
+                    >
+                      Kosongkan
+                    </button>
+                  </div>
+                </div>
+
+                {/* Interactive Checkbox Tick Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                  {targetClassesForModal.map((sec, secIdx) => {
+                    const isChecked = newSessionClasses.includes(sec);
+                    const count = studentCountByClass[sec.toUpperCase()] || 0;
+                    return (
+                      <button
+                        key={`tick-class-${sec}-${secIdx}`}
+                        id={`btn-tick-class-${sec}`}
+                        type="button"
+                        onClick={() => handleToggleSessionClass(sec)}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isChecked
+                            ? 'bg-indigo-950/60 border-indigo-500 shadow-sm shadow-indigo-900/40 text-white ring-1 ring-indigo-500/50'
+                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                              isChecked
+                                ? 'bg-indigo-600 border-indigo-500 text-white'
+                                : 'border-slate-700 bg-slate-900'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                          <span className={`text-xs font-bold truncate ${isChecked ? 'text-white' : 'text-slate-300'}`}>
+                            Kelas {sec}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
+                            isChecked
+                              ? 'bg-indigo-500/25 text-indigo-200 border-indigo-500/40'
+                              : 'bg-slate-900 text-slate-500 border-slate-800'
+                          }`}
+                        >
+                          {count} Pelajar
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Target student count summary & validation feedback */}
+                {newSessionClasses.length > 0 ? (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-300">
+                    <span className="text-slate-400">Jumlah pelajar dijangka:</span>
+                    <span className="font-bold text-emerald-400 font-mono">
+                      {totalStudentsInTargetClasses} Pelajar ({newSessionClasses.join(', ')})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Sila tandakan (tick) sekurang-kurangnya satu kelas untuk sesi ini.</span>
+                  </div>
+                )}
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
@@ -1250,7 +1139,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  disabled={newSessionClasses.length === 0}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
                 >
                   Simpan & Cipta Sesi
                 </button>
@@ -1362,6 +1252,55 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             setIsManageSubjectsModalOpen(false);
           }}
         />
+      )}
+
+      {/* ========================================================
+          MODAL PENGESAHAN PADAM (SUBJEK & SESI)
+          Menggantikan window.confirm untuk sokongan 100% iframe
+          ======================================================== */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  {deleteConfirmation.title}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {deleteConfirmation.detail}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>Amaran: Tindakan ini adalah kekal.</span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-delete"
+                onClick={() => setDeleteConfirmation(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete"
+                onClick={handleExecuteDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Padam Sekarang</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

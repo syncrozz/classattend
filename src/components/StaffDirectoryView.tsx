@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Student,
@@ -86,6 +86,15 @@ interface StudentDirectoryViewProps {
   onResetSubjects?: () => void;
   onRequestAdminAccess: (actionName?: string) => void;
   onQuickSimulateScan: (studentId: string) => ScanResult;
+  onUpdateLecturerAssignments?: (
+    lecturerId: string,
+    subjectAssignments: {
+      subjectCode: string;
+      subjectName: string;
+      department?: string;
+      classes: string[];
+    }[]
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
@@ -109,7 +118,8 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   onDeleteSubject,
   onResetSubjects,
   onRequestAdminAccess,
-  onQuickSimulateScan
+  onQuickSimulateScan,
+  onUpdateLecturerAssignments
 }) => {
   const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'LECTURERS' | 'SUBJECTS'>('STUDENTS');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -123,6 +133,13 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   const [isSelfRegModalOpen, setIsSelfRegModalOpen] = useState<boolean>(false);
   const [approvalActionLoading, setApprovalActionLoading] = useState<string | null>(null);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+
+  // Admin Subject Assignment State
+  const [selectedLecturerForSubjects, setSelectedLecturerForSubjects] = useState<Lecturer | null>(null);
+  const [assignSubjectSearch, setAssignSubjectSearch] = useState<string>('');
+  const [assignDeptFilter, setAssignDeptFilter] = useState<string>('ALL');
+  const [selectedSubjectCodes, setSelectedSubjectCodes] = useState<string[]>([]);
+  const [isSavingAssignments, setIsSavingAssignments] = useState<boolean>(false);
 
   // Subject view states
   const [subjectSearch, setSubjectSearch] = useState<string>('');
@@ -437,6 +454,163 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     soundService.playSuccess();
   };
 
+  // Helper: Retrieve all assigned subjects for a specific lecturer
+  const getAssignedSubjectsForLecturer = (lec: Lecturer) => {
+    const codeMap = new Map<string, { code: string; name: string; department?: string; classes: string[] }>();
+    const lecEmail = (lec.email || '').trim().toLowerCase();
+    const lecId = (lec.id || '').trim().toLowerCase();
+    const lecNameLower = (lec.name || '').trim().toLowerCase();
+
+    // 1. From teachingAssignments
+    teachingAssignments.forEach((ta) => {
+      const matchId = ta.lecturerId && ta.lecturerId.toLowerCase() === lecId;
+      const matchEmail = ta.lecturerEmail && ta.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = ta.lecturerName && ta.lecturerName.toLowerCase().includes(lecNameLower);
+      if (matchId || matchEmail || matchName) {
+        const code = ta.subjectCode.trim().toUpperCase();
+        if (!codeMap.has(code)) {
+          codeMap.set(code, {
+            code,
+            name: ta.subjectName,
+            department: subjects.find((s) => s.code.trim().toUpperCase() === code)?.department,
+            classes: ta.className ? [ta.className] : []
+          });
+        } else {
+          const item = codeMap.get(code)!;
+          if (ta.className && !item.classes.includes(ta.className)) {
+            item.classes.push(ta.className);
+          }
+        }
+      }
+    });
+
+    // 2. From lec.assignedSubjects
+    (lec.assignedSubjects || []).forEach((subStr) => {
+      let code = subStr;
+      let name = subStr;
+      if (subStr.includes('-')) {
+        const parts = subStr.split('-');
+        code = parts[0].trim().toUpperCase();
+        name = parts.slice(1).join('-').trim();
+      } else {
+        code = code.trim().toUpperCase();
+      }
+      if (!codeMap.has(code)) {
+        const matched = subjects.find((s) => s.code.trim().toUpperCase() === code);
+        codeMap.set(code, {
+          code,
+          name: matched?.name || name,
+          department: matched?.department,
+          classes: matched?.sections || lec.assignedClasses || []
+        });
+      }
+    });
+
+    // 3. From subjects list where lecturer matches
+    subjects.forEach((s) => {
+      const matchId = s.lecturerId && s.lecturerId.toLowerCase() === lecId;
+      const matchEmail = s.lecturerEmail && s.lecturerEmail.toLowerCase() === lecEmail;
+      const matchName = s.lecturerName && s.lecturerName.toLowerCase().includes(lecNameLower);
+      if (matchId || matchEmail || matchName) {
+        const code = s.code.trim().toUpperCase();
+        if (!codeMap.has(code)) {
+          codeMap.set(code, {
+            code,
+            name: s.name,
+            department: s.department,
+            classes: s.sections || []
+          });
+        }
+      }
+    });
+
+    return Array.from(codeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
+  };
+
+  // Open Subject Assignment Modal for a Lecturer (Admin Only)
+  const handleOpenAssignSubjectsModal = (lec: Lecturer) => {
+    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+      onRequestAdminAccess(`Menetapkan Subjek bagi Pensyarah ${lec.name}`);
+      return;
+    }
+    const assigned = getAssignedSubjectsForLecturer(lec);
+    setSelectedLecturerForSubjects(lec);
+    setSelectedSubjectCodes(assigned.map((a) => a.code));
+    setAssignSubjectSearch('');
+    setAssignDeptFilter('ALL');
+  };
+
+  // Toggle single subject selection in assignment modal
+  const handleToggleSubject = (code: string) => {
+    setSelectedSubjectCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
+
+  // Save Subject Assignments (Admin)
+  const handleSaveAssignedSubjects = async () => {
+    if (!selectedLecturerForSubjects) return;
+    setIsSavingAssignments(true);
+
+    try {
+      const payload = selectedSubjectCodes.map((code) => {
+        const sub = subjects.find((s) => s.code.trim().toUpperCase() === code.trim().toUpperCase());
+        return {
+          subjectCode: code,
+          subjectName: sub?.name || code,
+          department: sub?.department || selectedLecturerForSubjects.department || 'Jabatan Pengajian',
+          classes: (sub?.sections && sub.sections.length > 0)
+            ? sub.sections
+            : (selectedLecturerForSubjects.assignedClasses && selectedLecturerForSubjects.assignedClasses.length > 0)
+            ? selectedLecturerForSubjects.assignedClasses
+            : ['DIA_1A', 'DIA_1B']
+        };
+      });
+
+      if (onUpdateLecturerAssignments) {
+        await onUpdateLecturerAssignments(selectedLecturerForSubjects.id, payload);
+      } else {
+        await attendanceEngine.setLecturerAssignments(selectedLecturerForSubjects.id, payload);
+      }
+
+      soundService.playSuccess();
+      setApprovalMessage(
+        `Penetapan subjek bagi pensyarah ${selectedLecturerForSubjects.name} berjaya disimpan (${payload.length} subjek diajar).`
+      );
+      setTimeout(() => setApprovalMessage(null), 5000);
+      setSelectedLecturerForSubjects(null);
+    } catch (err) {
+      soundService.playError();
+      console.error('Save assigned subjects error:', err);
+      alert('Ralat semasa menyimpan penugasan subjek.');
+    } finally {
+      setIsSavingAssignments(false);
+    }
+  };
+
+  // Available subject departments for filtering in assignment modal
+  const availableSubjectDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    subjects.forEach((s) => {
+      if (s.department) depts.add(s.department.trim());
+    });
+    return Array.from(depts);
+  }, [subjects]);
+
+  // Filtered subjects in assignment modal
+  const modalFilteredSubjects = useMemo(() => {
+    const q = assignSubjectSearch.toLowerCase().trim();
+    return subjects.filter((sub) => {
+      const matchSearch =
+        !q ||
+        sub.code.toLowerCase().includes(q) ||
+        sub.name.toLowerCase().includes(q) ||
+        (sub.department && sub.department.toLowerCase().includes(q));
+      const matchDept = assignDeptFilter === 'ALL' || sub.department === assignDeptFilter;
+      return matchSearch && matchDept;
+    });
+  }, [subjects, assignSubjectSearch, assignDeptFilter]);
+
   const isAnyPrintModalOpen = Boolean(selectedStudentForQR || isBatchPrintOpen);
 
   return (
@@ -670,25 +844,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <span>Jana QR Pensyarah</span>
                   </button>
 
-                  {(isAdmin || (activeLecturer && activeLecturer.role === 'ADMIN')) && (
-                    <button
-                      id="btn-test-lecturer-self-reg"
-                      type="button"
-                      onClick={() => {
-                        if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
-                          onRequestAdminAccess('Uji Borang Pendaftaran Kendiri Pensyarah');
-                          return;
-                        }
-                        setIsSelfRegModalOpen(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-950/80 hover:bg-teal-900/90 text-teal-300 border border-teal-600/50 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                      title="Buka Borang Pendaftaran Kendiri Pensyarah untuk percubaan (Akses Pentadbir Sahaja)"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Uji Borang Pendaftaran</span>
-                    </button>
-                  )}
-
                   <button
                     id="btn-manual-add-lecturer"
                     type="button"
@@ -739,11 +894,16 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </div>
 
               {/* Row 2: Info Banner */}
-              <div className="flex items-center gap-2 pt-1 text-xs text-slate-400 bg-slate-950/50 px-3.5 py-2 rounded-xl border border-slate-800/60">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-[11px] leading-relaxed text-slate-300">
-                  <strong className="text-white">Padanan Akses Pensyarah:</strong> Isikan e-mel rasmi (<code className="text-emerald-300 font-mono">@bpenawar.kpm.edu.my</code>) &amp; No. Kad Pengenalan / PIN dalam templat CSV untuk kebenaran log masuk dan capaian Pentadbir.
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 text-xs text-slate-400 bg-slate-950/50 px-3.5 py-2.5 rounded-xl border border-slate-800/60">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-[11px] leading-relaxed text-slate-300">
+                    <strong className="text-emerald-400">Aliran Pentadbir (Admin Flow):</strong> 1. Import CSV Pensyarah ➔ 2. Klik butang <strong className="text-white">"Tetapkan Subjek Diajar"</strong> pada mana-mana kad pensyarah untuk memilih subjek daripada katalog kurikulum berdaftar.
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono shrink-0">
+                  Jumlah Pensyarah: <strong className="text-white">{filteredLecturers.length}</strong>
+                </div>
               </div>
             </div>
           )}
@@ -1113,7 +1273,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       const lecAssignments = teachingAssignments.filter((ta) => ta.lecturerId === lec.id);
                       const isLoading = approvalActionLoading === lec.id;
 
-                      // Group assignments by subject
+                      // Group assignments by subject with deduplicated classes
                       const groupedBySubject = lecAssignments.reduce((acc, ta) => {
                         if (!acc[ta.subjectCode]) {
                           acc[ta.subjectCode] = {
@@ -1121,7 +1281,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                             classes: []
                           };
                         }
-                        acc[ta.subjectCode].classes.push(ta.className);
+                        if (ta.className && !acc[ta.subjectCode].classes.includes(ta.className)) {
+                          acc[ta.subjectCode].classes.push(ta.className);
+                        }
                         return acc;
                       }, {} as Record<string, { subjectName: string; classes: string[] }>);
 
@@ -1178,9 +1340,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                             
                             {Object.keys(groupedBySubject).length > 0 ? (
                               <div className="space-y-1">
-                                {(Object.entries(groupedBySubject) as [string, { subjectName: string; classes: string[] }][]).map(([subCode, data]) => (
+                                {(Object.entries(groupedBySubject) as [string, { subjectName: string; classes: string[] }][]).map(([subCode, data], dataIdx) => (
                                   <div
-                                    key={subCode}
+                                    key={`pending-sub-${lec.id}-${subCode}-${dataIdx}`}
                                     className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] space-y-1"
                                   >
                                     <div className="flex items-center space-x-1.5 text-teal-300 font-bold">
@@ -1191,9 +1353,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                                       </span>
                                     </div>
                                     <div className="flex flex-wrap gap-1 pl-4">
-                                      {data.classes.map((cls) => (
+                                      {Array.from(new Set(data.classes || [])).map((cls, clsIdx) => (
                                         <span
-                                          key={cls}
+                                          key={`pending-cls-${lec.id}-${subCode}-${cls}-${clsIdx}`}
                                           className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-bold"
                                         >
                                           {cls}
@@ -1405,6 +1567,71 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           )}
                         </div>
                       </div>
+
+                      {/* Assigned Subjects Section (Admin-managed) */}
+                      {(() => {
+                        const assigned = getAssignedSubjectsForLecturer(lec);
+                        return (
+                          <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800/80 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                                <BookOpen className="w-3.5 h-3.5 text-teal-400" />
+                                <span>Subjek Yang Diajar:</span>
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                                  assigned.length > 0
+                                    ? 'bg-teal-950 text-teal-300 border-teal-500/30'
+                                    : 'bg-amber-950/80 text-amber-300 border-amber-500/30'
+                                }`}
+                              >
+                                {assigned.length} Subjek
+                              </span>
+                            </div>
+
+                            {assigned.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto pr-1">
+                                {assigned.map((subItem, subIdx) => (
+                                  <span
+                                    key={`assigned-sub-${lec.id}-${subItem.code}-${subIdx}`}
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900 border border-teal-500/30 text-teal-300 text-[11px] font-medium"
+                                    title={`${subItem.code} - ${subItem.name}${subItem.classes.length > 0 ? ` (${subItem.classes.join(', ')})` : ''}`}
+                                  >
+                                    <span className="font-mono font-bold text-white">{subItem.code}</span>
+                                    <span className="text-slate-400 max-w-[120px] truncate text-[10px]">
+                                      {subItem.name}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-amber-300/90 bg-amber-950/30 border border-amber-500/20 rounded-lg p-2 flex items-center gap-2">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span>Belum ada subjek ditetapkan oleh Admin.</span>
+                              </div>
+                            )}
+
+                            {/* Button to Assign / Manage Subjects (Admin Only - Sila buang dari paparan access pensyarah) */}
+                            {isAdmin && activeLecturer?.role === 'ADMIN' && (
+                              <div className="pt-1">
+                                <button
+                                  type="button"
+                                  id={`btn-assign-subjects-${lec.id}`}
+                                  onClick={() => handleOpenAssignSubjectsModal(lec)}
+                                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+                                    assigned.length > 0
+                                      ? 'bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-500/30 hover:border-teal-400'
+                                      : 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white shadow-emerald-950/50'
+                                  }`}
+                                >
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                  <span>{assigned.length > 0 ? 'Kemaskini Subjek Diajar' : 'Tetapkan Subjek Diajar'}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Lecturer Actions & Status */}
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
@@ -2033,6 +2260,237 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
         onClose={() => setIsSelfRegModalOpen(false)}
         subjects={subjects}
       />
+
+      {/* ===================== MODAL: PENETAPAN SUBJEK PENSYARAH OLEH ADMIN ===================== */}
+      {selectedLecturerForSubjects && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-white max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-teal-500/20 text-teal-300 rounded-2xl border border-teal-500/30 shadow-inner">
+                  <BookOpen className="w-6 h-6 text-teal-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-base text-white">Penetapan Subjek Yang Diajar</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      Mod Pentadbir (Admin)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Pilih subjek daripada senarai kurikulum kolej untuk ditugaskan kepada pensyarah ini.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLecturerForSubjects(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800/60 hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Tutup Modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Lecturer Information Banner */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow shrink-0">
+                  {getInitials(selectedLecturerForSubjects.name)}
+                </div>
+                <div>
+                  <div className="font-bold text-white text-sm">{selectedLecturerForSubjects.name}</div>
+                  <div className="text-slate-400 text-[11px] flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="font-mono text-emerald-400">{selectedLecturerForSubjects.email}</span>
+                    <span>•</span>
+                    <span className="text-slate-300">{selectedLecturerForSubjects.department || 'Jabatan Pengajian'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                <span className="text-xs text-slate-300 font-semibold">Dipilih:</span>
+                <span className="px-2.5 py-1 rounded-lg font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40 text-xs">
+                  {selectedSubjectCodes.length} Subjek
+                </span>
+              </div>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="space-y-2.5">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari kod kursus atau nama subjek (cth: MPU, FAR, ACC)..."
+                    value={assignSubjectSearch}
+                    onChange={(e) => setAssignSubjectSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                  />
+                  {assignSubjectSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAssignSubjectSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {availableSubjectDepartments.length > 0 && (
+                  <select
+                    value={assignDeptFilter}
+                    onChange={(e) => setAssignDeptFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-teal-500 cursor-pointer max-w-full sm:max-w-[200px]"
+                  >
+                    <option value="ALL">Semua Jabatan</option>
+                    {availableSubjectDepartments.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-[11px] text-slate-400">
+                  Memaparkan <strong className="text-white">{modalFilteredSubjects.length}</strong> subjek berdaftar
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filteredCodes = modalFilteredSubjects.map((s) => s.code.trim().toUpperCase());
+                      setSelectedSubjectCodes((prev) => Array.from(new Set([...prev, ...filteredCodes])));
+                    }}
+                    className="text-[11px] font-semibold text-teal-400 hover:text-teal-300 transition-colors cursor-pointer"
+                  >
+                    + Pilih Semua ({modalFilteredSubjects.length})
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filteredCodes = new Set(modalFilteredSubjects.map((s) => s.code.trim().toUpperCase()));
+                      setSelectedSubjectCodes((prev) => prev.filter((c) => !filteredCodes.has(c)));
+                    }}
+                    className="text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    Kosongkan Pilihan
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Subjects Checklist */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px] max-h-[380px]">
+              {modalFilteredSubjects.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-2xl">
+                  Tiada subjek kurikulum yang sepadan dengan carian "{assignSubjectSearch}".
+                </div>
+              ) : (
+                modalFilteredSubjects.map((sub) => {
+                  const cleanCode = sub.code.trim().toUpperCase();
+                  const isSelected = selectedSubjectCodes.includes(cleanCode);
+
+                  return (
+                    <div
+                      key={sub.id || cleanCode}
+                      onClick={() => handleToggleSubject(cleanCode)}
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-teal-950/40 border-teal-500/60 ring-1 ring-teal-500/30'
+                          : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ${
+                            isSelected
+                              ? 'bg-teal-500 border-teal-400 text-slate-950'
+                              : 'bg-slate-900 border-slate-700 text-transparent'
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-xs text-white bg-slate-800/90 px-2 py-0.5 rounded border border-slate-700">
+                              {cleanCode}
+                            </span>
+                            <span className="font-bold text-xs text-slate-200 truncate">
+                              {sub.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                            <span>{sub.department || 'Jabatan Pengajian'}</span>
+                            {sub.sections && sub.sections.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  {sub.sections.join(', ')}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Note if assigned previously */}
+                      {sub.lecturerName && sub.lecturerName !== selectedLecturerForSubjects.name && sub.lecturerName !== 'Belum Ditetapkan' && (
+                        <span className="text-[10px] text-slate-400 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 shrink-0 hidden sm:inline-block">
+                          Sebelum ini: {sub.lecturerName}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+              <div className="text-xs text-slate-400">
+                <strong className="text-white">{selectedSubjectCodes.length}</strong> subjek akan disimpan untuk pensyarah ini.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLecturerForSubjects(null)}
+                  disabled={isSavingAssignments}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAssignedSubjects}
+                  disabled={isSavingAssignments}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingAssignments ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Simpan Penetapan Subjek</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

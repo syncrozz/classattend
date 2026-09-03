@@ -80,16 +80,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ? attendanceRecords.filter((r) => r.sessionId === activeSession.id && r.status === 'PRESENT')
     : [];
 
+  const activeAllowedClasses =
+    activeSession?.className && activeSession.className !== 'ALL' && activeSession.className !== 'SEMUA'
+      ? activeSession.className.split(',').map((c) => c.trim().toUpperCase())
+      : null;
+
   const targetStudentsForActive = activeSession
-    ? activeSession.className
-      ? students.filter((s) => s.className === activeSession.className)
+    ? activeAllowedClasses
+      ? students.filter((s) => activeAllowedClasses.includes((s.className || '').trim().toUpperCase()))
       : students
     : [];
 
-  const matchingActiveRecords = activeSession?.className
+  const matchingActiveRecords = activeAllowedClasses
     ? activeSessionRecords.filter((r) => {
         const st = students.find((s) => s.id === r.studentId);
-        return st?.className === activeSession.className;
+        return st && activeAllowedClasses.includes((st.className || '').trim().toUpperCase());
       })
     : activeSessionRecords;
 

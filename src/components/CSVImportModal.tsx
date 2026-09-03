@@ -532,9 +532,9 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                       <th className="py-2.5 px-3">Bil</th>
                       <th className="py-2.5 px-3">Nama Pensyarah</th>
                       <th className="py-2.5 px-3">Emel KPM</th>
-                      <th className="py-2.5 px-3">No. IC</th>
-                      <th className="py-2.5 px-3">PIN (4-Digit)</th>
-                      <th className="py-2.5 px-3">Kelas</th>
+                      <th className="py-2.5 px-3">PIN</th>
+                      <th className="py-2.5 px-3">Subjek Diajar</th>
+                      <th className="py-2.5 px-3">Kelas Diajar</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
@@ -543,15 +543,41 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                         <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
                         <td className="py-2 px-3 font-sans font-semibold text-white">{l.name}</td>
                         <td className="py-2 px-3 text-emerald-400">{l.email}</td>
-                        <td className="py-2 px-3 text-slate-300">{l.icNumber}</td>
                         <td className="py-2 px-3 text-amber-300 font-bold">{l.pin}</td>
                         <td className="py-2 px-3">
                           <div className="flex flex-wrap gap-1 font-sans">
-                            {(l.assignedSections || l.assignedClasses || []).map((sec) => (
-                              <span key={sec} className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300">
-                                {sec}
-                              </span>
-                            ))}
+                            {(l.assignedSubjects || []).length > 0 ? (
+                              (l.assignedSubjects || []).map((sub, sIdx) => {
+                                const code = sub.includes('-') ? sub.split('-')[0].trim() : sub;
+                                return (
+                                  <span
+                                    key={`csv-sub-${idx}-${sIdx}`}
+                                    className="px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 text-[10px] font-bold"
+                                    title={sub}
+                                  >
+                                    {code}
+                                  </span>
+                                );
+                              })
+                            ) : (
+                              <span className="text-slate-500 text-[10px] italic">Tiada</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex flex-wrap gap-1 font-sans">
+                            {Array.from(new Set(l.assignedSections || l.assignedClasses || [])).length > 0 ? (
+                              Array.from(new Set(l.assignedSections || l.assignedClasses || [])).map((sec, secIdx) => (
+                                <span
+                                  key={`csv-sec-${idx}-${sec}-${secIdx}`}
+                                  className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold"
+                                >
+                                  {sec}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-500 text-[10px] italic">Tiada</span>
+                            )}
                           </div>
                         </td>
                       </tr>

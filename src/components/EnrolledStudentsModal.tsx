@@ -81,10 +81,10 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
 
   const sectionsList = useMemo(() => {
     if (subject?.sections && subject.sections.length > 0) {
-      return subject.sections.map((s) => s.trim().toUpperCase());
+      return Array.from(new Set(subject.sections.map((s) => s.trim().toUpperCase()).filter(Boolean)));
     }
     return availableClassesInMaster.length > 0
-      ? availableClassesInMaster
+      ? Array.from(new Set(availableClassesInMaster))
       : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
   }, [subject, availableClassesInMaster]);
 
@@ -396,7 +396,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
                 Semua Kelas ({totalDisplayCount})
                 {subjectEnrollments.length === 0 && ' [Pelajar Induk]'}
               </option>
-              {sectionsList.map((sec) => {
+              {sectionsList.map((sec, secIdx) => {
                 const enrCount = subjectEnrollments.filter(
                   (e) => e.className.toUpperCase() === sec.toUpperCase() || e.className.replace(/_/g, ' ').toUpperCase() === sec.replace(/_/g, ' ').toUpperCase()
                 ).length;
@@ -406,7 +406,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
                 const displayCount = subjectEnrollments.length > 0 ? enrCount : masterCount;
 
                 return (
-                  <option key={sec} value={sec}>
+                  <option key={`enrolled-sec-opt-${sec}-${secIdx}`} value={sec}>
                     Kelas {sec} ({displayCount})
                   </option>
                 );

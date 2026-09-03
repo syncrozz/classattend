@@ -290,13 +290,13 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
                       <div className="pt-1 border-t border-slate-800 text-[11px]">
                         <span className="text-slate-400 block mb-1">Subjek & Seksyen Dipohon:</span>
                         <div className="flex flex-wrap gap-1">
-                          {requestedSubjects.map((s) => (
-                            <span key={s} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold">
+                          {requestedSubjects.map((s, sIdx) => (
+                            <span key={`req-sub-${lec.id}-${s}-${sIdx}`} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold">
                               {s}
                             </span>
                           ))}
-                          {requestedClasses.map((c) => (
-                            <span key={c} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">
+                          {requestedClasses.map((c, cIdx) => (
+                            <span key={`req-cls-${lec.id}-${c}-${cIdx}`} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">
                               {c}
                             </span>
                           ))}

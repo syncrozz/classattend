@@ -359,6 +359,16 @@ export default function App() {
     const subjectToDelete = subjects.find((s) => s.id === subjectId || s.code === subjectId);
     attendanceEngine.deleteSubject(subjectId);
     setSubjects(attendanceEngine.getSubjects());
+
+    // Also delete any sessions associated with this subject
+    const subjectSessions = sessions.filter(
+      (s) => s.subjectId === subjectId || s.activityId === subjectId || (subjectToDelete && s.subjectCode === subjectToDelete.code)
+    );
+    subjectSessions.forEach((s) => {
+      attendanceEngine.deleteSession(s.id);
+    });
+    setSessions(attendanceEngine.getSessions());
+
     soundService.playClick();
     auditLogger.log({
       category: 'MASTER_DATA',
@@ -520,22 +530,61 @@ export default function App() {
   };
 
   // Import CSV Lecturers
-  const handleImportLecturers = (newLecturersList: Lecturer[]) => {
-    const existingMap = new Map<string, Lecturer>(lecturers.map((l) => [l.email.toLowerCase(), l]));
-    newLecturersList.forEach((l) => existingMap.set(l.email.toLowerCase(), l));
-    const merged = Array.from(existingMap.values());
+  const handleImportLecturers = async (newLecturersList: Lecturer[]) => {
+    const result = await attendanceEngine.importLecturersWithAssignments(newLecturersList);
+    setLecturers(result.lecturers);
+    setSubjects(result.subjects);
+    setTeachingAssignments(result.assignments);
 
-    attendanceEngine.saveLecturersList(merged);
-    setLecturers(merged);
+    // If the activeLecturer is one of the imported lecturers, refresh their active profile
+    if (activeLecturer) {
+      const refreshedActive = result.lecturers.find(
+        (l) => l.email.toLowerCase() === activeLecturer.email.toLowerCase()
+      );
+      if (refreshedActive) {
+        setActiveLecturer(refreshedActive);
+        attendanceEngine.setActiveLecturer(refreshedActive);
+      }
+    }
+
     soundService.playSuccess();
     auditLogger.log({
       category: 'CSV_IMPORT',
-      action: 'Import Direktori Pensyarah (CSV)',
-      details: `Berjaya memuat naik ${newLecturersList.length} rekod pensyarah daripada fail CSV. Jumlah pensyarah terkini: ${merged.length}.`,
+      action: 'Import Direktori Pensyarah & Agihan Subjek (CSV)',
+      details: `Berjaya memuat naik ${newLecturersList.length} rekod pensyarah bersama agihan subjek & kelas automatik. Jumlah pensyarah terkini: ${result.lecturers.length}, Subjek berdaftar: ${result.subjects.length}.`,
       performedBy: activeLecturer?.name || 'Pentadbir Sistem',
       target: `${newLecturersList.length} Rekod Pensyarah`,
       severity: 'SUCCESS'
     });
+  };
+
+  // Update Lecturer Subject Assignments (Admin)
+  const handleUpdateLecturerAssignments = async (
+    lecturerId: string,
+    subjectAssignments: {
+      subjectCode: string;
+      subjectName: string;
+      department?: string;
+      classes: string[];
+    }[]
+  ) => {
+    const result = await attendanceEngine.setLecturerAssignments(lecturerId, subjectAssignments);
+    if (result.success) {
+      setLecturers(attendanceEngine.getLecturers());
+      setTeachingAssignments(attendanceEngine.getTeachingAssignments());
+      setSubjects(attendanceEngine.getSubjects());
+      soundService.playSuccess();
+      const targetLec = lecturers.find((l) => l.id === lecturerId);
+      auditLogger.log({
+        category: 'MASTER_DATA',
+        action: 'Penetapan Subjek Pensyarah',
+        details: `Admin telah menetapkan ${subjectAssignments.length} subjek pengajaran bagi pensyarah ${targetLec?.name || lecturerId}.`,
+        performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+        target: targetLec?.name || lecturerId,
+        severity: 'SUCCESS'
+      });
+    }
+    return result;
   };
 
   // Import CSV Subjects
@@ -611,12 +660,14 @@ export default function App() {
   const handleSelectActiveLecturer = (lec: Lecturer) => {
     attendanceEngine.setActiveLecturer(lec);
     setActiveLecturer(lec);
-    setIsAdmin(true);
+    const isLecAdmin = lec.role === 'ADMIN';
+    setIsAdmin(isLecAdmin);
+    setCurrentRole(isLecAdmin ? 'ADMIN' : 'LECTURER');
     soundService.playSuccess();
     auditLogger.log({
       category: 'SECURITY_AUTH',
       action: 'Sesi Aktif Pensyarah Ditukar',
-      details: `Sesi kerja aktif kini ditetapkan kepada ${lec.name} (${lec.department || 'KPM'}).`,
+      details: `Sesi kerja aktif kini ditetapkan kepada ${lec.name} (${lec.department || 'KPM'}) - Peranan: ${isLecAdmin ? 'ADMIN' : 'LECTURER'}.`,
       performedBy: lec.name,
       target: lec.email,
       severity: 'INFO'
@@ -758,6 +809,7 @@ export default function App() {
             ) : currentRole === 'LECTURER' && activeLecturer ? (
               <LecturerWorkspaceView
                 activeLecturer={activeLecturer}
+                isAdmin={isAdmin}
                 subjects={subjects}
                 sessions={sessions}
                 students={students}
@@ -872,6 +924,7 @@ export default function App() {
               }}
               onRequestAdminAccess={handleRequestAdminAccess}
               onQuickSimulateScan={handleQuickSimulateScan}
+              onUpdateLecturerAssignments={handleUpdateLecturerAssignments}
             />
           )}
 

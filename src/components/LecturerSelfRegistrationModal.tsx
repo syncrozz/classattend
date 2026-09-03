@@ -709,11 +709,11 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
 
                           {/* Classes Checkbox Grid */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {allClassList.map((cls) => {
+                            {allClassList.map((cls, clsIdx) => {
                               const isChecked = sg.selectedClasses.includes(cls);
                               return (
                                 <button
-                                  key={cls}
+                                  key={`selfreg-cls-${sg.subjectCode}-${cls}-${clsIdx}`}
                                   type="button"
                                   onClick={() => handleToggleClass(sg.subjectCode, cls)}
                                   className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center justify-between transition ${

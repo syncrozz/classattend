@@ -19,6 +19,7 @@ import {
   INITIAL_ATTENDANCE_RECORDS
 } from '../data/mockData';
 import { sortSessionsLatestFirst } from '../utils/studentUtils';
+import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
 import { db, sanitizeForFirestore } from './firebase';
 import {
   collection,
@@ -161,6 +162,97 @@ class AttendanceEngine {
             this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
             this.saveTeachingAssignmentsLocally();
           }
+        }
+
+        // Auto-heal: Ensure all lecturers with assigned subjects have active teaching assignments & subjects in catalog
+        let stateNeedsLocalSave = false;
+        this.lecturers.forEach((lec) => {
+          if (lec.assignedSubjects && lec.assignedSubjects.length > 0) {
+            const hasTa = this.teachingAssignments.some(
+              (ta) =>
+                ta.lecturerId === lec.id ||
+                (ta.lecturerEmail && ta.lecturerEmail.toLowerCase() === lec.email.toLowerCase())
+            );
+            if (!hasTa) {
+              const assignedClasses = splitClassNames(
+                Array.isArray(lec.assignedClasses || lec.assignedSections)
+                  ? (lec.assignedClasses || lec.assignedSections || []).join(', ')
+                  : String(lec.assignedClasses || lec.assignedSections || '')
+              );
+              lec.assignedSubjects.forEach((subEntry) => {
+                const code = subEntry.includes('-')
+                  ? subEntry.split('-')[0].trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+                  : subEntry.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (!code) return;
+                const known = KNOWN_KPM_COURSES[code];
+                const subName = subEntry.includes('-')
+                  ? subEntry.split('-')[1].trim().toUpperCase()
+                  : known?.name || `KURSUS ${code}`;
+                const subDept =
+                  known?.department ||
+                  deduceDepartmentFromCode(code) ||
+                  lec.department ||
+                  'Jabatan Pengajian Am';
+
+                let subObj = this.subjects.find((s) => s.code.toUpperCase() === code);
+                if (!subObj) {
+                  subObj = {
+                    id: `SUB-${code}`,
+                    code,
+                    name: subName,
+                    department: subDept,
+                    sections: assignedClasses,
+                    lecturerId: lec.id,
+                    lecturerName: lec.name,
+                    lecturerEmail: lec.email,
+                    status: 'ACTIVE'
+                  };
+                  this.subjects.push(subObj);
+                  stateNeedsLocalSave = true;
+                } else {
+                  subObj.lecturerId = lec.id;
+                  subObj.lecturerName = lec.name;
+                  subObj.lecturerEmail = lec.email;
+                  subObj.sections = splitClassNames([...(subObj.sections || []), ...assignedClasses].join(', '));
+                  stateNeedsLocalSave = true;
+                }
+
+                const targetClasses =
+                  assignedClasses.length > 0
+                    ? assignedClasses
+                    : subObj.sections && subObj.sections.length > 0
+                    ? subObj.sections
+                    : ['DIA_4A'];
+
+                targetClasses.forEach((cls) => {
+                  const cleanClass = cls.trim().toUpperCase();
+                  const assignmentId = `TA_${lec.id}_${code}_${cleanClass.replace(/[^A-Z0-9]/g, '')}`;
+                  if (!this.teachingAssignments.some((ta) => ta.id === assignmentId)) {
+                    this.teachingAssignments.push({
+                      id: assignmentId,
+                      lecturerId: lec.id,
+                      lecturerEmail: lec.email,
+                      lecturerName: lec.name,
+                      subjectId: subObj!.id,
+                      subjectCode: code,
+                      subjectName: subName,
+                      className: cleanClass,
+                      status: 'ACTIVE',
+                      createdAt: new Date().toISOString(),
+                      approvedAt: new Date().toISOString(),
+                      approvedBy: 'System Auto-Sync'
+                    });
+                    stateNeedsLocalSave = true;
+                  }
+                });
+              });
+            }
+          }
+        });
+
+        if (stateNeedsLocalSave) {
+          this.saveSubjectsLocally();
+          this.saveTeachingAssignmentsLocally();
         }
         const rawTrusted = localStorage.getItem('classattend_trusted_access_session');
         if (rawTrusted) {
@@ -380,7 +472,13 @@ class AttendanceEngine {
         (snapshot) => {
           const data = snapshot.docs
             .map((docSnap) => docSnap.data() as Lecturer)
-            .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
+            .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id))
+            .map((lec) => ({
+              ...lec,
+              assignedClasses: Array.from(new Set(lec.assignedClasses || [])),
+              assignedSections: Array.from(new Set(lec.assignedSections || [])),
+              assignedSubjects: Array.from(new Set(lec.assignedSubjects || []))
+            }));
           this.lecturers = data;
           this.saveLecturersLocally();
           callback(this.lecturers);
@@ -968,6 +1066,151 @@ class AttendanceEngine {
   }
 
   /**
+   * Admin: Assign or update subjects taught by a specific lecturer.
+   * Synchronizes:
+   * 1. Old teaching assignments removed for this lecturer.
+   * 2. New TeachingAssignment records generated with status 'ACTIVE'.
+   * 3. Lecturer profile updated with assignedSubjects, assignedClasses, assignedSections.
+   * 4. Subject master records updated (linking lecturerId, lecturerName, lecturerEmail or unlinking).
+   * 5. LocalStorage and Firestore synced atomically.
+   */
+  public async setLecturerAssignments(
+    lecturerId: string,
+    subjectAssignments: Array<{
+      subjectCode: string;
+      subjectName: string;
+      department?: string;
+      classes: string[];
+    }>
+  ): Promise<{ success: boolean; message: string; assignments: TeachingAssignment[] }> {
+    const idx = this.lecturers.findIndex((l) => l.id === lecturerId);
+    if (idx === -1) {
+      return { success: false, message: 'Pensyarah tidak dijumpai.', assignments: [] };
+    }
+
+    const lecturer = this.lecturers[idx];
+    const createdTimestamp = new Date().toISOString();
+
+    // 1. Identify previous assignment IDs to delete from Firestore
+    const previousAssignmentIds = this.teachingAssignments
+      .filter((ta) => ta.lecturerId === lecturerId)
+      .map((ta) => ta.id);
+
+    // Remove previous assignments locally
+    this.teachingAssignments = this.teachingAssignments.filter((ta) => ta.lecturerId !== lecturerId);
+
+    // 2. Build new TeachingAssignments
+    const newAssignments: TeachingAssignment[] = [];
+    const allAssignedSections = new Set<string>();
+    const allAssignedSubjects: string[] = [];
+
+    subjectAssignments.forEach((sa) => {
+      const cleanSubCode = sa.subjectCode.trim().toUpperCase();
+      const cleanSubName = sa.subjectName.trim();
+      allAssignedSubjects.push(`${cleanSubCode} - ${cleanSubName}`);
+
+      const subClasses = (sa.classes && sa.classes.length > 0)
+        ? Array.from(new Set(sa.classes.map((c) => c.trim().toUpperCase()).filter(Boolean)))
+        : ['DIA_1A', 'DIA_1B'];
+      subClasses.forEach((cls) => {
+        const cleanClass = cls.trim().toUpperCase();
+        allAssignedSections.add(cleanClass);
+
+        const assignmentId = `TA_${lecturer.id}_${cleanSubCode.replace(/[^A-Z0-9]/g, '')}_${cleanClass.replace(/[^A-Z0-9]/g, '')}`;
+        newAssignments.push({
+          id: assignmentId,
+          lecturerId: lecturer.id,
+          lecturerEmail: lecturer.email,
+          lecturerName: lecturer.name,
+          subjectId: `SUB-${cleanSubCode.replace(/[^A-Z0-9]/g, '')}`,
+          subjectCode: cleanSubCode,
+          subjectName: cleanSubName,
+          className: cleanClass,
+          status: 'ACTIVE',
+          createdAt: createdTimestamp,
+          approvedAt: createdTimestamp,
+          approvedBy: 'Pentadbir Sistem'
+        });
+      });
+    });
+
+    // Append new assignments to local state
+    this.teachingAssignments = [...this.teachingAssignments, ...newAssignments];
+
+    // 3. Update Lecturer profile
+    const assignedClassesArray = Array.from(allAssignedSections);
+    lecturer.assignedSubjects = allAssignedSubjects;
+    lecturer.assignedSections = assignedClassesArray.length > 0 ? assignedClassesArray : ['DIA_1A'];
+    lecturer.assignedClasses = lecturer.assignedSections;
+    this.lecturers[idx] = lecturer;
+
+    // 4. Update Subject records: link this lecturer to their assigned subjects
+    const assignedSubCodeSet = new Set(subjectAssignments.map((sa) => sa.subjectCode.trim().toUpperCase()));
+    this.subjects = this.subjects.map((sub) => {
+      const code = sub.code.trim().toUpperCase();
+      if (assignedSubCodeSet.has(code)) {
+        return {
+          ...sub,
+          lecturerId: lecturer.id,
+          lecturerName: lecturer.name,
+          lecturerEmail: lecturer.email
+        };
+      } else if (sub.lecturerId === lecturer.id) {
+        // If it was previously assigned to this lecturer but no longer in the list
+        return {
+          ...sub,
+          lecturerId: undefined,
+          lecturerName: undefined,
+          lecturerEmail: undefined
+        };
+      }
+      return sub;
+    });
+
+    // 5. Persist locally
+    this.saveLecturersLocally();
+    this.saveTeachingAssignmentsLocally();
+    this.saveSubjectsLocally();
+
+    // 6. Persist to Firestore via batch
+    if (db) {
+      try {
+        const batch = writeBatch(db);
+
+        // Update Lecturer doc
+        batch.set(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
+
+        // Delete old assignments
+        previousAssignmentIds.forEach((oldId) => {
+          batch.delete(doc(db, 'teaching_assignments', oldId));
+        });
+
+        // Write new assignments
+        newAssignments.forEach((ta) => {
+          batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+        });
+
+        // Update affected subjects in Firestore
+        this.subjects
+          .filter((s) => assignedSubCodeSet.has(s.code.trim().toUpperCase()) || s.lecturerId === lecturer.id)
+          .forEach((s) => {
+            batch.set(doc(db, 'subjects', s.id), sanitizeForFirestore(s), { merge: true });
+          });
+
+        await batch.commit();
+      } catch (err) {
+        console.warn('Firestore setLecturerAssignments sync warning:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Subjek yang diajar oleh ${lecturer.name} telah berjaya dikemaskini (${newAssignments.length} tugasan kelas).`,
+      assignments: newAssignments
+    };
+  }
+
+  /**
    * Allows a lecturer to configure and save which subjects and classes they teach.
    * Eliminates automatic system assignment - autonomy given to lecturers.
    */
@@ -1036,6 +1279,34 @@ class AttendanceEngine {
       this.saveActiveLecturerLocally();
     }
 
+    // Also update this.subjects to link with this lecturer
+    const assignedCodeSet = new Set(subjectAssignments.map((sa) => sa.subjectCode.trim().toUpperCase()));
+    const modifiedSubjects: Subject[] = [];
+    this.subjects = this.subjects.map((sub) => {
+      const codeUpper = sub.code.trim().toUpperCase();
+      if (assignedCodeSet.has(codeUpper)) {
+        const updated = {
+          ...sub,
+          lecturerId,
+          lecturerName: lecturer.name,
+          lecturerEmail: lecturer.email
+        };
+        modifiedSubjects.push(updated);
+        return updated;
+      } else if (sub.lecturerId === lecturerId) {
+        const updated = {
+          ...sub,
+          lecturerId: undefined,
+          lecturerName: 'Belum Ditetapkan',
+          lecturerEmail: undefined
+        };
+        modifiedSubjects.push(updated);
+        return updated;
+      }
+      return sub;
+    });
+
+    this.saveSubjectsLocally();
     this.saveLecturersLocally();
     this.saveTeachingAssignmentsLocally();
 
@@ -1052,6 +1323,10 @@ class AttendanceEngine {
         });
         // Update lecturer profile with their assigned subjects & classes
         batch.set(doc(db!, 'lecturers', lecturerId), sanitizeForFirestore(updatedLecturer), { merge: true });
+        // Update subject records in Firestore
+        modifiedSubjects.forEach((sub) => {
+          batch.set(doc(db!, 'subjects', sub.id), sanitizeForFirestore(sub), { merge: true });
+        });
         await batch.commit();
       } catch (err) {
         console.warn('Firestore update teaching assignments error:', err);
@@ -1165,6 +1440,209 @@ class AttendanceEngine {
     return {
       success: true,
       message: `Pensyarah berjaya didaftarkan. PIN keselamatan anda adalah [${derivedPin}].`
+    };
+  }
+
+  /**
+   * Import Lecturers from CSV with Automatic Subject and Class Allocation
+   * Directly establishes:
+   * 1. Lecturer records with credentials (email, ic, 4-digit PIN, department, role)
+   * 2. Registers subjects into the master subject catalog (with official title & department)
+   * 3. Links lecturers to their subjects (lecturerId, lecturerName, lecturerEmail)
+   * 4. Updates subject sections to include all allocated classes from CSV
+   * 5. Automatically generates ACTIVE TeachingAssignment records for each lecturer-subject-class combo
+   * 6. Atomically updates local state, LocalStorage, and Firestore via Batch
+   */
+  public async importLecturersWithAssignments(
+    newLecturersList: Lecturer[]
+  ): Promise<{
+    success: boolean;
+    message: string;
+    lecturers: Lecturer[];
+    subjects: Subject[];
+    assignments: TeachingAssignment[];
+  }> {
+    const timestamp = new Date().toISOString();
+
+    // Map existing state
+    const existingLecturersMap = new Map<string, Lecturer>(
+      this.lecturers.map((l) => [l.email.toLowerCase().trim(), l])
+    );
+
+    const updatedSubjectsMap = new Map<string, Subject>(
+      this.subjects.map((s) => [s.code.toUpperCase().trim(), s])
+    );
+
+    const assignmentsMap = new Map<string, TeachingAssignment>(
+      this.teachingAssignments.map((ta) => [ta.id, ta])
+    );
+
+    const newlyProcessedLecturers: Lecturer[] = [];
+
+    for (const incoming of newLecturersList) {
+      const email = incoming.email.toLowerCase().trim();
+      const existing = existingLecturersMap.get(email);
+
+      const lecturerId =
+        existing?.id ||
+        incoming.id ||
+        `LEC-${email.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+
+      const name = (incoming.name || existing?.name || 'Pensyarah').trim().toUpperCase();
+      const icNumber = incoming.icNumber || existing?.icNumber || '';
+      const pin = incoming.pin || existing?.pin || (icNumber.replace(/\D/g, '').slice(-4) || '5305');
+      const department = incoming.department || existing?.department || 'Jabatan Pengajian Am';
+      const role = incoming.role || existing?.role || 'LECTURER';
+
+      // Parse and clean classes from CSV
+      const rawClasses =
+        incoming.assignedSections ||
+        incoming.assignedClasses ||
+        existing?.assignedSections ||
+        existing?.assignedClasses ||
+        [];
+      const assignedClasses = splitClassNames(
+        Array.isArray(rawClasses) ? rawClasses.join(', ') : String(rawClasses)
+      );
+
+      // Parse and clean subjects from CSV
+      const rawSubjects = incoming.assignedSubjects || existing?.assignedSubjects || [];
+      const assignedSubjectCodes: string[] = [];
+      const formattedSubjectLabels: string[] = [];
+
+      rawSubjects.forEach((subEntry) => {
+        let code = '';
+        let titleFromEntry = '';
+        if (subEntry.includes('-')) {
+          const parts = subEntry.split('-');
+          code = parts[0].trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          titleFromEntry = parts.slice(1).join('-').trim().toUpperCase();
+        } else {
+          code = subEntry.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        }
+
+        if (!code) return;
+        assignedSubjectCodes.push(code);
+
+        // Check if known in dictionary or existing
+        const existingSub = updatedSubjectsMap.get(code);
+        const known = KNOWN_KPM_COURSES[code];
+        const subName = titleFromEntry || existingSub?.name || known?.name || `KURSUS ${code}`;
+        const subDept =
+          existingSub?.department ||
+          known?.department ||
+          deduceDepartmentFromCode(code) ||
+          department;
+
+        const fullLabel = `${code} - ${subName}`;
+        formattedSubjectLabels.push(fullLabel);
+
+        // Subject sections: merge with assignedClasses
+        const existingSections = existingSub?.sections || [];
+        const mergedSections = splitClassNames(
+          [...existingSections, ...assignedClasses].join(', ')
+        );
+
+        const subjectRecord: Subject = {
+          id: existingSub?.id || `SUB-${code}`,
+          code: code,
+          name: subName,
+          department: subDept,
+          sections: mergedSections.length > 0 ? mergedSections : assignedClasses,
+          lecturerId: lecturerId,
+          lecturerName: name,
+          lecturerEmail: email,
+          status: 'ACTIVE'
+        };
+
+        updatedSubjectsMap.set(code, subjectRecord);
+
+        // Generate TeachingAssignment for each allocated class
+        const targetClasses =
+          assignedClasses.length > 0
+            ? assignedClasses
+            : existingSub?.sections && existingSub.sections.length > 0
+            ? existingSub.sections
+            : ['DIA_4A'];
+
+        targetClasses.forEach((cls) => {
+          const cleanClass = cls.trim().toUpperCase();
+          const assignmentId = `TA_${lecturerId}_${code}_${cleanClass.replace(/[^A-Z0-9]/g, '')}`;
+
+          assignmentsMap.set(assignmentId, {
+            id: assignmentId,
+            lecturerId: lecturerId,
+            lecturerEmail: email,
+            lecturerName: name,
+            subjectId: subjectRecord.id,
+            subjectCode: code,
+            subjectName: subName,
+            className: cleanClass,
+            status: 'ACTIVE',
+            createdAt: timestamp,
+            approvedAt: timestamp,
+            approvedBy: 'Auto-Import CSV'
+          });
+        });
+      });
+
+      const updatedLecturer: Lecturer = {
+        id: lecturerId,
+        name: name,
+        email: email,
+        icNumber: icNumber,
+        pin: pin,
+        phone: incoming.phone || existing?.phone,
+        department: department,
+        role: role,
+        status: 'ACTIVE',
+        assignedClasses: assignedClasses,
+        assignedSections: assignedClasses,
+        assignedSubjects: formattedSubjectLabels.length > 0 ? formattedSubjectLabels : rawSubjects,
+        registeredAt: existing?.registeredAt || timestamp,
+        approvedAt: existing?.approvedAt || timestamp,
+        approvedBy: existing?.approvedBy || 'Auto-Import CSV'
+      };
+
+      existingLecturersMap.set(email, updatedLecturer);
+      newlyProcessedLecturers.push(updatedLecturer);
+    }
+
+    // Apply to in-memory state
+    this.lecturers = Array.from(existingLecturersMap.values());
+    this.subjects = Array.from(updatedSubjectsMap.values());
+    this.teachingAssignments = Array.from(assignmentsMap.values());
+
+    // Save locally
+    this.saveLecturersLocally();
+    this.saveSubjectsLocally();
+    this.saveTeachingAssignmentsLocally();
+
+    // Batch update Firestore
+    if (db) {
+      try {
+        const batch = writeBatch(db);
+        newlyProcessedLecturers.forEach((lec) => {
+          batch.set(doc(db, 'lecturers', lec.id), sanitizeForFirestore(lec), { merge: true });
+        });
+        this.subjects.forEach((sub) => {
+          batch.set(doc(db, 'subjects', sub.id), sanitizeForFirestore(sub), { merge: true });
+        });
+        this.teachingAssignments.forEach((ta) => {
+          batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+        });
+        await batch.commit();
+      } catch (err) {
+        console.warn('Firestore lecturer CSV import sync warning:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Berjaya mengimport ${newLecturersList.length} pensyarah. Subjek dan kelas telah ditetapkan secara automatik ke dalam akaun masing-masing.`,
+      lecturers: this.lecturers,
+      subjects: this.subjects,
+      assignments: this.teachingAssignments
     };
   }
 
@@ -1535,6 +2013,29 @@ class AttendanceEngine {
     if (db) {
       await deleteDoc(doc(db, 'enrollments', enrollmentId)).catch(console.warn);
     }
+  }
+
+  /**
+   * Returns all unique normalized class names from students, subjects, lecturers and assignments
+   */
+  public getUniqueClasses(): string[] {
+    const classSet = new Set<string>();
+    this.students.forEach((s) => {
+      if (s.className) classSet.add(s.className.trim().toUpperCase());
+      if (s.classId) classSet.add(s.classId.trim().toUpperCase());
+    });
+    this.subjects.forEach((sub) => {
+      (sub.sections || []).forEach((sec) => classSet.add(sec.trim().toUpperCase()));
+    });
+    this.lecturers.forEach((lec) => {
+      (lec.assignedClasses || lec.assignedSections || []).forEach((c) =>
+        classSet.add(c.trim().toUpperCase())
+      );
+    });
+    this.teachingAssignments.forEach((ta) => {
+      if (ta.className) classSet.add(ta.className.trim().toUpperCase());
+    });
+    return Array.from(classSet).filter(Boolean).sort();
   }
 
   /**
