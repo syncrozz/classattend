@@ -30,29 +30,29 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   activeSessionName,
   totalRecordsCount,
   totalStudentsCount,
-  currentRole = 'ADMIN',
+  currentRole = 'STUDENT',
   onOpenPWAInstall,
   onOpenQrPortal
 }) => {
   const navItems = [
     {
       id: 'dashboard' as ActiveTab,
-      label: currentRole === 'ADMIN' ? 'Pusat Kawalan' : 'Ruang Kerja',
+      label: currentRole === 'ADMIN' ? 'Pusat Kawalan' : currentRole === 'LECTURER' ? 'Ruang Kerja' : 'Dashboard Utama',
       icon: LayoutDashboard,
       badge: undefined
     },
     {
-      id: 'activities' as ActiveTab,
-      label: 'Urus Kelas & Sesi',
-      icon: BookMarked,
-      badge: undefined
-    },
-    {
       id: 'students' as ActiveTab,
-      label: 'Master Data',
+      label: currentRole === 'ADMIN' || currentRole === 'LECTURER' ? 'Master Data' : 'Direktori & Subjek',
       icon: Users,
       badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+    },
+    {
+      id: 'activities' as ActiveTab,
+      label: currentRole === 'ADMIN' || currentRole === 'LECTURER' ? 'Urus Kelas & Sesi' : 'Jadual Sesi & Kelas',
+      icon: BookMarked,
+      badge: undefined
     },
     {
       id: 'my-attendance' as ActiveTab,
@@ -69,7 +69,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     {
       id: 'guide' as ActiveTab,
-      label: currentRole === 'ADMIN' ? 'Panduan Penggunaan' : 'Panduan Pensyarah',
+      label: currentRole === 'ADMIN' ? 'Panduan Penggunaan' : currentRole === 'LECTURER' ? 'Panduan Pensyarah' : 'Panduan Pengguna',
       icon: BookOpen,
       badge: undefined
     }

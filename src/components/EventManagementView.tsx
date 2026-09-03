@@ -202,17 +202,17 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   }, [activeLecturer, propTeachingAssignments, subjects]);
 
   // Determine subject view scope:
-  // When activeLecturer is present and !isAdmin, default strictly to lecturer's own subjects ('MY_SUBJECTS')
+  // When a lecturer is authenticated (login access), default strictly to lecturer's own subjects ('MY_SUBJECTS') instead of 'ALL_SUBJECTS'
   const [subjectViewScope, setSubjectViewScope] = useState<'MY_SUBJECTS' | 'ALL_SUBJECTS'>(
-    !isAdmin && activeLecturer ? 'MY_SUBJECTS' : 'ALL_SUBJECTS'
+    activeLecturer ? 'MY_SUBJECTS' : 'ALL_SUBJECTS'
   );
 
-  // Sync default scope when activeLecturer changes
+  // Sync default scope strictly to 'MY_SUBJECTS' whenever activeLecturer is present
   useEffect(() => {
-    if (!isAdmin && activeLecturer) {
+    if (activeLecturer) {
       setSubjectViewScope('MY_SUBJECTS');
     }
-  }, [activeLecturer, isAdmin]);
+  }, [activeLecturer]);
 
   // Scoped subjects list based on active view scope
   const scopedSubjects = useMemo(() => {
@@ -608,31 +608,31 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0 self-start sm:self-center flex-wrap">
-            <div className="flex items-center gap-1 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1 p-1 bg-slate-900/90 rounded-xl border border-slate-750/80 shadow-inner">
               <button
                 type="button"
                 id="btn-scope-my-subjects"
                 onClick={() => setSubjectViewScope('MY_SUBJECTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   subjectViewScope === 'MY_SUBJECTS'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`}
               >
-                <BookMarked className="w-3.5 h-3.5" />
+                <BookMarked className="w-3.5 h-3.5 text-indigo-200" />
                 <span>Subjek Saya ({myAssignedCodes.size})</span>
               </button>
               <button
                 type="button"
                 id="btn-scope-all-subjects"
                 onClick={() => setSubjectViewScope('ALL_SUBJECTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   subjectViewScope === 'ALL_SUBJECTS'
-                    ? 'bg-slate-800 text-white border border-slate-700'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5" />
+                <BookOpen className="w-3.5 h-3.5 text-slate-400" />
                 <span>Semua Subjek ({subjects.length})</span>
               </button>
             </div>

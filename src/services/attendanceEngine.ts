@@ -161,10 +161,20 @@ class AttendanceEngine {
             this.saveTeachingAssignmentsLocally();
           }
         }
-        this.activeLecturer = storedActiveLecturer ? JSON.parse(storedActiveLecturer) : null;
-        if (!this.activeLecturer && this.lecturers.length > 0) {
-          this.activeLecturer = this.lecturers.find((l) => l.id === 'LEC-KHAIRI') || this.lecturers[0];
-          this.saveActiveLecturerLocally();
+        const rawTrusted = localStorage.getItem('classattend_trusted_access_session');
+        if (rawTrusted) {
+          try {
+            const sess = JSON.parse(rawTrusted);
+            if (sess && sess.expiresAt && Date.now() < sess.expiresAt) {
+              this.activeLecturer = storedActiveLecturer ? JSON.parse(storedActiveLecturer) : null;
+            } else {
+              this.activeLecturer = null;
+            }
+          } catch {
+            this.activeLecturer = null;
+          }
+        } else {
+          this.activeLecturer = null;
         }
       } catch (e) {
         console.warn('Error reading from localStorage, resetting to clean ClassAttend data', e);
@@ -251,7 +261,7 @@ class AttendanceEngine {
     this.attendanceRecords = [];
     this.enrollments = [];
     this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
-    this.activeLecturer = this.lecturers.find((l) => l.id === 'LEC-KHAIRI') || this.lecturers[0] || null;
+    this.activeLecturer = null;
 
     this.saveStudentsLocally();
     this.saveLecturersLocally();

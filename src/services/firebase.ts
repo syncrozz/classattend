@@ -12,9 +12,10 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 let firestoreInstance: Firestore;
-const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== '' 
+const rawDbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId.trim() !== '' 
   ? firebaseConfig.firestoreDatabaseId.trim() 
   : undefined;
+const dbId = rawDbId === '(default)' ? undefined : rawDbId;
 
 try {
   firestoreInstance = dbId

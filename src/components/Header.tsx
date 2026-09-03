@@ -128,17 +128,25 @@ export const Header: React.FC<HeaderProps> = ({
                     type="button"
                     onClick={() => {
                       if (isAdmin || activeLecturer?.role === 'ADMIN') {
-                        onRoleChange(currentRole === 'ADMIN' ? 'LECTURER' : 'ADMIN');
+                        if (currentRole === 'ADMIN') {
+                          onRoleChange('LECTURER');
+                        } else if (currentRole === 'LECTURER') {
+                          onRoleChange('STUDENT');
+                        } else {
+                          onRoleChange('ADMIN');
+                        }
                       }
                     }}
-                    title={isAdmin || activeLecturer?.role === 'ADMIN' ? "Klik untuk tukar paparan Admin / Pensyarah" : undefined}
+                    title={isAdmin || activeLecturer?.role === 'ADMIN' ? "Klik untuk tukar paparan (Admin / Pensyarah / Paparan Umum)" : undefined}
                     className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold border uppercase transition-all ${
                       currentRole === 'ADMIN'
                         ? 'bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                        : currentRole === 'LECTURER'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30 hover:bg-blue-500/30'
                     } ${isAdmin || activeLecturer?.role === 'ADMIN' ? 'cursor-pointer' : ''}`}
                   >
-                    {currentRole === 'ADMIN' ? 'ADMIN' : 'PENSYARAH'}
+                    {currentRole === 'ADMIN' ? 'ADMIN' : currentRole === 'LECTURER' ? 'PENSYARAH' : 'UMUM'}
                   </button>
                 </div>
                 <div className="text-[10px] text-emerald-300 font-mono leading-tight truncate max-w-[140px]">
@@ -157,14 +165,21 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
           ) : (
-            <button
-              id="header-btn-lecturer-auth"
-              onClick={onToggleAdminMode}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-all cursor-pointer"
-              title="Pengesahan Emel Pensyarah (@bpenawar.kpm.edu.my) & PIN No. IC"
-            >
-              <span>Sahkan Pensyarah</span>
-            </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300 font-medium">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Paparan Umum</span>
+              </span>
+              <button
+                id="header-btn-lecturer-auth"
+                onClick={onToggleAdminMode}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-all cursor-pointer"
+                title="Pengesahan Emel Pensyarah (@bpenawar.kpm.edu.my) & PIN No. IC"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Sahkan Pensyarah</span>
+              </button>
+            </div>
           )}
 
           {/* Quick Scanner Action Button */}

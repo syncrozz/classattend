@@ -3,7 +3,7 @@
   "appId": "1:915525482647:web:24f86b64a8802fdcbdd1d2",
   "apiKey": "AIzaSyAUy9_lmgelOfuWvemEJQxbCqsFC3ksqyI",
   "authDomain": "subtle-furnace-sc9s2.firebaseapp.com",
-  "firestoreDatabaseId": "",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "subtle-furnace-sc9s2.firebasestorage.app",
   "messagingSenderId": "915525482647",
   "measurementId": "",

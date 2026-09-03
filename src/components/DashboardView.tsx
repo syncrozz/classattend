@@ -276,14 +276,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <QrCode className="w-4 h-4" />
                     <span>Buka Kamera QR</span>
                   </button>
-                  <button
-                    id="dashboard-btn-close-session"
-                    onClick={() => onCloseActiveSession(activeSession.id)}
-                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
-                    title="Tutup Sesi Kuliah Ini"
-                  >
-                    Tutup Sesi
-                  </button>
+                  {activeLecturer && (
+                    <button
+                      id="dashboard-btn-close-session"
+                      onClick={() => onCloseActiveSession(activeSession.id)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                      title="Tutup Sesi Kuliah Ini"
+                    >
+                      Tutup Sesi
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -308,15 +310,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       ) : (
         <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-left">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-medium mb-1.5">
+              <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+              <span>Status Kehadiran Semasa</span>
+            </div>
             <h3 className="text-lg font-bold text-white">Tiada Sesi Kuliah / Kelas Sedang Dibuka</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Imbasan kehadiran QR dibuka semasa waktu kuliah oleh pensyarah kursus masing-masing.
+            </p>
           </div>
           <button
             id="dashboard-btn-goto-activities"
             onClick={onGoToActivities}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shrink-0"
           >
             <BookOpen className="w-4 h-4" />
-            <span>Pilih Subjek & Buka Sesi</span>
+            <span>{activeLecturer ? 'Pilih Subjek & Buka Sesi' : 'Lihat Jadual Sesi & Kursus'}</span>
           </button>
         </div>
       )}

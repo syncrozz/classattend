@@ -69,7 +69,10 @@ export default function App() {
   
   // Access Management & Roles
   const [accessState, setAccessState] = useState(() => accessManager.getAccessState());
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => accessManager.getAccessState().role || 'ADMIN');
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    const acc = accessManager.getAccessState();
+    return acc.session ? acc.role : 'STUDENT';
+  });
   const [isFirstTimeLecturerModalOpen, setIsFirstTimeLecturerModalOpen] = useState<boolean>(false);
 
   // Real-time state from Attendance Engine
@@ -78,7 +81,10 @@ export default function App() {
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [activeLecturer, setActiveLecturer] = useState<Lecturer | null>(attendanceEngine.getActiveLecturer());
+  const [activeLecturer, setActiveLecturer] = useState<Lecturer | null>(() => {
+    const acc = accessManager.getAccessState();
+    return acc.session ? (acc.lecturer || attendanceEngine.getActiveLecturer()) : null;
+  });
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -152,8 +158,8 @@ export default function App() {
 
   // Admin Mode & Modal States
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    const active = attendanceEngine.getActiveLecturer();
-    return Boolean(active);
+    const acc = accessManager.getAccessState();
+    return Boolean(acc.session && acc.role === 'ADMIN');
   });
   const [isAdminPinModalOpen, setIsAdminPinModalOpen] = useState<boolean>(false);
   const [adminActionTitle, setAdminActionTitle] = useState<string>('Pengesahan Identiti');
@@ -204,11 +210,17 @@ export default function App() {
     const unsubSessions = attendanceEngine.subscribeSessions((data) => setSessions(data));
     const unsubRecords = attendanceEngine.subscribeRecords((data) => setAttendanceRecords(data));
 
-    // Update active lecturer from engine
-    const currentActive = attendanceEngine.getActiveLecturer();
-    setActiveLecturer(currentActive);
-    if (currentActive) {
-      setIsAdmin(true);
+    // Update active lecturer and permissions from access manager and engine
+    const acc = accessManager.getAccessState();
+    if (acc.session) {
+      const currentActive = attendanceEngine.getActiveLecturer() || acc.lecturer;
+      setActiveLecturer(currentActive);
+      setIsAdmin(acc.role === 'ADMIN');
+      setCurrentRole(acc.role);
+    } else {
+      setActiveLecturer(null);
+      setIsAdmin(false);
+      setCurrentRole('STUDENT');
     }
 
     return () => {
@@ -242,7 +254,7 @@ export default function App() {
     setAccessState(accessManager.getAccessState());
     setActiveLecturer(null);
     setIsAdmin(false);
-    setCurrentRole('LECTURER');
+    setCurrentRole('STUDENT');
     soundService.playClick();
   };
 
@@ -724,7 +736,7 @@ export default function App() {
         {/* Main Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {activeTab === 'dashboard' && (
-            currentRole === 'ADMIN' ? (
+            currentRole === 'ADMIN' && (isAdmin || activeLecturer?.role === 'ADMIN') ? (
               <AdminControlCenterView
                 subjects={subjects}
                 sessions={sessions}
@@ -743,7 +755,7 @@ export default function App() {
                 onRejectLecturer={handleRejectLecturer}
                 onOpenLecturerRegistration={() => setIsLecturerSelfRegOpen(true)}
               />
-            ) : (
+            ) : currentRole === 'LECTURER' && activeLecturer ? (
               <LecturerWorkspaceView
                 activeLecturer={activeLecturer}
                 subjects={subjects}
@@ -760,6 +772,22 @@ export default function App() {
                 onCreateSession={handleCreateSession}
                 onStartSessionForClass={handleStartSessionForClass}
                 onSwitchToAdminMode={handleToggleAdminMode}
+              />
+            ) : (
+              <DashboardView
+                activeSession={activeSession}
+                subjects={subjects}
+                sessions={sessions}
+                students={students}
+                attendanceRecords={attendanceRecords}
+                lecturers={lecturers}
+                activeLecturer={activeLecturer}
+                onOpenScanner={() => handleTabChange('scanner')}
+                onGoToActivities={() => handleTabChange('activities')}
+                onGoToStudents={() => handleTabChange('students')}
+                onGoToReports={() => handleTabChange('reports')}
+                onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+                onQuickSimulateScan={handleQuickSimulateScan}
               />
             )
           )}
@@ -915,12 +943,11 @@ export default function App() {
         isOpen={isAdminPinModalOpen}
         onClose={() => setIsAdminPinModalOpen(false)}
         onSuccess={(lec, role) => {
-          setIsAdmin(true);
+          const effectiveRole = role || (lec?.role === 'ADMIN' ? 'ADMIN' : 'LECTURER');
+          setIsAdmin(effectiveRole === 'ADMIN');
           const updatedAccess = accessManager.getAccessState();
           setAccessState(updatedAccess);
-          if (role) {
-            setCurrentRole(role);
-          }
+          setCurrentRole(effectiveRole);
           if (lec) {
             setActiveLecturer(lec);
             if (accessManager.isFirstTimeLecturer(lec.id)) {

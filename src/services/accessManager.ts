@@ -24,7 +24,7 @@ class AccessManager {
     try {
       const raw = localStorage.getItem(TRUSTED_ACCESS_STORAGE_KEY);
       if (!raw) {
-        return { state: 'ACCESS_REQUIRED', session: null, lecturer: null, role: 'ADMIN' };
+        return { state: 'ACCESS_REQUIRED', session: null, lecturer: null, role: 'STUDENT' };
       }
 
       const session: TrustedSession = JSON.parse(raw);
@@ -33,7 +33,7 @@ class AccessManager {
       // 1. Check expiration
       if (!session.expiresAt || now > session.expiresAt) {
         this.clearTrustedAccess();
-        return { state: 'ACCESS_EXPIRED', session: null, lecturer: null, role: 'ADMIN' };
+        return { state: 'ACCESS_EXPIRED', session: null, lecturer: null, role: 'STUDENT' };
       }
 
       // 2. If Admin type
@@ -88,11 +88,11 @@ class AccessManager {
 
       // Unknown type
       this.clearTrustedAccess();
-      return { state: 'ACCESS_EXPIRED', session: null, lecturer: null, role: 'ADMIN' };
+      return { state: 'ACCESS_EXPIRED', session: null, lecturer: null, role: 'STUDENT' };
     } catch (e) {
       console.warn('Error reading trusted access:', e);
       this.clearTrustedAccess();
-      return { state: 'ACCESS_REQUIRED', session: null, lecturer: null, role: 'ADMIN' };
+      return { state: 'ACCESS_REQUIRED', session: null, lecturer: null, role: 'STUDENT' };
     }
   }
 
