@@ -50,13 +50,23 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
-  // Active Subject-Specific Enrollments
+  // Active Subject-Specific Enrollments (instant reactive merge with local engine cache)
   const subjectEnrollments = useMemo(() => {
     if (!subject) return [];
-    return enrollments.filter(
-      (e) => e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED'
-    );
-  }, [enrollments, subject]);
+    const engineEnrollments = attendanceEngine.getEnrollments();
+    const map = new Map<string, Enrollment>();
+    enrollments.forEach((e) => {
+      if (e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED') {
+        map.set(e.id, e);
+      }
+    });
+    engineEnrollments.forEach((e) => {
+      if (e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED') {
+        map.set(e.id, e);
+      }
+    });
+    return Array.from(map.values());
+  }, [enrollments, subject, isSyncing]);
 
   // Determine all available sections/classes from Subject or Master Students list
   const availableClassesInMaster = useMemo(() => {
@@ -142,12 +152,34 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
     });
   }, [masterStudentsForSubject, selectedClassFilter, searchQuery]);
 
+  // Master students in the selected class (unfiltered by text search)
+  const masterStudentsForSelectedClass = useMemo(() => {
+    return masterStudentsForSubject.filter((s) => {
+      if (selectedClassFilter === 'ALL') return true;
+      const sCls = (s.className || '').trim().toUpperCase();
+      const targetCls = selectedClassFilter.trim().toUpperCase();
+      return sCls === targetCls || sCls.replace(/_/g, ' ') === targetCls.replace(/_/g, ' ');
+    });
+  }, [masterStudentsForSubject, selectedClassFilter]);
+
+  // Unenrolled students in the currently selected class
+  const unenrolledForSelectedClass = useMemo(() => {
+    return unenrolledMasterStudents.filter((s) => {
+      if (selectedClassFilter === 'ALL') return true;
+      const sCls = (s.className || '').trim().toUpperCase();
+      const targetCls = selectedClassFilter.trim().toUpperCase();
+      return sCls === targetCls || sCls.replace(/_/g, ' ') === targetCls.replace(/_/g, ' ');
+    });
+  }, [unenrolledMasterStudents, selectedClassFilter]);
+
   // 1-Click Sync: Batch enroll master students into this subject
-  const handleBatchEnroll = async () => {
-    if (!subject) return;
+  const handleBatchEnroll = async (overrideClass?: string) => {
+    if (!subject || isSyncing) return;
     setIsSyncing(true);
+    setSyncFeedback(null);
     try {
-      const targetClasses = selectedClassFilter === 'ALL' ? sectionsList : [selectedClassFilter];
+      const activeClass = overrideClass !== undefined ? overrideClass : selectedClassFilter;
+      const targetClasses = activeClass === 'ALL' ? sectionsList : [activeClass];
       const res = await attendanceEngine.batchEnrollStudentsForSubject({
         subjectCode: subject.code,
         subjectName: subject.name,
@@ -310,8 +342,8 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
             <button
               id="btn-batch-sync-master-students"
               type="button"
-              onClick={handleBatchEnroll}
-              disabled={isSyncing}
+              onClick={() => handleBatchEnroll()}
+              disabled={isSyncing || (selectedClassFilter !== 'ALL' && unenrolledForSelectedClass.length === 0)}
               className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 border border-indigo-400/40 transition-all cursor-pointer disabled:opacity-50"
             >
               {isSyncing ? (
@@ -320,7 +352,11 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
               )}
               <span>
-                {isSyncing ? 'Menyelaraskan...' : `Selaras & Daftar ${unenrolledMasterStudents.length} Pelajar`}
+                {isSyncing
+                  ? 'Menyelaraskan...'
+                  : selectedClassFilter === 'ALL'
+                  ? `Selaras & Daftar Semua (${unenrolledMasterStudents.length} Pelajar)`
+                  : `Selaras & Daftar Kelas ${selectedClassFilter} (${unenrolledForSelectedClass.length} Pelajar)`}
               </span>
             </button>
           </div>
@@ -399,22 +435,50 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
               <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
                 <div className="space-y-1">
                   <div className="text-xs font-bold text-slate-200">
-                    Memaparkan {filteredMasterStudents.length} Pelajar daripada Pangkalan Data Induk
+                    {selectedClassFilter === 'ALL'
+                      ? `Memaparkan ${filteredMasterStudents.length} Pelajar daripada Pangkalan Data Induk (Semua Kelas)`
+                      : `Memaparkan ${filteredMasterStudents.length} Pelajar Kelas ${selectedClassFilter} daripada Pangkalan Data Induk`}
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Pelajar berikut berada di dalam kelas bagi subjek ini dan boleh didaftarkan serta-merta:
+                    {selectedClassFilter === 'ALL'
+                      ? `Pelajar berikut berada di dalam kelas bagi subjek ini dan boleh didaftarkan serta-merta:`
+                      : `Pelajar bagi kelas ${selectedClassFilter} berikut boleh didaftarkan masuk ke dalam subjek ini secara khusus:`}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  id="btn-sync-all-master-banner"
-                  onClick={handleBatchEnroll}
-                  disabled={isSyncing}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer shrink-0"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Daftarkan Semua ({masterStudentsForSubject.length}) Pelajar</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    id="btn-sync-all-master-banner"
+                    onClick={() => handleBatchEnroll(selectedClassFilter)}
+                    disabled={isSyncing}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer shrink-0 transition-all disabled:opacity-50"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    <span>
+                      {isSyncing
+                        ? 'Menyelaraskan...'
+                        : selectedClassFilter === 'ALL'
+                        ? `Daftarkan Semua (${masterStudentsForSubject.length}) Pelajar`
+                        : `Daftarkan Kelas ${selectedClassFilter} (${masterStudentsForSelectedClass.length} Pelajar)`}
+                    </span>
+                  </button>
+                  {selectedClassFilter !== 'ALL' && (
+                    <button
+                      type="button"
+                      id="btn-sync-all-classes-alternative"
+                      onClick={() => handleBatchEnroll('ALL')}
+                      disabled={isSyncing}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all disabled:opacity-50"
+                      title="Daftarkan semua kelas sekaligus"
+                    >
+                      <span>Daftar Semua Kelas ({masterStudentsForSubject.length})</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {filteredMasterStudents.length === 0 ? (

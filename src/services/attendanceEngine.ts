@@ -56,6 +56,7 @@ class AttendanceEngine {
   private enrollments: Enrollment[] = [];
   private teachingAssignments: TeachingAssignment[] = [];
   private activeLecturer: Lecturer | null = null;
+  private enrollmentListeners: Set<(enrollments: Enrollment[]) => void> = new Set();
 
   private isFirestoreConnected: boolean = false;
 
@@ -330,9 +331,13 @@ class AttendanceEngine {
   }
 
   public subscribeEnrollments(callback: (enrollments: Enrollment[]) => void): () => void {
+    this.enrollmentListeners.add(callback);
+    callback(this.enrollments);
+
     if (!db) {
-      callback(this.enrollments);
-      return () => {};
+      return () => {
+        this.enrollmentListeners.delete(callback);
+      };
     }
 
     try {
@@ -350,10 +355,15 @@ class AttendanceEngine {
           callback(this.enrollments);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.enrollmentListeners.delete(callback);
+        unsubscribe();
+      };
     } catch (e) {
       callback(this.enrollments);
-      return () => {};
+      return () => {
+        this.enrollmentListeners.delete(callback);
+      };
     }
   }
 
@@ -553,6 +563,18 @@ class AttendanceEngine {
 
   private saveEnrollmentsLocally() {
     localStorage.setItem(STORAGE_KEYS.ENROLLMENTS, JSON.stringify(this.enrollments));
+    this.notifyEnrollmentListeners();
+  }
+
+  public notifyEnrollmentListeners() {
+    const list = [...this.enrollments];
+    this.enrollmentListeners.forEach((cb) => {
+      try {
+        cb(list);
+      } catch (err) {
+        console.warn('Enrollment callback error:', err);
+      }
+    });
   }
 
   private saveTeachingAssignmentsLocally() {
@@ -1518,6 +1540,7 @@ class AttendanceEngine {
   /**
    * Batch enroll students from master roster into a subject based on their class.
    * Enables 1-click sync between master student records (83 students) and subject enrollment.
+   * Optimized with instant local cache commitment and fast writeBatch Firestore syncing.
    */
   public async batchEnrollStudentsForSubject(params: {
     subjectCode: string;
@@ -1538,8 +1561,15 @@ class AttendanceEngine {
       return targetClasses.some((tc) => tc === sClass || tc.replace(/_/g, ' ') === sClass.replace(/_/g, ' '));
     });
 
-    let newCount = 0;
+    if (candidateStudents.length === 0) {
+      return {
+        count: 0,
+        message: 'Tiada rekod pelajar induk dijumpai bagi kelas yang dipilih.'
+      };
+    }
+
     const now = new Date().toISOString();
+    const recordsToSave: Enrollment[] = [];
 
     for (const student of candidateStudents) {
       const rawStudentId = (student.studentId || student.id).trim().toUpperCase();
@@ -1574,15 +1604,36 @@ class AttendanceEngine {
         this.enrollments[existingIndex] = record;
       } else {
         this.enrollments = [record, ...this.enrollments];
-        newCount++;
       }
+      recordsToSave.push(record);
+    }
 
-      if (db) {
-        await setDoc(doc(db, 'enrollments', record.id), sanitizeForFirestore(record), { merge: true }).catch(console.warn);
+    // 1. Instantly commit to local cache and notify all UI listeners (0ms perceived latency)
+    this.saveEnrollmentsLocally();
+    this.notifyEnrollmentListeners();
+
+    // 2. Perform fast non-blocking Firestore writeBatch in chunks of 400 with a timeout safeguard
+    if (db && recordsToSave.length > 0) {
+      try {
+        const batchPromise = (async () => {
+          for (let i = 0; i < recordsToSave.length; i += 400) {
+            const batch = writeBatch(db!);
+            const chunk = recordsToSave.slice(i, i + 400);
+            chunk.forEach((rec) => {
+              batch.set(doc(db!, 'enrollments', rec.id), sanitizeForFirestore(rec), { merge: true });
+            });
+            await batch.commit();
+          }
+        })();
+
+        // Race with a 2.5 second timeout safeguard so UI never stalls if network or cloud is slow
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2500));
+        await Promise.race([batchPromise, timeoutPromise]);
+      } catch (err) {
+        console.warn('Firestore batch enrollment sync warning (local cache retained):', err);
       }
     }
 
-    this.saveEnrollmentsLocally();
     return {
       count: candidateStudents.length,
       message: `Berjaya menyelaraskan & mendaftarkan ${candidateStudents.length} pelajar induk ke dalam subjek ${rawSubCode}.`

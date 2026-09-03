@@ -200,8 +200,8 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
               <span>Ruang Kerja Pensyarah</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              Selamat Bertugas, {lecturer.name}
+            <h1 id="lecturer-greeting-heading" className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+              Hi, {lecturer.name}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 flex items-center gap-2">
               <span>{lecturer.department || 'Jabatan Perakaunan'}</span>
