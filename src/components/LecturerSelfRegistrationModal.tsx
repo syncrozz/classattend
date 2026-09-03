@@ -90,10 +90,12 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
     return Array.from(new Set(list)).sort();
   }, [availableClasses]);
 
-  // Derive master subjects available from props or engine
+  // Derive master subjects available from props or engine and sort A-Z by course code
   const masterSubjects = useMemo(() => {
-    if (subjects && subjects.length > 0) return subjects;
-    return attendanceEngine.getSubjects();
+    const list = (subjects && subjects.length > 0) ? subjects : attendanceEngine.getSubjects();
+    return [...list].sort((a, b) =>
+      a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+    );
   }, [subjects]);
 
   // Derived 4-digit PIN for preview
@@ -619,21 +621,13 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                       onChange={(e) => setCurrentlyAddingSubjectId(e.target.value)}
                       className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-teal-500 outline-none"
                     >
-                      <option value="">-- Pilih Kursus Daripada Senarai 47 Kursus Kolej --</option>
-                      {['Jabatan Perakaunan', 'Jabatan Pengajian Am', 'Jabatan Pengurusan Perniagaan', 'Jabatan Teknologi Maklumat'].map((dept) => {
-                        const deptSubjects = masterSubjects.filter((s) => (s.department || '').includes(dept) || (dept === 'Jabatan Perakaunan' && !s.department));
-                        if (deptSubjects.length === 0) return null;
+                      <option value="">-- Pilih Kursus (Disusun A-Z Mengikut Kod) --</option>
+                      {masterSubjects.map((sub) => {
+                        const isAlreadyAdded = selectedSubjectGroups.some((sg) => sg.subjectCode === sub.code);
                         return (
-                          <optgroup key={dept} label={`${dept} (${deptSubjects.length} Kursus)`}>
-                            {deptSubjects.map((sub) => {
-                              const isAlreadyAdded = selectedSubjectGroups.some((sg) => sg.subjectCode === sub.code);
-                              return (
-                                <option key={sub.id || sub.code} value={sub.id || sub.code} disabled={isAlreadyAdded}>
-                                  {sub.code} - {sub.name} {isAlreadyAdded ? '(Sudah Dipilih)' : ''}
-                                </option>
-                              );
-                            })}
-                          </optgroup>
+                          <option key={sub.id || sub.code} value={sub.id || sub.code} disabled={isAlreadyAdded}>
+                            {sub.code} - {sub.name} {isAlreadyAdded ? '(Sudah Dipilih)' : ''}
+                          </option>
                         );
                       })}
                     </select>

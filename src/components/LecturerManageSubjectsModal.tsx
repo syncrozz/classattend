@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   BookOpen,
@@ -101,6 +101,13 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
     }
   }, [isOpen, lecturer, allSubjects]);
 
+  // Senarai kursus kolej disusun mengikut alfabet A-Z mengikut kod kursus tanpa pengasingan jabatan
+  const sortedSubjects = useMemo(() => {
+    return [...allSubjects].sort((a, b) =>
+      a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [allSubjects]);
+
   if (!isOpen) return null;
 
   const handleAddSubject = (subjectCode: string) => {
@@ -202,13 +209,6 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
     }
   };
 
-  const departments = [
-    'Jabatan Perakaunan',
-    'Jabatan Pengajian Am',
-    'Jabatan Pengurusan Perniagaan',
-    'Jabatan Teknologi Maklumat'
-  ];
-
   return (
     <div
       id="lecturer-manage-subjects-modal-overlay"
@@ -278,25 +278,15 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
                 id="select-add-subject-manage"
                 value={currentlyAddingCode}
                 onChange={(e) => setCurrentlyAddingCode(e.target.value)}
-                className="w-full sm:w-auto sm:max-w-md sm:flex-initial px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-100 text-xs font-medium focus:ring-2 focus:ring-teal-500 outline-none"
+                className="w-full sm:w-auto sm:max-w-md sm:flex-initial px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-100 text-xs font-medium focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer transition-colors shadow-inner"
               >
-                <option value="">-- Pilih Kursus Untuk Ditambah --</option>
-                {departments.map((dept) => {
-                  const deptSubjects = allSubjects.filter(
-                    (s) => (s.department || '').includes(dept) || (dept === 'Jabatan Perakaunan' && !s.department)
-                  );
-                  if (deptSubjects.length === 0) return null;
+                <option value="">-- Pilih Kursus (Disusun A-Z Mengikut Kod) --</option>
+                {sortedSubjects.map((sub) => {
+                  const isAdded = selectedGroups.some((g) => g.subjectCode.toUpperCase() === sub.code.toUpperCase());
                   return (
-                    <optgroup key={dept} label={`${dept} (${deptSubjects.length} Kursus)`}>
-                      {deptSubjects.map((sub) => {
-                        const isAdded = selectedGroups.some((g) => g.subjectCode.toUpperCase() === sub.code.toUpperCase());
-                        return (
-                          <option key={sub.code} value={sub.code} disabled={isAdded}>
-                            {sub.code} - {sub.name} {isAdded ? '(Sudah Dipilih)' : ''}
-                          </option>
-                        );
-                      })}
-                    </optgroup>
+                    <option key={sub.code} value={sub.code} disabled={isAdded}>
+                      {sub.code} - {sub.name} {isAdded ? '(Sudah Dipilih)' : ''}
+                    </option>
                   );
                 })}
               </select>

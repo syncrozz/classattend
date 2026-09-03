@@ -230,10 +230,10 @@ export const ConceptGuideView: React.FC = () => {
             </div>
             <div className="space-y-1 text-xs">
               <strong className="text-white block text-sm">
-                Admin Menjana QR Pendaftaran Pensyarah
+                Admin Menjana QR Pensyarah
               </strong>
               <p className="text-slate-300 leading-relaxed">
-                Admin membuka tab <strong className="text-teal-300">Master Data ➔ Tab Direktori Pensyarah</strong> dan menekan butang hijau <strong className="text-emerald-400">"1. Jana QR Pendaftaran Pensyarah"</strong>. Kod QR ini adalah umum dan boleh diimbas oleh berbilang pensyarah.
+                Admin membuka tab <strong className="text-teal-300">Master Data ➔ Tab Direktori Pensyarah</strong> dan menekan butang hijau <strong className="text-emerald-400">"1. Jana QR Pensyarah"</strong>. Kod QR ini adalah umum dan boleh diimbas oleh berbilang pensyarah.
               </p>
             </div>
           </div>

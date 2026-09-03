@@ -8,8 +8,38 @@ export const Footer: React.FC<FooterProps> = ({ onOpenSupport }) => {
   return (
     <footer className="w-full border-t border-slate-800/80 bg-slate-950/90 py-3.5 px-4 sm:px-6 lg:px-8 mt-auto select-none no-print">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-        {/* Support CTA Button (Part A) */}
-        <div className="flex items-center justify-center sm:justify-start">
+        {/* Footer Left — Developer Credit */}
+        <div className="text-xs text-slate-400 font-medium flex items-center justify-center sm:justify-start gap-1">
+          <span className="text-slate-400 select-none">Developed by</span>
+          <a
+            href="https://www.syncrozz.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            id="footer-link-syncrozz"
+            className="text-slate-200 hover:text-indigo-400 font-semibold no-underline transition-colors cursor-pointer"
+            title="Syncrozz"
+          >
+            Syncrozz
+          </a>
+          <a
+            href="https://wa.me/60145313756"
+            target="_blank"
+            rel="noopener noreferrer"
+            id="footer-link-whatsapp"
+            className="inline-flex items-center ml-1.5 opacity-90 hover:opacity-100 hover:scale-105 transition-all duration-150 cursor-pointer"
+            title="Hubungi Syncrozz melalui WhatsApp"
+          >
+            <img
+              src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/MAIN/Logo%20Whatapp%20v2.png"
+              alt="WhatsApp"
+              className="w-5 h-5 object-contain"
+              referrerPolicy="no-referrer"
+            />
+          </a>
+        </div>
+
+        {/* Support CTA Button */}
+        <div className="flex items-center justify-center sm:justify-end">
           <a
             href="https://syncrozz.com/#support"
             id="footer-btn-support-innovation"
@@ -23,21 +53,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenSupport }) => {
           >
             <span className="tracking-tight text-slate-400 group-hover:text-slate-200 transition-colors">Support</span>
             <span className="text-[11px] opacity-80 group-hover:opacity-100 transition-opacity">❤️</span>
-          </a>
-        </div>
-
-        {/* Developer Credit (Part A) */}
-        <div className="text-xs text-slate-400 font-medium flex items-center justify-center sm:justify-end gap-1">
-          <span className="text-slate-400 select-none">Develop By</span>
-          <a
-            href="https://wasap.my/60145313756"
-            target="_blank"
-            rel="noopener noreferrer"
-            id="footer-link-syncrozz-whatsapp"
-            className="text-slate-200 hover:text-indigo-400 font-semibold no-underline transition-colors cursor-pointer"
-            title="Hubungi Syncrozz melalui WhatsApp"
-          >
-            Syncrozz
           </a>
         </div>
       </div>

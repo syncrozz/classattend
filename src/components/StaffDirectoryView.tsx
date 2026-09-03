@@ -218,17 +218,19 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     );
   });
 
-  // Filter subjects
-  const filteredSubjects = subjects.filter((sub) => {
-    const q = subjectSearch.toLowerCase();
-    const matchesDept = selectedSubjectDepartment === 'ALL' || sub.department === selectedSubjectDepartment;
-    const matchesSearch =
-      sub.code.toLowerCase().includes(q) ||
-      sub.name.toLowerCase().includes(q) ||
-      (sub.department || '').toLowerCase().includes(q) ||
-      (sub.sections || []).join(' ').toLowerCase().includes(q);
-    return matchesDept && matchesSearch;
-  });
+  // Filter subjects (sorted alphabetically A-Z by code)
+  const filteredSubjects = subjects
+    .filter((sub) => {
+      const q = subjectSearch.toLowerCase();
+      const matchesDept = selectedSubjectDepartment === 'ALL' || sub.department === selectedSubjectDepartment;
+      const matchesSearch =
+        sub.code.toLowerCase().includes(q) ||
+        sub.name.toLowerCase().includes(q) ||
+        (sub.department || '').toLowerCase().includes(q) ||
+        (sub.sections || []).join(' ').toLowerCase().includes(q);
+      return matchesDept && matchesSearch;
+    })
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }));
 
   const SUBJECT_DEPARTMENTS = [
     'ALL',
@@ -650,30 +652,48 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   <button
                     id="btn-generate-lecturer-qr"
                     type="button"
-                    onClick={() => setIsGenerateQRModalOpen(true)}
+                    onClick={() => {
+                      if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                        onRequestAdminAccess('Jana Kod QR Pendaftaran Pensyarah');
+                        return;
+                      }
+                      setIsGenerateQRModalOpen(true);
+                    }}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all cursor-pointer ring-1 ring-emerald-400/40"
-                    title="Jana Kod QR Pendaftaran Kendiri Pensyarah"
+                    title={!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN') ? 'Perlu pengesahan Admin untuk jana QR pensyarah' : 'Jana Kod QR Pendaftaran Pensyarah'}
                   >
-                    <QrCode className="w-3.5 h-3.5 text-emerald-200" />
-                    <span>1. Jana QR Pendaftaran Pensyarah</span>
+                    {!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN') ? (
+                      <Lock className="w-3.5 h-3.5 text-amber-300" />
+                    ) : (
+                      <QrCode className="w-3.5 h-3.5 text-emerald-200" />
+                    )}
+                    <span>Jana QR Pensyarah</span>
                   </button>
 
-                  <button
-                    id="btn-test-lecturer-self-reg"
-                    type="button"
-                    onClick={() => setIsSelfRegModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-950/80 hover:bg-teal-900/90 text-teal-300 border border-teal-600/50 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                    title="Buka Borang Pendaftaran Kendiri Pensyarah untuk percubaan"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>2. Uji Borang Pendaftaran</span>
-                  </button>
+                  {(isAdmin || (activeLecturer && activeLecturer.role === 'ADMIN')) && (
+                    <button
+                      id="btn-test-lecturer-self-reg"
+                      type="button"
+                      onClick={() => {
+                        if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                          onRequestAdminAccess('Uji Borang Pendaftaran Kendiri Pensyarah');
+                          return;
+                        }
+                        setIsSelfRegModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-950/80 hover:bg-teal-900/90 text-teal-300 border border-teal-600/50 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                      title="Buka Borang Pendaftaran Kendiri Pensyarah untuk percubaan (Akses Pentadbir Sahaja)"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Uji Borang Pendaftaran</span>
+                    </button>
+                  )}
 
                   <button
                     id="btn-manual-add-lecturer"
                     type="button"
                     onClick={() => {
-                      if (!activeLecturer) {
+                      if (!activeLecturer && !isAdmin) {
                         onRequestAdminAccess('Daftar Pensyarah Baharu');
                       } else {
                         setIsAddLecturerOpen(true);
@@ -683,7 +703,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title="Tambah pensyarah secara manual"
                   >
                     <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>3. Tambah Manual</span>
+                    <span>Tambah Manual</span>
                   </button>
 
                   <button
@@ -1237,7 +1257,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold text-white">Tiada Rekod Pensyarah Ditemui</h4>
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    Anda boleh menjana QR Pendaftaran Pensyarah untuk membenarkan pensyarah mendaftar sendiri, atau mendaftar pensyarah secara manual.
+                    Anda boleh menjana QR Pensyarah untuk membenarkan pensyarah mendaftar sendiri, atau mendaftar pensyarah secara manual.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -1247,7 +1267,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
                   >
                     <QrCode className="w-4 h-4" />
-                    <span>Jana QR Pendaftaran Pensyarah</span>
+                    <span>Jana QR Pensyarah</span>
                   </button>
                   <button
                     type="button"
@@ -1271,21 +1291,8 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   const isCurrentActive = activeLecturer?.email.toLowerCase() === lec.email.toLowerCase();
                   const isPinVisible = showPins[lec.id];
                   const pinToDisplay = lec.pin || (lec.icNumber ? lec.icNumber.replace(/[^0-9]/g, '').slice(-4) : '****');
-                  const lecAssignments = teachingAssignments.filter((ta) => ta.lecturerId === lec.id);
                   const isPending = lec.status === 'PENDING';
                   const isRejected = lec.status === 'REJECTED';
-
-                  // Group teaching assignments by subject
-                  const groupedAssignments = lecAssignments.reduce((acc, ta) => {
-                    if (!acc[ta.subjectCode]) {
-                      acc[ta.subjectCode] = {
-                        subjectName: ta.subjectName,
-                        classes: []
-                      };
-                    }
-                    acc[ta.subjectCode].classes.push(ta.className);
-                    return acc;
-                  }, {} as Record<string, { subjectName: string; classes: string[] }>);
 
                   return (
                     <div
@@ -1364,7 +1371,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         <div className="flex items-center justify-between border-t border-slate-800/60 pt-1.5">
                           <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
                             <Key className="w-3.5 h-3.5 text-amber-400" />
-                            <span>No. IC & PIN (4 Digit):</span>
+                            <span>No. PIN:</span>
                           </span>
                           {isAdmin ? (
                             <div className="flex items-center gap-2">
@@ -1397,68 +1404,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                             </div>
                           )}
                         </div>
-                      </div>
-
-                      {/* Assigned Teaching Assignments & Classes */}
-                      <div className="space-y-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-slate-400">Penugasan Pengajaran (Subjek & Kelas):</span>
-                          <span className="text-[10px] text-teal-400 font-mono">
-                            {lecAssignments.length > 0 ? `${lecAssignments.length} Assignments` : ''}
-                          </span>
-                        </div>
-
-                        {Object.keys(groupedAssignments).length > 0 ? (
-                          <div className="space-y-1.5">
-                            {(Object.entries(groupedAssignments) as [string, { subjectName: string; classes: string[] }][]).map(([subCode, data]) => (
-                              <div
-                                key={subCode}
-                                className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] space-y-1"
-                              >
-                                <div className="flex items-center space-x-1.5 text-teal-300 font-bold">
-                                  <BookOpen className="w-3 h-3 text-teal-400 shrink-0" />
-                                  <span>{subCode}</span>
-                                  <span className="text-slate-400 font-normal text-[10px] truncate max-w-[180px]">
-                                    ({data.subjectName})
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-1 pl-4">
-                                  {data.classes.map((cls) => (
-                                    <span
-                                      key={cls}
-                                      className="px-1.5 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-bold"
-                                    >
-                                      {cls}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <div>
-                              <span className="text-[10px] text-slate-500">Kelas:</span>
-                              <div className="flex flex-wrap gap-1.5 mt-0.5">
-                                {Array.from(new Set<string>(lec.assignedSections || lec.assignedClasses || [])).map((sec, secIdx) => (
-                                  <span
-                                    key={`lec-${lec.id}-sec-${sec}-${secIdx}`}
-                                    className="px-2 py-0.5 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-[11px] font-mono font-bold"
-                                  >
-                                    {sec}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div>
-                              <span className="text-[10px] text-slate-500">Subjek:</span>
-                              <div className="text-[11px] text-slate-300 mt-0.5 font-medium">
-                                {(lec.assignedSubjects || []).join(', ') || 'Tiada subjek khusus'}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       {/* Lecturer Actions & Status */}

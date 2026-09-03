@@ -348,32 +348,12 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
 
       {/* 3. Subjek & Kelas Yang Ditugaskan (Teaching Assignments Grid) */}
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-indigo-400" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-              Subjek & Seksyen Kelas Ditugaskan ({mySubjectsList.length})
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              id="btn-workspace-manage-subjects"
-              onClick={() => setIsManageSubjectsModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 hover:text-white border border-teal-500/40 text-xs font-bold transition-all cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-teal-400" />
-              <span>Pilih / Urus Subjek Pengajaran</span>
-            </button>
-            <button
-              type="button"
-              onClick={onGoToActivities}
-              className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
-            >
-              <span>Semua Kelas</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        {/* Section Header: Tajuk Sahaja */}
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-indigo-400" />
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
+            Subjek & Seksyen Kelas Ditugaskan ({mySubjectsList.length})
+          </h2>
         </div>
 
         {mySubjectsList.length > 0 ? (
@@ -493,6 +473,27 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             </button>
           </div>
         )}
+
+        {/* Elemen tindakan disusun di bahagian bawah section dalam row berbeza */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <button
+            type="button"
+            id="btn-workspace-manage-subjects"
+            onClick={() => setIsManageSubjectsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 hover:text-white border border-teal-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5 text-teal-400" />
+            <span>Pilih / Urus Subjek Pengajaran</span>
+          </button>
+          <button
+            type="button"
+            onClick={onGoToActivities}
+            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer px-2 py-1 hover:underline"
+          >
+            <span>Semua Kelas</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* 4. Quick Actions Grid */}

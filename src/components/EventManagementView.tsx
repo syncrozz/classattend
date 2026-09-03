@@ -214,13 +214,16 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     }
   }, [activeLecturer]);
 
-  // Scoped subjects list based on active view scope
+  // Scoped subjects list based on active view scope, sorted A-Z by course code
   const scopedSubjects = useMemo(() => {
+    let list: Subject[] = [];
     if (!activeLecturer || subjectViewScope === 'ALL_SUBJECTS') {
-      return subjects;
+      list = [...subjects];
+    } else {
+      // Strictly return only subjects taught by this lecturer (by individu sahaja)
+      list = subjects.filter((s) => myAssignedCodes.has(s.code.trim().toUpperCase()));
     }
-    // Strictly return only subjects taught by this lecturer (by individu sahaja)
-    return subjects.filter((s) => myAssignedCodes.has(s.code.trim().toUpperCase()));
+    return list.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }));
   }, [subjects, activeLecturer, subjectViewScope, myAssignedCodes]);
 
   // Filtered Subjects with search query

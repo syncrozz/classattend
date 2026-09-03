@@ -389,27 +389,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* 3. DEDICATED SECTION: STATISTIK % KEHADIRAN MENGIKUT SETIAP KELAS */}
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 sm:p-6 space-y-6 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-indigo-400" />
-              <h3 className="text-sm sm:text-base font-semibold text-slate-100 tracking-normal">
+        <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <BarChart3 className="w-5 h-5 text-indigo-400 shrink-0" />
+              <h3 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight">
                 Statistik % Kehadiran Mengikut Setiap Kelas
               </h3>
             </div>
-            <p className="text-[11px] text-slate-400 leading-normal">
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-3xl">
               Analisis kadar kehadiran (%) terperinci mengikut kelas masing-masing bagi pemantauan pensyarah
             </p>
           </div>
 
           {/* Controls: Scope & Subject Filter */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             {/* Scope Switcher */}
             <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setClassStatScope('CUMULATIVE')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   classStatScope === 'CUMULATIVE'
                     ? 'bg-indigo-600 text-white shadow'
                     : 'text-slate-400 hover:text-slate-200'
@@ -420,7 +420,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => setClassStatScope('ACTIVE_SESSION')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   classStatScope === 'ACTIVE_SESSION'
                     ? 'bg-indigo-600 text-white shadow'
                     : 'text-slate-400 hover:text-slate-200'
@@ -431,8 +431,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {/* Subject Filter Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <select
                 value={selectedSubjectFilter}
                 onChange={(e) => setSelectedSubjectFilter(e.target.value)}
@@ -559,9 +559,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Side-by-Side Comparison Chart and Breakdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 pt-2">
           {/* Comparison Bar Chart */}
-          <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+          <div className="xl:col-span-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
                 Graf Perbandingan % Kehadiran Antara Kelas
