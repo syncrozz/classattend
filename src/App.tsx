@@ -769,6 +769,7 @@ export default function App() {
         onOpenScanner={() => handleTabChange('scanner')}
         onToggleAdminMode={handleToggleAdminMode}
         onLogoutLecturer={handleLogoutLecturer}
+        onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
       />
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">

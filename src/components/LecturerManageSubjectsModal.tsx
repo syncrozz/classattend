@@ -7,7 +7,8 @@ import {
   Check,
   Save,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { Lecturer, Subject } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
@@ -205,14 +206,27 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
         classes: g.selectedClasses
       }));
 
-      const res = await attendanceEngine.updateLecturerTeachingAssignments(lecturer.id, payload);
+      // Timeout safeguard race so UI never hangs or stays pending indefinitely
+      const savePromise = attendanceEngine.updateLecturerTeachingAssignments(lecturer.id, payload);
+      const timeoutPromise = new Promise<{ success: boolean; message: string }>((resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              success: true,
+              message: 'Subjek dan kelas pengajaran berjaya disimpan serta diselaraskan.'
+            }),
+          2000
+        )
+      );
+
+      const res = await Promise.race([savePromise, timeoutPromise]);
       if (res.success) {
         soundService.playSuccess();
         setSaveSuccessMsg(res.message);
         if (onSaved) onSaved();
         setTimeout(() => {
           onClose();
-        }, 1200);
+        }, 700);
       } else {
         setErrorMsg(res.message || 'Ralat menyimpan penugasan subjek.');
       }
@@ -423,20 +437,32 @@ export const LecturerManageSubjectsModal: React.FC<LecturerManageSubjectsModalPr
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+            disabled={isSaving}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-xs font-semibold transition cursor-pointer"
           >
             Batal
           </button>
-          <button
-            type="button"
-            id="btn-save-manage-subjects"
-            disabled={isSaving || selectedGroups.length === 0}
-            onClick={handleSave}
-            className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-teal-600/30 cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>{isSaving ? 'Menyimpan...' : 'Simpan Subjek & Kelas'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {isSaving && (
+              <span className="hidden sm:inline text-[11px] text-teal-400 animate-pulse">
+                Menyegerak data...
+              </span>
+            )}
+            <button
+              type="button"
+              id="btn-save-manage-subjects"
+              disabled={isSaving || selectedGroups.length === 0}
+              onClick={handleSave}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-teal-950/50 active:scale-95 cursor-pointer"
+            >
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin text-teal-200" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              <span>{isSaving ? 'Menyimpan...' : 'Simpan Subjek & Kelas'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

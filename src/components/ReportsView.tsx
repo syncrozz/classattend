@@ -81,11 +81,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   const currentSession = sortedSessions.find((s) => s.id === selectedSessionId) || sortedSessions[0];
 
-  // Extract unique classes dynamically including standard cohorts
-  const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
+  // Extract unique classes dynamically from actual registered students and sessions
   const uniqueClasses: string[] = Array.from(
-    new Set([...DEFAULT_CLASSES, ...students.map((s) => s.className).filter(Boolean)])
-  ).sort();
+    new Set([
+      ...(students.map((s) => s.className?.trim()).filter(Boolean) as string[]),
+      ...(sessions.map((s) => s.className?.trim()).filter(Boolean) as string[])
+    ])
+  ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   // Records for current session
   const sessionRecords = currentSession
@@ -429,7 +431,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV Kelas Ini'}
               >
                 {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Eksport CSV Kelas</span>
+                <span className="hidden sm:inline">Eksport Kelas</span>
               </button>
             ) : (
               <button
@@ -438,7 +440,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV'}
               >
                 {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Eksport CSV</span>
+                <span className="hidden sm:inline">Eksport</span>
               </button>
             )}
 

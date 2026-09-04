@@ -138,7 +138,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           <button
             id="sidebar-btn-pwa-install"
             onClick={onOpenPWAInstall}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 text-xs font-semibold transition-all cursor-pointer group"
+            className="hidden w-full items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 text-xs font-semibold transition-all cursor-pointer group"
           >
             <div className="flex items-center gap-2.5">
               <img

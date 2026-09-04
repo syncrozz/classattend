@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Users, User, Play, X, Sparkles, Calendar } from 'lucide-react';
+import { BookOpen, Users, User, Play, X, Sparkles, Calendar, Check } from 'lucide-react';
 import { getClassBadgeColor } from '../utils/studentUtils';
 
 interface StartAttendanceModalProps {
@@ -10,6 +10,8 @@ interface StartAttendanceModalProps {
   className: string;
   lecturerName: string;
   studentCount: number;
+  availableClasses?: string[];
+  onSelectClass?: (newClass: string) => void;
   onConfirmStart: () => void;
 }
 
@@ -21,6 +23,8 @@ export const StartAttendanceModal: React.FC<StartAttendanceModalProps> = ({
   className,
   lecturerName,
   studentCount,
+  availableClasses,
+  onSelectClass,
   onConfirmStart
 }) => {
   if (!isOpen) return null;
@@ -74,19 +78,64 @@ export const StartAttendanceModal: React.FC<StartAttendanceModalProps> = ({
             </div>
           </div>
 
-          {/* Class Section */}
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+          {/* Class Section with Quick Class Switcher */}
+          <div className="flex items-start gap-3">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
               <Users className="w-4 h-4" />
             </div>
-            <div className="flex-1 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Seksyen Kelas</div>
-                <div className="text-sm font-bold text-white">Kelas {className}</div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Seksyen Kelas Dipilih</div>
+                  <div className="text-sm font-bold text-white">
+                    {className === 'ALL' ? 'Semua Kelas (Gabungan)' : `Kelas ${className.replace('_', ' ')}`}
+                  </div>
+                </div>
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${getClassBadgeColor(className)}`}>
+                  {className === 'ALL' ? 'SEMUA KELAS' : className}
+                </span>
               </div>
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${getClassBadgeColor(className)}`}>
-                {className}
-              </span>
+
+              {/* Class Pills Switcher if subject has multiple classes */}
+              {availableClasses && availableClasses.length > 1 && onSelectClass && (
+                <div className="pt-1.5 border-t border-slate-800/80">
+                  <div className="text-[10px] text-slate-400 mb-1.5 font-semibold">
+                    Tukar kelas sasaran:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableClasses.map((cls) => {
+                      const isSelected = className.toUpperCase() === cls.toUpperCase();
+                      return (
+                        <button
+                          key={`modal-cls-chip-${cls}`}
+                          type="button"
+                          onClick={() => onSelectClass(cls)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                            isSelected
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 ring-1 ring-emerald-400 font-extrabold'
+                              : 'bg-slate-800/90 text-slate-400 hover:text-white border-slate-700 hover:border-slate-600'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 text-emerald-400" />}
+                          <span>{cls.replace('_', ' ')}</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => onSelectClass('ALL')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                        className === 'ALL'
+                          ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500 ring-1 ring-indigo-400 font-extrabold'
+                          : 'bg-slate-800/90 text-slate-400 hover:text-white border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      {className === 'ALL' && <Check className="w-3 h-3 text-indigo-400" />}
+                      <span>Semua (Gabungan)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

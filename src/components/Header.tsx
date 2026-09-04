@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   BookOpen,
   LogOut,
-  User
+  User,
+  X
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -28,6 +29,7 @@ interface HeaderProps {
   onOpenScanner: () => void;
   onToggleAdminMode: () => void;
   onLogoutLecturer: () => void;
+  onCloseActiveSession?: (sessionId: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,7 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSound,
   onOpenScanner,
   onToggleAdminMode,
-  onLogoutLecturer
+  onLogoutLecturer,
+  onCloseActiveSession
 }) => {
   const isPrivileged = Boolean(activeLecturer || isAdmin);
 
@@ -82,23 +85,50 @@ export const Header: React.FC<HeaderProps> = ({
           {activeSession ? (
             <div
               id="header-active-session-indicator"
-              onClick={onOpenScanner}
-              className="cursor-pointer hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all text-xs font-medium text-emerald-300 group"
-              title="Klik untuk buka pengimbas bagi kelas ini"
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onCloseActiveSession) {
+                  onCloseActiveSession(activeSession.id);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (onCloseActiveSession) {
+                    onCloseActiveSession(activeSession.id);
+                  }
+                }
+              }}
+              className="cursor-pointer hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 hover:bg-rose-500/20 hover:border-rose-500/40 text-xs font-medium text-emerald-300 hover:text-rose-200 transition-all group select-none active:scale-95 shadow-sm shadow-emerald-950/40"
+              title={`Klik untuk Tutup Sesi: ${activeSession.subjectCode ? `[${activeSession.subjectCode}] ` : ''}${activeSession.sessionName} (${activeSession.className || 'Semua Kelas'})`}
             >
-              <span className="relative flex h-2 w-2">
+              {/* Normal status pulse dot */}
+              <span className="relative flex h-2 w-2 group-hover:hidden">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="truncate max-w-[180px] text-slate-200 group-hover:text-white font-semibold">
+              
+              {/* Close icon on hover */}
+              <span className="hidden group-hover:flex items-center justify-center w-3 h-3 text-rose-300 shrink-0">
+                <X className="w-3.5 h-3.5 stroke-[3]" />
+              </span>
+
+              <span className="truncate max-w-[150px] md:max-w-[200px] text-slate-200 group-hover:text-rose-100 font-semibold transition-colors">
                 {activeSession.subjectCode ? `[${activeSession.subjectCode}] ` : ''}{activeSession.sessionName}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase font-bold">
+
+              {/* Status badge: Normal state shows KELAS BUKA, hover state shows TUTUP SESI */}
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase font-bold border border-emerald-500/30 group-hover:hidden transition-all">
                 KELAS BUKA
+              </span>
+              <span className="hidden group-hover:inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-200 uppercase font-extrabold border border-rose-500/50 shadow-xs transition-all">
+                TUTUP SESI
               </span>
             </div>
           ) : (
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-400">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-400">
               <span className="w-2 h-2 rounded-full bg-slate-500"></span>
               <span>Tiada Kelas Dibuka</span>
             </div>

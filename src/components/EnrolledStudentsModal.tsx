@@ -422,7 +422,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-400" />
-              <span>Eksport CSV</span>
+              <span>Eksport</span>
             </button>
           </div>
         </div>

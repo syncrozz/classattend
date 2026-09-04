@@ -26,8 +26,10 @@ import {
   GraduationCap,
   Play,
   Download,
-  HardDrive
+  HardDrive,
+  Check
 } from 'lucide-react';
+import { soundService } from '../services/soundService';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
 import {
   exportScannedAttendeesOnlyToCSV,
@@ -87,7 +89,9 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     subjectName: string;
     className: string;
     studentCount: number;
+    availableClasses: string[];
   } | null>(null);
+  const [selectedClassMap, setSelectedClassMap] = useState<Record<string, string>>({});
   const [isManageSubjectsModalOpen, setIsManageSubjectsModalOpen] = useState(false);
 
   // Resolve current active lecturer with safe fallback
@@ -365,6 +369,15 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               const enrolledCount = students.filter((st) =>
                 sub.classes.some((c) => c.toUpperCase() === st.className.toUpperCase())
               ).length;
+              const rawClasses = Array.from(new Set(sub.classes || []));
+              const currentSelectedClass = selectedClassMap[sub.subjectCode] || (rawClasses.length > 0 ? rawClasses[0] : 'ALL');
+              const selectedClassStudentCount = currentSelectedClass === 'ALL'
+                ? students.filter((st) =>
+                    rawClasses.some((c) => c.toUpperCase() === st.className?.toUpperCase())
+                  ).length
+                : students.filter(
+                    (st) => st.className?.toUpperCase() === currentSelectedClass.toUpperCase()
+                  ).length;
 
               return (
                 <div
@@ -380,7 +393,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                       </div>
                       <span className="text-[11px] text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-700 flex items-center gap-1">
                         <Users className="w-3 h-3 text-indigo-400" />
-                        <span>{enrolledCount}</span>
+                        <span>{enrolledCount} Pelajar</span>
                       </span>
                     </div>
 
@@ -388,68 +401,152 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                       {sub.subjectName}
                     </h4>
 
-                    {/* Classes badges (Sub-Categories) */}
-                    <div className="pt-1">
+                    {/* Classes badges (Pilih kelas untuk tapis sesi kehadiran) */}
+                    <div className="pt-1.5 space-y-1.5">
+                      <p className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 font-medium">Pilih kelas sasaran:</span>
+                        <span className="text-[10px] text-teal-400 font-semibold">
+                          {rawClasses.length > 1 ? 'Klik untuk tapis kehadiran' : '1 Kelas'}
+                        </span>
+                      </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {Array.from(new Set(sub.classes || [])).map((cls, clsIdx) => (
+                        {rawClasses.map((cls, clsIdx) => {
+                          const isSelected = currentSelectedClass.toUpperCase() === cls.toUpperCase();
+                          const count = students.filter(
+                            (st) => st.className?.trim().toUpperCase() === cls.trim().toUpperCase()
+                          ).length;
+                          return (
+                            <span
+                              key={`lec-ws-sub-${sub.subjectCode}-${cls}-${clsIdx}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                soundService.playClick();
+                                setSelectedClassMap((prev) => ({
+                                  ...prev,
+                                  [sub.subjectCode]: cls
+                                }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  soundService.playClick();
+                                  setSelectedClassMap((prev) => ({
+                                    ...prev,
+                                    [sub.subjectCode]: cls
+                                  }));
+                                }
+                              }}
+                              className={`group/badge inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer select-none active:scale-95 ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-teal-500/25 to-emerald-500/25 border-teal-400 text-teal-200 ring-2 ring-teal-400/40 shadow-sm shadow-teal-950 font-extrabold scale-105'
+                                  : 'bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700 hover:border-slate-500 hover:scale-[1.02]'
+                              }`}
+                              title={`Pilih ${cls} (${count} Pelajar)`}
+                            >
+                              <span
+                                className={`w-2 h-2 rounded-full transition-colors ${
+                                  isSelected ? 'bg-teal-400 ring-2 ring-teal-400/30 animate-pulse' : 'bg-slate-500'
+                                }`}
+                              />
+                              <span>{cls.replace('_', ' ')}</span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                                  isSelected
+                                    ? 'bg-teal-500/30 text-teal-100 border border-teal-400/40 font-black'
+                                    : 'bg-slate-900 text-slate-400'
+                                }`}
+                              >
+                                {count}
+                              </span>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-teal-300 stroke-[3]" />
+                              )}
+                            </span>
+                          );
+                        })}
+
+                        {rawClasses.length > 1 && (
                           <span
-                            key={`lec-ws-sub-${sub.subjectCode}-${cls}-${clsIdx}`}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-200 text-xs font-bold border border-slate-700"
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              soundService.playClick();
+                              setSelectedClassMap((prev) => ({
+                                ...prev,
+                                [sub.subjectCode]: 'ALL'
+                              }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                soundService.playClick();
+                                setSelectedClassMap((prev) => ({
+                                  ...prev,
+                                  [sub.subjectCode]: 'ALL'
+                                }));
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer select-none active:scale-95 ${
+                              currentSelectedClass === 'ALL'
+                                ? 'bg-gradient-to-r from-indigo-500/25 to-purple-500/25 border-indigo-400 text-indigo-200 ring-2 ring-indigo-400/40 shadow-sm shadow-indigo-950 font-extrabold scale-105'
+                                : 'bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700/80 hover:border-slate-600'
+                            }`}
+                            title="Pilih semua kelas gabungan serentak"
                           >
-                            {cls}
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                currentSelectedClass === 'ALL' ? 'bg-indigo-400 ring-2 ring-indigo-400/30 animate-pulse' : 'bg-slate-600'
+                              }`}
+                            />
+                            <span>Semua Kelas</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                                currentSelectedClass === 'ALL'
+                                  ? 'bg-indigo-500/30 text-indigo-100 border border-indigo-400/40 font-black'
+                                  : 'bg-slate-900 text-slate-400'
+                              }`}
+                            >
+                              {enrolledCount}
+                            </span>
+                            {currentSelectedClass === 'ALL' && (
+                              <Check className="w-3.5 h-3.5 text-indigo-300 stroke-[3]" />
+                            )}
                           </span>
-                        ))}
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-500">
-                      {sub.classes.length} Kelas
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {sub.classes.length === 1 ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const cls = sub.classes[0];
-                            const count = students.filter(
-                              (st) => st.className.toUpperCase() === cls.toUpperCase()
-                            ).length;
-                            setStartModalContext({
-                              subjectCode: sub.subjectCode,
-                              subjectName: sub.subjectName,
-                              className: cls,
-                              studentCount: count
-                            });
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
-                        >
-                          <Play className="w-3 h-3 fill-white" />
-                          <span>Mula Kehadiran</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const defaultCls = sub.classes[0] || 'DIA_4A';
-                            const count = students.filter(
-                              (st) => st.className.toUpperCase() === defaultCls.toUpperCase()
-                            ).length;
-                            setStartModalContext({
-                              subjectCode: sub.subjectCode,
-                              subjectName: sub.subjectName,
-                              className: defaultCls,
-                              studentCount: count
-                            });
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
-                        >
-                          <Play className="w-3 h-3 fill-white" />
-                          <span>Mula Kehadiran</span>
-                        </button>
-                      )}
+                  <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span>Kelas:</span>
+                      <span className="font-bold text-teal-300 bg-teal-950/70 border border-teal-500/40 px-2 py-0.5 rounded-md">
+                        {currentSelectedClass === 'ALL' ? 'Semua (Gabungan)' : currentSelectedClass.replace('_', ' ')}
+                      </span>
+                      <span className="text-slate-500 text-[10px]">({selectedClassStudentCount} Pelajar)</span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartModalContext({
+                          subjectCode: sub.subjectCode,
+                          subjectName: sub.subjectName,
+                          className: currentSelectedClass,
+                          studentCount: selectedClassStudentCount,
+                          availableClasses: rawClasses
+                        });
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-950/60 active:scale-95"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-white" />
+                      <span>
+                        Mula: {currentSelectedClass === 'ALL' ? 'Semua' : currentSelectedClass.replace('_', ' ')}
+                      </span>
+                    </button>
                   </div>
                 </div>
               );
@@ -648,6 +745,25 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
           className={startModalContext.className}
           lecturerName={lecturer.name}
           studentCount={startModalContext.studentCount}
+          availableClasses={startModalContext.availableClasses}
+          onSelectClass={(newCls) => {
+            const count = newCls === 'ALL'
+              ? students.filter((st) =>
+                  (startModalContext.availableClasses || []).some(
+                    (c) => c.toUpperCase() === st.className?.toUpperCase()
+                  )
+                ).length
+              : students.filter((st) => st.className?.toUpperCase() === newCls.toUpperCase()).length;
+            setStartModalContext({
+              ...startModalContext,
+              className: newCls,
+              studentCount: count
+            });
+            setSelectedClassMap((prev) => ({
+              ...prev,
+              [startModalContext.subjectCode]: newCls
+            }));
+          }}
           onConfirmStart={() => {
             const ctx = startModalContext;
             setStartModalContext(null);

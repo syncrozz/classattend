@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Student,
@@ -56,7 +56,10 @@ import {
   BookOpen,
   Layers,
   ExternalLink,
-  MessageCircle
+  MessageCircle,
+  ChevronDown,
+  ChevronUp,
+  Copy
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
@@ -121,9 +124,115 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   onQuickSimulateScan,
   onUpdateLecturerAssignments
 }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'LECTURERS' | 'SUBJECTS'>('STUDENTS');
+  const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'CLASSES' | 'LECTURERS' | 'SUBJECTS'>('STUDENTS');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSet, setSelectedSet] = useState<string>('ALL');
+
+  // Dynamically extract only classes that actually have registered students
+  const uniqueClasses = useMemo(() => {
+    return Array.from(
+      new Set(students.map((s) => s.className?.trim()).filter(Boolean) as string[])
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [students]);
+
+  const sets = useMemo(() => ['ALL', ...uniqueClasses], [uniqueClasses]);
+
+  // Auto-reset selectedSet if selected class no longer exists or has 0 students
+  useEffect(() => {
+    if (selectedSet !== 'ALL' && !uniqueClasses.includes(selectedSet)) {
+      setSelectedSet('ALL');
+    }
+  }, [uniqueClasses, selectedSet]);
+
+  // Classes View States
+  const [classSearchQuery, setClassSearchQuery] = useState<string>('');
+  const [expandedClasses, setExpandedClasses] = useState<Record<string, boolean>>({});
+  const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
+
+  // Filtered classes for CLASSES tab
+  const filteredClassList = useMemo(() => {
+    if (!classSearchQuery.trim()) return uniqueClasses;
+    const q = classSearchQuery.trim().toLowerCase();
+    return uniqueClasses.filter((cls) => {
+      if (cls.toLowerCase().includes(q)) return true;
+      const hasMatchingStudent = students.some(
+        (s) =>
+          s.className?.trim().toUpperCase() === cls.trim().toUpperCase() &&
+          (s.name.toLowerCase().includes(q) ||
+            (s.studentId || s.id).toLowerCase().includes(q) ||
+            (s.email || '').toLowerCase().includes(q) ||
+            (s.phone || '').includes(q))
+      );
+      if (hasMatchingStudent) return true;
+      const hasMatchingSubject = subjects.some(
+        (sub) =>
+          (sub.sections || []).some((sec) => sec.trim().toUpperCase() === cls.trim().toUpperCase()) &&
+          (sub.code.toLowerCase().includes(q) || sub.name.toLowerCase().includes(q))
+      );
+      return hasMatchingSubject;
+    });
+  }, [uniqueClasses, classSearchQuery, students, subjects]);
+
+  // Auto-expand all classes initially
+  useEffect(() => {
+    setExpandedClasses((prev) => {
+      const next = { ...prev };
+      uniqueClasses.forEach((cls) => {
+        if (next[cls] === undefined) {
+          next[cls] = true;
+        }
+      });
+      return next;
+    });
+  }, [uniqueClasses]);
+
+  const toggleClassExpansion = (cls: string) => {
+    setExpandedClasses((prev) => ({
+      ...prev,
+      [cls]: !prev[cls]
+    }));
+    soundService.playClick();
+  };
+
+  const handleExpandAllClasses = () => {
+    const next: Record<string, boolean> = {};
+    uniqueClasses.forEach((cls) => {
+      next[cls] = true;
+    });
+    setExpandedClasses(next);
+    soundService.playClick();
+  };
+
+  const handleCollapseAllClasses = () => {
+    setExpandedClasses({});
+    soundService.playClick();
+  };
+
+  const handleCopyStudentId = (id: string) => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(id);
+    }
+    setCopiedStudentId(id);
+    soundService.playClick();
+    setTimeout(() => setCopiedStudentId(null), 2000);
+  };
+
+  const handleExportSingleClass = (clsName: string, classStudents: Student[]) => {
+    if (!isAdmin && !activeLecturer) {
+      onRequestAdminAccess(`Eksport Data Senarai Pelajar Kelas ${clsName}`);
+      return;
+    }
+    const csvContent = exportStudentsToCSV(classStudents);
+    const filename = `Senarai_Pelajar_Kelas_${clsName}_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(csvContent, filename);
+    soundService.playClick();
+  };
+
+  const handleBatchPrintSingleClass = (clsName: string) => {
+    setBatchPrintCategory(clsName);
+    setIsBatchPrintOpen(true);
+    soundService.playClick();
+  };
 
   // Lecturer view states
   const [lecturerSearch, setLecturerSearch] = useState<string>('');
@@ -195,13 +304,6 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       setIsCleaningRedundant(false);
     }
   };
-
-  // Dynamically extract all available classes including standard cohorts
-  const DEFAULT_CLASSES = ['DIA_3A', 'DIA_3B', 'DIA_3C', 'DIA_3D', 'DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
-  const uniqueClasses = Array.from(
-    new Set([...DEFAULT_CLASSES, ...students.map((s) => s.className).filter(Boolean)])
-  ).sort();
-  const sets = ['ALL', ...uniqueClasses];
 
   // Students for batch printing
   const batchPrintStudents = students.filter((student) =>
@@ -404,6 +506,10 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
   const handleCreateLecturer = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+      onRequestAdminAccess('Daftar Pensyarah Baharu');
+      return;
+    }
     if (!lecName || !lecEmail || !lecIC) {
       alert('Sila lengkapkan Nama, Emel KPM, dan No. IC');
       return;
@@ -618,47 +724,56 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       {/* Main Directory Screen Content (Hidden during modal print) */}
       <div className={`space-y-6 ${isAnyPrintModalOpen ? 'no-print' : ''}`}>
         {/* Top Header & Main Tab Switcher */}
-        <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h2 className="text-xl font-bold text-white tracking-tight">Pangkalan Data</h2>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
-                  KPM Bandar Penawar
-                </span>
-              </div>
-            </div>
-
-            {/* Main Tabs: Pelajar vs Pensyarah vs Subjek */}
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto flex-wrap gap-1">
+        <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-start">
+            {/* Main Tabs: Pelajar vs Kelas vs Pensyarah vs Subjek */}
+            <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 w-full sm:w-auto flex-wrap gap-1.5 shadow-inner">
               <button
                 type="button"
+                id="btn-tab-students"
                 onClick={() => {
                   setActiveMainTab('STUDENTS');
                   soundService.playClick();
                 }}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   activeMainTab === 'STUDENTS'
                     ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                 }`}
               >
-                <GraduationCap className="w-4 h-4" />
+                <GraduationCap className="w-4 h-4 shrink-0" />
                 <span>Pelajar ({students.length})</span>
               </button>
               <button
                 type="button"
+                id="btn-tab-classes"
+                onClick={() => {
+                  setActiveMainTab('CLASSES');
+                  soundService.playClick();
+                }}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  activeMainTab === 'CLASSES'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                <span>Kelas ({uniqueClasses.length})</span>
+              </button>
+              <button
+                type="button"
+                id="btn-tab-lecturers"
                 onClick={() => {
                   setActiveMainTab('LECTURERS');
                   soundService.playClick();
                 }}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   activeMainTab === 'LECTURERS'
                     ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                 }`}
               >
-                <UserCheck className="w-4 h-4" />
+                <UserCheck className="w-4 h-4 shrink-0" />
                 <span>Pensyarah ({lecturers.length})</span>
               </button>
               <button
@@ -668,13 +783,13 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   setActiveMainTab('SUBJECTS');
                   soundService.playClick();
                 }}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   activeMainTab === 'SUBJECTS'
                     ? 'bg-teal-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                 }`}
               >
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="w-4 h-4 shrink-0" />
                 <span>Subjek ({subjects.length})</span>
               </button>
             </div>
@@ -706,7 +821,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai pelajar ke fail CSV'}
                   >
                     {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>Eksport CSV</span>
+                    <span>Eksport</span>
                   </button>
 
                   <button
@@ -722,6 +837,19 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <span>Cetak QR</span>
                   </button>
 
+                  <button
+                    id="btn-switch-to-class-list"
+                    onClick={() => {
+                      setActiveMainTab('CLASSES');
+                      soundService.playClick();
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                    title="Buka Paparan Senarai Kelas Beserta Data Penuh Pelajar"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Paparan Mengikut Kelas</span>
+                  </button>
+
                   {(isAdmin || (activeLecturer && activeLecturer.role === 'ADMIN')) && (
                     <button
                       id="btn-clean-redundant-students"
@@ -731,7 +859,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       title="Imbas dan bersihkan rekod bertindih / redundant pelajar (Hanya Admin)"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isCleaningRedundant ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-                      <span>{isCleaningRedundant ? 'Sedang Bersihkan...' : 'Bersihkan Redundant'}</span>
+                      <span>{isCleaningRedundant ? 'Clearing...' : 'Clear Redundant'}</span>
                     </button>
                   )}
 
@@ -747,7 +875,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV</span>
+                    <span>Import</span>
                   </button>
                 </div>
               </div>
@@ -794,6 +922,105 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
             </div>
           )}
 
+          {/* Sub-header Controls: CLASSES TAB */}
+          {activeMainTab === 'CLASSES' && (
+            <div className="space-y-3.5 pt-3 border-t border-slate-800/80">
+              {/* Row 1: Search Box and Primary Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Search Box */}
+                <div className="relative w-full sm:w-80 lg:w-96">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama kelas, subjek, atau pelajar..."
+                    value={classSearchQuery}
+                    onChange={(e) => setClassSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
+                  />
+                  {classSearchQuery && (
+                    <button
+                      onClick={() => setClassSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Actions for Classes View */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleExpandAllClasses}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title="Buka dan paparkan data pelajar bagi semua kelas"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Kembang Semua</span>
+                  </button>
+
+                  <button
+                    onClick={handleCollapseAllClasses}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title="Tutup senarai pelajar dan paparkan ringkasan kelas sahaja"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Runtuh Semua</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    title="Eksport data semua pelajar mengikut kelas"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Eksport Semua</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setBatchPrintCategory('ALL');
+                      setIsBatchPrintOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
+                    title="Cetak Kad QR untuk semua kelas"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Cetak QR</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (!activeLecturer) {
+                        onRequestAdminAccess('Import Fail CSV Pelajar');
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: Status & Quick Metric Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1 text-xs text-slate-400 bg-slate-950/50 px-3.5 py-2.5 rounded-xl border border-slate-800/60">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span className="text-[11px] text-slate-300">
+                    Paparan senarai kelas yang mengandungi pangkalan data penuh pelajar berdaftar bagi setiap kohort.
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] font-mono">
+                  <span>Jumlah Kelas: <strong className="text-white">{uniqueClasses.length}</strong></span>
+                  <span className="text-slate-600">•</span>
+                  <span>Jumlah Pelajar: <strong className="text-purple-400">{students.length}</strong></span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sub-header Controls: LECTURERS TAB */}
           {activeMainTab === 'LECTURERS' && (
             <div className="space-y-3.5 pt-3 border-t border-slate-800/80">
@@ -820,7 +1047,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai direktori pensyarah ke fail CSV'}
                   >
                     {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>Eksport CSV</span>
+                    <span>Eksport</span>
                   </button>
 
                   <button
@@ -844,22 +1071,29 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <span>Jana QR Pensyarah</span>
                   </button>
 
-                  <button
-                    id="btn-manual-add-lecturer"
-                    type="button"
-                    onClick={() => {
-                      if (!activeLecturer && !isAdmin) {
-                        onRequestAdminAccess('Daftar Pensyarah Baharu');
-                      } else {
+                  {/* Tambah Manual Pensyarah - Disekat & disembunyikan dalam pensyarah access mode */}
+                  {(!activeLecturer || isAdmin || activeLecturer.role === 'ADMIN') && (
+                    <button
+                      id="btn-manual-add-lecturer"
+                      type="button"
+                      onClick={() => {
+                        if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                          onRequestAdminAccess('Daftar Pensyarah Baharu');
+                          return;
+                        }
                         setIsAddLecturerOpen(true);
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                    title="Tambah pensyarah secara manual"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Tambah Manual</span>
-                  </button>
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                      title={!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN') ? 'Akses Admin diperlukan untuk daftar pensyarah' : 'Tambah pensyarah secara manual'}
+                    >
+                      {!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN') ? (
+                        <Lock className="w-3.5 h-3.5 text-amber-300" />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+                      <span>Tambah Manual</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -888,7 +1122,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title="Import fail CSV senarai pensyarah"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV</span>
+                    <span>Import</span>
                   </button>
                 </div>
               </div>
@@ -935,7 +1169,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport senarai kursus ke fail CSV'}
                   >
                     {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>Eksport CSV</span>
+                    <span>Eksport</span>
                   </button>
 
                   <button
@@ -1001,7 +1235,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     title="Import fail CSV senarai subjek / kursus"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV</span>
+                    <span>Import</span>
                   </button>
                 </div>
               </div>
@@ -1213,6 +1447,400 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <span className="text-indigo-400 font-mono">Kelas: {selectedSet}</span>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===================== VIEW: CLASSES WITH REGISTERED STUDENTS ===================== */}
+        {activeMainTab === 'CLASSES' && (
+          <div className="space-y-6">
+            {filteredClassList.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-slate-900/60 rounded-2xl border border-slate-800 shadow-xl">
+                <div className="w-16 h-16 bg-purple-500/10 border border-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 text-purple-400">
+                  <Layers className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-bold text-white mb-1">
+                  {classSearchQuery ? 'Tiada Kelas Ditemui' : 'Tiada Data Kelas Berdaftar'}
+                </h3>
+                <p className="text-slate-400 text-xs max-w-md mx-auto mb-6">
+                  {classSearchQuery
+                    ? `Tiada kelas atau pelajar yang sepadan dengan carian "${classSearchQuery}". Sila cuba kata kunci lain.`
+                    : 'Pangkalan data belum mempunyai sebarang kelas yang didaftarkan dengan pelajar. Sila import fail CSV atau daftarkan pelajar baharu.'}
+                </p>
+                {classSearchQuery ? (
+                  <button
+                    onClick={() => setClassSearchQuery('')}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    Set Semula Carian
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (!activeLecturer) {
+                        onRequestAdminAccess('Import Fail CSV Pelajar');
+                      } else {
+                        onOpenCSVImport();
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Import Pelajar Sekarang</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {filteredClassList.map((cls) => {
+                  const classStudents = students.filter(
+                    (s) => (s.className || '').trim().toUpperCase() === cls.trim().toUpperCase()
+                  );
+                  const sortedClassStudents = [...classStudents].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  );
+                  const q = classSearchQuery.trim().toLowerCase();
+                  const displayedStudents = q
+                    ? sortedClassStudents.filter(
+                        (s) =>
+                          s.name.toLowerCase().includes(q) ||
+                          (s.studentId || s.id).toLowerCase().includes(q) ||
+                          (s.email || '').toLowerCase().includes(q) ||
+                          (s.phone || '').includes(q) ||
+                          cls.toLowerCase().includes(q)
+                      )
+                    : sortedClassStudents;
+
+                  const classSubjects = subjects.filter((sub) =>
+                    (sub.sections || []).some(
+                      (sec) => sec.trim().toUpperCase() === cls.trim().toUpperCase()
+                    )
+                  );
+
+                  const classLecturers = lecturers.filter((lec) => {
+                    const secList = [...(lec.assignedSections || []), ...(lec.assignedClasses || [])];
+                    return secList.some((sec) => sec.trim().toUpperCase() === cls.trim().toUpperCase());
+                  });
+
+                  const isExpanded = expandedClasses[cls] ?? true;
+
+                  return (
+                    <div
+                      key={`class-card-${cls}`}
+                      id={`class-section-${cls}`}
+                      className="bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 shadow-xl transition-all"
+                    >
+                      {/* Class Header Bar */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span
+                              className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-sm shadow-md border ${getClassBadgeColor(
+                                cls
+                              )}`}
+                            >
+                              Kelas {cls}
+                            </span>
+                            <span className="px-3 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-purple-400" />
+                              <span>{classStudents.length} Pelajar Berdaftar</span>
+                            </span>
+                            {q && displayedStudents.length !== classStudents.length && (
+                              <span className="text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                ({displayedStudents.length} sepadan dengan carian)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Meta Tags: Subjects & Lecturers */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400 pt-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                              <span className="text-slate-400 font-medium">Subjek:</span>
+                              {classSubjects.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {classSubjects.map((sub) => (
+                                    <span
+                                      key={`sub-tag-${cls}-${sub.id || sub.code}`}
+                                      className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-mono font-semibold"
+                                      title={`${sub.code} - ${sub.name}`}
+                                    >
+                                      {sub.code}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 italic text-[11px]">Tiada subjek dikaitkan</span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-slate-400 font-medium">Pensyarah:</span>
+                              {classLecturers.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {classLecturers.map((lec) => (
+                                    <span
+                                      key={`lec-tag-${cls}-${lec.id}`}
+                                      className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-medium"
+                                    >
+                                      {lec.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 italic text-[11px]">Tiada rekod pensyarah</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons for this class */}
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleExportSingleClass(cls, classStudents)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                            title={`Eksport fail CSV bagi pelajar kelas ${cls}`}
+                          >
+                            <Download className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Eksport</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleBatchPrintSingleClass(cls)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all cursor-pointer"
+                            title={`Cetak Kad QR bagi kelas ${cls}`}
+                          >
+                            <Printer className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Cetak QR</span>
+                          </button>
+
+                          <button
+                            onClick={() => toggleClassExpansion(cls)}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                          >
+                            {isExpanded ? (
+                              <>
+                                <ChevronUp className="w-3.5 h-3.5" />
+                                <span>Tutup ({classStudents.length})</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-3.5 h-3.5" />
+                                <span>Buka Data Pelajar ({classStudents.length})</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable Student Table */}
+                      {isExpanded && (
+                        <div className="pt-4">
+                          {displayedStudents.length === 0 ? (
+                            <div className="py-8 text-center bg-slate-950/40 rounded-xl border border-slate-800/60">
+                              <p className="text-xs text-slate-400">
+                                Tiada pelajar ditemui sepadan dengan carian dalam kelas ini.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-800/80 bg-slate-950/60 shadow-inner">
+                              <table className="w-full text-left border-collapse min-w-[720px]">
+                                <thead>
+                                  <tr className="border-b border-slate-800 bg-slate-900/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                    <th className="py-2.5 px-3.5 w-12 text-center">Bil</th>
+                                    <th className="py-2.5 px-3.5 w-32">No. Pelajar</th>
+                                    <th className="py-2.5 px-3.5 min-w-[200px]">Nama Pelajar</th>
+                                    <th className="py-2.5 px-3.5 w-36">No. Telefon</th>
+                                    <th className="py-2.5 px-3.5 min-w-[170px]">Emel Rasmi</th>
+                                    <th className="py-2.5 px-3.5 w-28 text-center">Kod QR</th>
+                                    <th className="py-2.5 px-3.5 w-32">Kehadiran</th>
+                                    <th className="py-2.5 px-3.5 w-24 text-right">Tindakan</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/50 text-xs">
+                                  {displayedStudents.map((student, idx) => {
+                                    const stats = getStudentStats(student.id, student.className);
+                                    const studentMatrik = student.studentId || student.id;
+
+                                    return (
+                                      <tr
+                                        key={`cls-${cls}-std-${student.id}`}
+                                        className="hover:bg-slate-800/40 transition-colors group"
+                                      >
+                                        {/* Bil */}
+                                        <td className="py-2.5 px-3.5 text-center text-slate-500 font-mono text-[11px] font-bold">
+                                          {idx + 1}
+                                        </td>
+
+                                        {/* No. Pelajar */}
+                                        <td className="py-2.5 px-3.5 font-mono font-semibold text-purple-400 text-xs whitespace-nowrap">
+                                          <div className="flex items-center gap-1.5">
+                                            <span>{studentMatrik}</span>
+                                            <button
+                                              onClick={() => handleCopyStudentId(studentMatrik)}
+                                              className="p-1 hover:bg-slate-800 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                                              title="Salin No. Pelajar"
+                                            >
+                                              {copiedStudentId === studentMatrik ? (
+                                                <Check className="w-3 h-3 text-emerald-400" />
+                                              ) : (
+                                                <Copy className="w-3 h-3" />
+                                              )}
+                                            </button>
+                                          </div>
+                                        </td>
+
+                                        {/* Nama */}
+                                        <td className="py-2.5 px-3.5">
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            <div
+                                              className={`w-7 h-7 rounded-lg bg-gradient-to-br ${getStudentColor(
+                                                student.name
+                                              )} flex items-center justify-center font-bold text-white text-[10px] shadow-sm shrink-0`}
+                                            >
+                                              {getInitials(student.name)}
+                                            </div>
+                                            <span
+                                              className="font-semibold text-white truncate max-w-[200px]"
+                                              title={student.name}
+                                            >
+                                              {student.name}
+                                            </span>
+                                          </div>
+                                        </td>
+
+                                        {/* Telefon & WhatsApp */}
+                                        <td className="py-2.5 px-3.5 whitespace-nowrap font-mono text-slate-300 text-xs">
+                                          {student.phone ? (
+                                            <a
+                                              href={generateWhatsAppWarningLink({
+                                                student,
+                                                className: student.className,
+                                                presentCount: stats.present,
+                                                totalSessions: stats.total,
+                                                rate: stats.rate
+                                              })}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1.5 text-slate-300 hover:text-emerald-400 transition-colors"
+                                              title="Hantar Peringatan / Mesej WhatsApp"
+                                            >
+                                              <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                              <span>{formatWhatsAppPhone(student.phone)}</span>
+                                            </a>
+                                          ) : (
+                                            <span className="text-slate-600 italic">-</span>
+                                          )}
+                                        </td>
+
+                                        {/* Emel */}
+                                        <td className="py-2.5 px-3.5 text-slate-400 text-xs">
+                                          {student.email ? (
+                                            <span
+                                              className="truncate block max-w-[170px]"
+                                              title={student.email}
+                                            >
+                                              {student.email}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-600 italic">-</span>
+                                          )}
+                                        </td>
+
+                                        {/* Kad QR */}
+                                        <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
+                                          <button
+                                            onClick={() => setSelectedStudentForQR(student)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold transition-all cursor-pointer"
+                                            title="Pratonton & Imbas Kad QR Pelajar"
+                                          >
+                                            <QrCode className="w-3 h-3" />
+                                            <span>Kad QR</span>
+                                          </button>
+                                        </td>
+
+                                        {/* Purata Kehadiran */}
+                                        <td className="py-2.5 px-3.5 whitespace-nowrap">
+                                          {stats.hasSessions ? (
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-12 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                                <div
+                                                  className={`h-full rounded-full ${
+                                                    stats.rate >= 80
+                                                      ? 'bg-emerald-500'
+                                                      : stats.rate >= 60
+                                                      ? 'bg-amber-500'
+                                                      : 'bg-rose-500'
+                                                  }`}
+                                                  style={{ width: `${stats.rate}%` }}
+                                                />
+                                              </div>
+                                              <span
+                                                className={`font-bold font-mono text-[11px] ${
+                                                  stats.rate >= 80
+                                                    ? 'text-emerald-400'
+                                                    : stats.rate >= 60
+                                                    ? 'text-amber-400'
+                                                    : 'text-rose-400'
+                                                }`}
+                                              >
+                                                {stats.rate}%
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            <span className="text-[10px] text-slate-500 italic">Belum Ada Sesi</span>
+                                          )}
+                                        </td>
+
+                                        {/* Tindakan */}
+                                        <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
+                                          <div className="flex items-center justify-end gap-1">
+                                            <button
+                                              onClick={() => setSelectedStudentForQR(student)}
+                                              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                              title="Lihat Kad QR"
+                                            >
+                                              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                                            </button>
+                                            {isAdmin && (
+                                              <button
+                                                onClick={() => {
+                                                  if (window.confirm(`Padam rekod pelajar ${student.name} (${studentMatrik})?`)) {
+                                                    onDeleteStudent(student.id);
+                                                  }
+                                                }}
+                                                className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                                                title="Padam Pelajar"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+
+                              {/* Footer info for this class table */}
+                              <div className="py-2 px-4 bg-slate-950/80 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between">
+                                <span>
+                                  Menunjukkan <strong className="text-white font-mono">{displayedStudents.length}</strong> pelajar dalam <strong className="text-purple-400 font-mono">Kelas {cls}</strong>
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  Format Eksport: CSV (Senarai_Pelajar_Kelas_{cls}.csv)
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1431,20 +2059,22 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                     <QrCode className="w-4 h-4" />
                     <span>Jana QR Pensyarah</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!activeLecturer) {
-                        onRequestAdminAccess('Daftar Pensyarah Baharu');
-                      } else {
+                  {(!activeLecturer || isAdmin || activeLecturer.role === 'ADMIN') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+                          onRequestAdminAccess('Daftar Pensyarah Baharu');
+                          return;
+                        }
                         setIsAddLecturerOpen(true);
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Daftar Manual</span>
-                  </button>
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Daftar Manual</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (

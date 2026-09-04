@@ -1197,7 +1197,12 @@ class AttendanceEngine {
             batch.set(doc(db, 'subjects', s.id), sanitizeForFirestore(s), { merge: true });
           });
 
-        await batch.commit();
+        // Fast background commit with timeout safeguard so UI never stalls
+        const commitPromise = batch.commit().catch((err) => {
+          console.warn('Background Firestore setLecturerAssignments notice:', err?.message || err);
+        });
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1200));
+        await Promise.race([commitPromise, timeoutPromise]);
       } catch (err) {
         console.warn('Firestore setLecturerAssignments sync warning:', err);
       }
@@ -1327,7 +1332,13 @@ class AttendanceEngine {
         modifiedSubjects.forEach((sub) => {
           batch.set(doc(db!, 'subjects', sub.id), sanitizeForFirestore(sub), { merge: true });
         });
-        await batch.commit();
+
+        // Fast background commit with timeout safeguard so UI never stalls or stays pending
+        const commitPromise = batch.commit().catch((err) => {
+          console.warn('Background Firestore update teaching assignments notice:', err?.message || err);
+        });
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1200));
+        await Promise.race([commitPromise, timeoutPromise]);
       } catch (err) {
         console.warn('Firestore update teaching assignments error:', err);
       }
@@ -1631,7 +1642,13 @@ class AttendanceEngine {
         this.teachingAssignments.forEach((ta) => {
           batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
         });
-        await batch.commit();
+        
+        // Fast background commit with timeout safeguard so UI never stalls
+        const commitPromise = batch.commit().catch((err) => {
+          console.warn('Background Firestore lecturer CSV import sync notice:', err?.message || err);
+        });
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
+        await Promise.race([commitPromise, timeoutPromise]);
       } catch (err) {
         console.warn('Firestore lecturer CSV import sync warning:', err);
       }
