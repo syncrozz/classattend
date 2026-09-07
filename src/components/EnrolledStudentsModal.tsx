@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Subject, Enrollment, Student, Lecturer } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
@@ -68,6 +68,35 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
     return Array.from(map.values());
   }, [enrollments, subject, isSyncing]);
 
+  // Strictly determine the classes assigned to this subject (via subject.sections or teaching assignments)
+  const targetClassesForSubject = useMemo(() => {
+    if (!subject) return [];
+    // 1. Direct sections defined on subject
+    const directSections = (subject.sections || [])
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+    if (directSections.length > 0) {
+      return Array.from(new Set(directSections));
+    }
+    // 2. From attendanceEngine teaching assignments / assigned classes
+    const fromEngine = attendanceEngine.getAssignedClassesForSubject(subject.code);
+    if (fromEngine.length > 0) {
+      return fromEngine;
+    }
+    return [];
+  }, [subject, isSyncing]);
+
+  // Synchronize class filter when modal opens or subject changes
+  useEffect(() => {
+    if (className && className !== 'ALL') {
+      setSelectedClassFilter(className);
+    } else if (targetClassesForSubject.length === 1) {
+      setSelectedClassFilter(targetClassesForSubject[0]);
+    } else {
+      setSelectedClassFilter('ALL');
+    }
+  }, [subject?.code, className, targetClassesForSubject]);
+
   // Determine all available sections/classes from Subject or Master Students list
   const availableClassesInMaster = useMemo(() => {
     const clsSet = new Set<string>();
@@ -80,32 +109,47 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
   }, [students]);
 
   const sectionsList = useMemo(() => {
-    if (subject?.sections && subject.sections.length > 0) {
-      return Array.from(new Set(subject.sections.map((s) => s.trim().toUpperCase()).filter(Boolean)));
+    if (targetClassesForSubject.length > 0) {
+      return targetClassesForSubject;
     }
     return availableClassesInMaster.length > 0
       ? Array.from(new Set(availableClassesInMaster))
       : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
-  }, [subject, availableClassesInMaster]);
+  }, [targetClassesForSubject, availableClassesInMaster]);
 
-  // Master students matching the classes of this subject (or all if subject has no strict restriction)
+  // Master students matching strictly the classes of this subject
   const masterStudentsForSubject = useMemo(() => {
     if (!subject) return [];
     return students.filter((s) => {
       if (!s.className) return false;
       const sCls = s.className.trim().toUpperCase();
-      if (!subject.sections || subject.sections.length === 0) return true;
-      return subject.sections.some((sec) => {
+      if (targetClassesForSubject.length > 0) {
+        return targetClassesForSubject.some((sec) => {
+          const cleanSec = sec.trim().toUpperCase();
+          return cleanSec === sCls || cleanSec.replace(/_/g, ' ') === sCls.replace(/_/g, ' ');
+        });
+      }
+      return true;
+    });
+  }, [students, subject, targetClassesForSubject]);
+
+  // Active enrollments for this subject, filtered strictly by target assigned classes
+  const validSubjectEnrollments = useMemo(() => {
+    if (targetClassesForSubject.length === 0) return subjectEnrollments;
+    return subjectEnrollments.filter((enr) => {
+      const student = students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
+      const enrClass = (enr.className || student?.className || '').trim().toUpperCase();
+      return targetClassesForSubject.some((sec) => {
         const cleanSec = sec.trim().toUpperCase();
-        return cleanSec === sCls || cleanSec.replace(/_/g, ' ') === sCls.replace(/_/g, ' ');
+        return cleanSec === enrClass || cleanSec.replace(/_/g, ' ') === enrClass.replace(/_/g, ' ');
       });
     });
-  }, [students, subject]);
+  }, [subjectEnrollments, students, targetClassesForSubject]);
 
   // Check which master students are NOT yet enrolled in this subject
   const enrolledStudentIdSet = useMemo(() => {
-    return new Set(subjectEnrollments.map((e) => e.studentId.toUpperCase()));
-  }, [subjectEnrollments]);
+    return new Set(validSubjectEnrollments.map((e) => e.studentId.toUpperCase()));
+  }, [validSubjectEnrollments]);
 
   const unenrolledMasterStudents = useMemo(() => {
     return masterStudentsForSubject.filter(
@@ -113,14 +157,15 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
     );
   }, [masterStudentsForSubject, enrolledStudentIdSet]);
 
-  // Filtered Subject Enrollments
+  // Filtered Subject Enrollments (filtered by class and search query)
   const filteredEnrollments = useMemo(() => {
-    return subjectEnrollments.filter((enr) => {
+    return validSubjectEnrollments.filter((enr) => {
       const student = students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
+      const enrClass = (enr.className || student?.className || '').trim().toUpperCase();
       const matchesClass =
         selectedClassFilter === 'ALL' ||
-        enr.className.toUpperCase() === selectedClassFilter.toUpperCase() ||
-        enr.className.replace(/_/g, ' ').toUpperCase() === selectedClassFilter.replace(/_/g, ' ').toUpperCase();
+        enrClass === selectedClassFilter.toUpperCase() ||
+        enrClass.replace(/_/g, ' ') === selectedClassFilter.replace(/_/g, ' ').toUpperCase();
 
       if (!matchesClass) return false;
 
@@ -128,12 +173,11 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
       const query = searchQuery.toLowerCase();
       const name = (student?.name || '').toLowerCase();
       const id = enr.studentId.toLowerCase();
-      const enrClass = enr.className.toLowerCase();
-      return name.includes(query) || id.includes(query) || enrClass.includes(query);
+      return name.includes(query) || id.includes(query) || enrClass.toLowerCase().includes(query);
     });
-  }, [subjectEnrollments, students, selectedClassFilter, searchQuery]);
+  }, [validSubjectEnrollments, students, selectedClassFilter, searchQuery]);
 
-  // Filtered Master Students (used when 0 enrollments exist, so user sees their 83 students instantly)
+  // Filtered Master Students (used when 0 enrollments exist, so user sees only their assigned class students)
   const filteredMasterStudents = useMemo(() => {
     return masterStudentsForSubject.filter((s) => {
       const matchesClass =
@@ -205,7 +249,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
 
   const handleExportCSV = () => {
     if (!subject) return;
-    const listToExport = subjectEnrollments.length > 0 ? filteredEnrollments : [];
+    const listToExport = validSubjectEnrollments.length > 0 ? filteredEnrollments : [];
     if (listToExport.length === 0 && filteredMasterStudents.length > 0) {
       // Export from master students
       const headers = ['No. Pelajar', 'Nama Penuh', 'Kelas', 'Subjek', 'Status', 'No. Telefon', 'E-mel'];
@@ -255,8 +299,8 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
   };
 
   // Compute counts for the dropdown
-  const totalDisplayCount = subjectEnrollments.length > 0 
-    ? subjectEnrollments.length 
+  const totalDisplayCount = validSubjectEnrollments.length > 0 
+    ? validSubjectEnrollments.length 
     : masterStudentsForSubject.length;
 
   if (!isOpen || !subject) return null;
@@ -282,7 +326,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
                   SENARAI PENDAFTARAN KELAS
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {subjectEnrollments.length > 0
+                  {validSubjectEnrollments.length > 0
                     ? `${filteredEnrollments.length} Pelajar Berdaftar`
                     : `${filteredMasterStudents.length} Pelajar Master Tersedia`}
                 </span>
@@ -326,15 +370,19 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>Pangkalan Data Mempunyai {masterStudentsForSubject.length} Pelajar Induk</span>
+                  <span>
+                    {targetClassesForSubject.length > 0
+                      ? `Pangkalan Data: ${masterStudentsForSubject.length} Pelajar Kelas [${targetClassesForSubject.join(', ')}]`
+                      : `Pangkalan Data Mempunyai ${masterStudentsForSubject.length} Pelajar Induk`}
+                  </span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
                     Jumlah Sistem: {students.length} Pelajar
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-snug mt-0.5">
-                  {subjectEnrollments.length === 0
-                    ? `Sistem mempunyai 83 pelajar dalam pangkalan data induk. Klik butang selaras di bawah untuk mendaftarkan ${masterStudentsForSubject.length} pelajar kelas ini ke dalam subjek ini secara automatik.`
-                    : `Terdapat ${unenrolledMasterStudents.length} pelajar daripada pangkalan data induk yang belum diselaraskan ke dalam subjek ini.`}
+                  {validSubjectEnrollments.length === 0
+                    ? `Sistem menyaring ${masterStudentsForSubject.length} pelajar daripada kelas [${targetClassesForSubject.join(', ') || 'Semua'}] yang mengambil subjek ini. Klik butang selaras di bawah untuk mendaftarkan pelajar kelas ini ke dalam subjek ini secara automatik.`
+                    : `Terdapat ${unenrolledMasterStudents.length} pelajar daripada kelas [${targetClassesForSubject.join(', ') || 'Semua'}] yang belum diselaraskan ke dalam subjek ini.`}
                 </p>
               </div>
             </div>
@@ -393,17 +441,17 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
               className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               <option value="ALL">
-                Semua Kelas ({totalDisplayCount})
-                {subjectEnrollments.length === 0 && ' [Pelajar Induk]'}
+                Semua Kelas Ditugaskan ({totalDisplayCount})
+                {validSubjectEnrollments.length === 0 && ' [Pelajar Induk]'}
               </option>
               {sectionsList.map((sec, secIdx) => {
-                const enrCount = subjectEnrollments.filter(
+                const enrCount = validSubjectEnrollments.filter(
                   (e) => e.className.toUpperCase() === sec.toUpperCase() || e.className.replace(/_/g, ' ').toUpperCase() === sec.replace(/_/g, ' ').toUpperCase()
                 ).length;
                 const masterCount = masterStudentsForSubject.filter(
                   (s) => s.className.toUpperCase() === sec.toUpperCase() || s.className.replace(/_/g, ' ').toUpperCase() === sec.replace(/_/g, ' ').toUpperCase()
                 ).length;
-                const displayCount = subjectEnrollments.length > 0 ? enrCount : masterCount;
+                const displayCount = validSubjectEnrollments.length > 0 ? enrCount : masterCount;
 
                 return (
                   <option key={`enrolled-sec-opt-${sec}-${secIdx}`} value={sec}>
@@ -429,7 +477,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
 
         {/* Enrolled Students Table / Cards */}
         <div className="p-4 sm:p-5 max-h-[60vh] overflow-y-auto space-y-2">
-          {subjectEnrollments.length === 0 ? (
+          {validSubjectEnrollments.length === 0 ? (
             // No individual enrollments yet -> Display master students directly with 1-click enroll
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">

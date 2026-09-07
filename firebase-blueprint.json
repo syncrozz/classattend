@@ -123,6 +123,21 @@
       },
       "required": ["id", "sessionId", "studentId", "timestamp", "status", "method"]
     },
+    "auditLogs": {
+      "title": "Audit Logs",
+      "description": "System activity logs for operations and administrative actions",
+      "properties": {
+        "id": { "type": "string", "description": "Log record ID" },
+        "timestamp": { "type": "string", "description": "ISO timestamp" },
+        "category": { "type": "string", "description": "Audit category" },
+        "action": { "type": "string", "description": "Action performed" },
+        "details": { "type": "string", "description": "Action details" },
+        "performedBy": { "type": "string", "description": "Actor who performed the action" },
+        "target": { "type": "string", "description": "Target entity" },
+        "severity": { "type": "string", "description": "Severity level" }
+      },
+      "required": ["id", "timestamp", "category", "action", "details"]
+    },
     "enrollments": {
       "title": "Class Enrollments",
       "description": "Links a unique student master record to subjects, sections, and lecturers",
@@ -173,6 +188,10 @@
     "/attendance_records/{recordId}": {
       "schema": "attendanceRecords",
       "description": "Collection of student attendance records"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "auditLogs",
+      "description": "Collection of system audit logs"
     }
   }
 }

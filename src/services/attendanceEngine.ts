@@ -522,9 +522,13 @@ class AttendanceEngine {
             data = [...data, ...missing];
           }
 
-          // Ensure standard catalog courses have sections: [] (not automatically pre-assigned to classes)
+          // Ensure standard catalog courses that have NOT been assigned by a lecturer have sections: []
           data = data.map((sub) => {
-            if (initialCodesSet.has(sub.code.toUpperCase()) && (sub.sections || []).length > 0) {
+            const hasAssignedLecturer = sub.lecturerId && sub.lecturerId !== 'Belum Ditetapkan';
+            const hasTeachingAssignments = this.teachingAssignments.some(
+              (ta) => ta.subjectCode.toUpperCase() === sub.code.toUpperCase() && ta.status !== 'REJECTED'
+            );
+            if (initialCodesSet.has(sub.code.toUpperCase()) && !hasAssignedLecturer && !hasTeachingAssignments && (sub.sections || []).length > 0) {
               return { ...sub, sections: [] };
             }
             return sub;
@@ -1284,22 +1288,29 @@ class AttendanceEngine {
       this.saveActiveLecturerLocally();
     }
 
-    // Also update this.subjects to link with this lecturer
+    // Also update this.subjects to link with this lecturer and save assigned classes
     const assignedCodeSet = new Set(subjectAssignments.map((sa) => sa.subjectCode.trim().toUpperCase()));
     const modifiedSubjects: Subject[] = [];
     this.subjects = this.subjects.map((sub) => {
       const codeUpper = sub.code.trim().toUpperCase();
       if (assignedCodeSet.has(codeUpper)) {
-        const updated = {
+        const matchedAssignment = subjectAssignments.find(
+          (sa) => sa.subjectCode.trim().toUpperCase() === codeUpper
+        );
+        const selectedClasses = matchedAssignment?.classes && matchedAssignment.classes.length > 0
+          ? Array.from(new Set(matchedAssignment.classes.map((c) => c.trim().toUpperCase().replace(/\s+/g, '_'))))
+          : [];
+        const updated: Subject = {
           ...sub,
           lecturerId,
           lecturerName: lecturer.name,
-          lecturerEmail: lecturer.email
+          lecturerEmail: lecturer.email,
+          sections: selectedClasses.length > 0 ? selectedClasses : (sub.sections || [])
         };
         modifiedSubjects.push(updated);
         return updated;
       } else if (sub.lecturerId === lecturerId) {
-        const updated = {
+        const updated: Subject = {
           ...sub,
           lecturerId: undefined,
           lecturerName: 'Belum Ditetapkan',
@@ -1309,6 +1320,29 @@ class AttendanceEngine {
         return updated;
       }
       return sub;
+    });
+
+    // If there are subjects in subjectAssignments that weren't in this.subjects, add them
+    subjectAssignments.forEach((sa) => {
+      const codeUpper = sa.subjectCode.trim().toUpperCase();
+      if (!this.subjects.some((s) => s.code.trim().toUpperCase() === codeUpper)) {
+        const selectedClasses = sa.classes && sa.classes.length > 0
+          ? Array.from(new Set(sa.classes.map((c) => c.trim().toUpperCase().replace(/\s+/g, '_'))))
+          : [];
+        const newSub: Subject = {
+          id: `SUB-${codeUpper.replace(/\s+/g, '_')}`,
+          code: codeUpper,
+          name: sa.subjectName || codeUpper,
+          department: sa.department || 'Jabatan Pengajian Am',
+          sections: selectedClasses,
+          lecturerId,
+          lecturerName: lecturer.name,
+          lecturerEmail: lecturer.email,
+          status: 'ACTIVE'
+        };
+        this.subjects.push(newSub);
+        modifiedSubjects.push(newSub);
+      }
     });
 
     this.saveSubjectsLocally();
@@ -1348,6 +1382,50 @@ class AttendanceEngine {
       success: true,
       message: 'Penugasan subjek dan kelas pengajaran anda berjaya disimpan.'
     };
+  }
+
+  /**
+   * Returns the strictly assigned classes for a subject.
+   * Priority:
+   * 1. Teaching assignments for this subject (if any exist)
+   * 2. Subject.sections (if defined and non-empty)
+   * 3. Empty array if not restricted.
+   */
+  public getAssignedClassesForSubject(subjectCode: string, lecturerId?: string): string[] {
+    if (!subjectCode) return [];
+    const codeUpper = subjectCode.trim().toUpperCase();
+
+    // 1. Check teaching assignments for this subject
+    const assignments = this.teachingAssignments.filter((ta) => {
+      const matchCode = ta.subjectCode.trim().toUpperCase() === codeUpper;
+      const matchStatus = ta.status !== 'REJECTED';
+      if (!lecturerId) return matchCode && matchStatus;
+      const matchLec =
+        ta.lecturerId === lecturerId ||
+        ta.lecturerEmail?.toLowerCase() === lecturerId.toLowerCase() ||
+        ta.lecturerName?.toLowerCase().includes(lecturerId.toLowerCase());
+      return matchCode && matchStatus && matchLec;
+    });
+
+    if (assignments.length > 0) {
+      const clsSet = new Set<string>();
+      assignments.forEach((ta) => {
+        if (ta.className && ta.className.trim()) {
+          clsSet.add(ta.className.trim().toUpperCase());
+        }
+      });
+      if (clsSet.size > 0) {
+        return Array.from(clsSet).sort();
+      }
+    }
+
+    // 2. Check subject.sections
+    const sub = this.subjects.find((s) => s.code.trim().toUpperCase() === codeUpper);
+    if (sub && sub.sections && sub.sections.length > 0) {
+      return Array.from(new Set(sub.sections.map((sec) => sec.trim().toUpperCase()).filter(Boolean))).sort();
+    }
+
+    return [];
   }
 
   public getTeachingAssignments(): TeachingAssignment[] {

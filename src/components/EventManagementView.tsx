@@ -99,6 +99,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onOpenSelfRegistrationTest
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [, setRefreshKey] = useState<number>(0);
 
   // Enrollments from props or engine
   const activeEnrollments = propEnrollments || attendanceEngine.getEnrollments();
@@ -690,16 +691,30 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             const pastSessions = nonActiveInSub.slice(1);
             const isPastExpanded = expandedPastSubjects[subject.id] || false;
 
+            // Calculate assigned classes for this subject from teaching assignments or subject sections
+            const assignedClassesForThisSubject = attendanceEngine.getAssignedClassesForSubject(
+              subject.code,
+              activeLecturer ? activeLecturer.id : undefined
+            );
+            const effectiveSections = assignedClassesForThisSubject.length > 0
+              ? assignedClassesForThisSubject
+              : (subject.sections && subject.sections.length > 0 ? subject.sections : []);
+
             // Calculate total students in subject's assigned classes
-            const totalSubjectStudents = (subject.sections || []).reduce(
+            const totalSubjectStudents = effectiveSections.reduce(
               (acc, sec) => acc + (studentCountByClass[sec.toUpperCase()] || 0),
               0
             );
 
-            // Self-registered enrollments via QR
-            const subjectEnrCount = activeEnrollments.filter(
-              (e) => e.subjectCode.toUpperCase() === subject.code.toUpperCase() && e.status !== 'DROPPED'
-            ).length;
+            // Self-registered enrollments via QR matching assigned classes
+            const subjectEnrCount = activeEnrollments.filter((e) => {
+              if (e.subjectCode.toUpperCase() !== subject.code.toUpperCase() || e.status === 'DROPPED') return false;
+              if (effectiveSections.length === 0) return true;
+              const eCls = (e.className || '').trim().toUpperCase();
+              return effectiveSections.some(
+                (sec) => sec === eCls || sec.replace(/_/g, ' ') === eCls.replace(/_/g, ' ')
+              );
+            }).length;
 
             return (
               <div
@@ -728,7 +743,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <p className="text-xs sm:text-sm text-slate-300 mt-1 flex flex-wrap items-center gap-2">
                         <span>Pensyarah: <strong className="text-white font-bold">{subject.lecturerName}</strong></span>
                         <span className="text-slate-600">•</span>
-                        <span>Kelas: <strong className="text-indigo-300 font-bold">{(subject.sections || []).join(', ') || 'Semua'}</strong> ({totalSubjectStudents} Pelajar)</span>
+                        <span>Kelas: <strong className="text-indigo-300 font-bold">{effectiveSections.join(', ') || 'Semua'}</strong> ({totalSubjectStudents} Pelajar)</span>
                         <span className="text-slate-600">•</span>
                         <span className="text-slate-400 font-medium">{subjectSessions.length} Sesi Terjadual</span>
                       </p>
@@ -752,15 +767,18 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     <button
                       id={`btn-view-enrolled-${subject.id}`}
                       onClick={() => {
-                        setEnrolledModalSubject(subject);
-                        setEnrolledModalClass('ALL');
+                        setEnrolledModalSubject({
+                          ...subject,
+                          sections: effectiveSections
+                        });
+                        setEnrolledModalClass(effectiveSections.length === 1 ? effectiveSections[0] : 'ALL');
                         setIsEnrolledModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-                      title="Lihat senarai pelajar berdaftar bagi subjek ini"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+                      title="Lihat senarai pelajar bagi kelas yang mengambil subjek ini"
                     >
                       <Users className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>{subjectEnrCount > 0 ? `${subjectEnrCount} Daftar QR` : 'Senarai Pelajar'}</span>
+                      <span>{subjectEnrCount > 0 ? `${subjectEnrCount} Pelajar Berdaftar` : `Senarai Pelajar (${totalSubjectStudents || 'Kelas'})`}</span>
                     </button>
 
                     {/* Secondary: Generate QR */}
@@ -1250,6 +1268,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           allSubjects={subjects}
           onSaved={() => {
             setIsManageSubjectsModalOpen(false);
+            setRefreshKey((prev) => prev + 1);
           }}
         />
       )}

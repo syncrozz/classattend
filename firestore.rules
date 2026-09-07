@@ -26,6 +26,12 @@ service cloud.firestore {
     match /activities/{activityId} {
       allow read, write: if true;
     }
+    match /audit_logs/{logId} {
+      allow read, write: if true;
+    }
+    match /test/{docId} {
+      allow read, write: if true;
+    }
 
     // Legacy paths compatibility
     match /staff/{staffId} {
