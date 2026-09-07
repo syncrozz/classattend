@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   ArrowLeft,
   Smartphone,
-  Info
+  Info,
+  Share2,
+  Check
 } from 'lucide-react';
 
 interface StudentQrPortalViewProps {
@@ -121,6 +123,30 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
     }
   };
 
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  const handleCopyLink = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://classattend.syncrozz.com';
+    const link = `${origin}/#/qr`;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedLink(true);
+      soundService.playSuccess();
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
+
   const handleChangeStudent = () => {
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -162,17 +188,38 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
           </div>
         </div>
 
-        {onReturnToMain && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onReturnToMain}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
-            title="Kembali ke platform utama"
+            onClick={handleCopyLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-300 hover:text-teal-200 text-xs font-semibold transition cursor-pointer shadow-sm"
+            title="Salin pautan rasmi (#/qr) untuk dihantar kepada pelajar"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Platform Utama</span>
+            {copiedLink ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-teal-400" />
+                <span>Disalin!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5 text-teal-400" />
+                <span>Kongsi Pautan</span>
+              </>
+            )}
           </button>
-        )}
+
+          {onReturnToMain && (
+            <button
+              type="button"
+              onClick={onReturnToMain}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
+              title="Kembali ke platform utama"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Platform Utama</span>
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Main Card */}

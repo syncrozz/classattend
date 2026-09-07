@@ -122,14 +122,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             id="sidebar-btn-qr-portal"
             onClick={onOpenQrPortal}
             className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-950/30 hover:bg-teal-900/40 border border-teal-500/30 text-teal-300 text-xs font-semibold transition-all cursor-pointer group"
-            title="Buka Student QR Access Portal (/qr)"
+            title="Buka Student QR Access Portal (#/qr)"
           >
             <div className="flex items-center gap-2.5">
               <QrCode className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform shrink-0" />
               <span>Portal Kod QR</span>
             </div>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-mono font-bold">
-              /qr
+              #/qr
             </span>
           </button>
         )}

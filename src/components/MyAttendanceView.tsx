@@ -375,10 +375,10 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                     onOpenQrPortal();
                   } else {
                     try {
-                      window.history.pushState(null, '', '/qr');
-                      window.dispatchEvent(new PopStateEvent('popstate'));
+                      window.history.pushState(null, '', '/#/qr');
+                      window.dispatchEvent(new HashChangeEvent('hashchange'));
                     } catch {
-                      window.location.href = '/qr';
+                      window.location.href = '/#/qr';
                     }
                   }
                 }}

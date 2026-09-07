@@ -728,9 +728,9 @@ export default function App() {
 
   const handleOpenQrPortal = () => {
     try {
-      window.history.pushState(null, '', '/qr');
+      window.location.hash = '#/qr';
     } catch {
-      window.location.hash = '#qr';
+      window.history.pushState(null, '', '/#/qr');
     }
     setIsQrRoute(true);
   };

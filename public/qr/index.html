@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ms">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ClassAttend — Portal Kod QR Pelajar</title>
+    <link rel="icon" type="image/svg+xml" href="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/ClassAttend/favicon.svg" />
+    <script>
+      // Automatically redirect to the SPA hash route which works on 100% of static servers
+      const query = window.location.search || '';
+      window.location.replace('/#/qr' + query);
+    </script>
+    <meta http-equiv="refresh" content="0; url=/#/qr" />
+  </head>
+  <body style="background-color: #020617; color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; text-align: center; box-sizing: border-box;">
+    <div>
+      <div style="width: 48px; height: 48px; border: 3px solid #14b8a6; border-top-color: transparent; border-radius: 50%; margin: 0 auto 16px; animation: spin 1s linear infinite;"></div>
+      <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+      <h2 style="font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #ffffff;">Memuatkan Portal Kod QR Pelajar...</h2>
+      <p style="font-size: 13px; color: #94a3b8; margin: 0 0 16px 0;">Sila tunggu sebentar sementara anda dialihkan ke portal peribadi anda.</p>
+      <a href="/#/qr" style="display: inline-block; padding: 10px 20px; border-radius: 12px; background-color: #14b8a6; color: #020617; font-size: 13px; font-weight: 700; text-decoration: none;">Klik Di Sini Jika Tidak Dialihkan</a>
+    </div>
+  </body>
+</html>
