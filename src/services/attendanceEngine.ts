@@ -58,11 +58,100 @@ class AttendanceEngine {
   private teachingAssignments: TeachingAssignment[] = [];
   private activeLecturer: Lecturer | null = null;
   private enrollmentListeners: Set<(enrollments: Enrollment[]) => void> = new Set();
+  private studentListeners: Set<(students: Student[]) => void> = new Set();
+  private lecturerListeners: Set<(lecturers: Lecturer[]) => void> = new Set();
+  private subjectListeners: Set<(subjects: Subject[]) => void> = new Set();
+  private sessionListeners: Set<(sessions: AttendanceSession[]) => void> = new Set();
+  private recordListeners: Set<(records: AttendanceRecord[]) => void> = new Set();
+  private teachingAssignmentListeners: Set<(assignments: TeachingAssignment[]) => void> = new Set();
+  private broadcastChannel: BroadcastChannel | null = null;
 
   private isFirestoreConnected: boolean = false;
 
   constructor() {
     this.initializeData();
+    this.initCrossTabSync();
+  }
+
+  private initCrossTabSync() {
+    if (typeof window !== 'undefined') {
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          this.broadcastChannel = new BroadcastChannel('classattend_cross_tab_sync');
+          this.broadcastChannel.onmessage = (event) => {
+            if (event.data && event.data.type === 'CLASSATTEND_SYNC') {
+              this.reloadFromStorageAndNotify();
+            }
+          };
+        } catch (e) {
+          console.warn('BroadcastChannel sync init notice:', e);
+        }
+      }
+
+      window.addEventListener('storage', (e) => {
+        if (e.key && Object.values(STORAGE_KEYS).includes(e.key as any)) {
+          this.reloadFromStorageAndNotify();
+        }
+      });
+    }
+  }
+
+  private broadcastChange(key?: string) {
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: 'CLASSATTEND_SYNC', key, timestamp: Date.now() });
+      } catch (e) {
+        console.warn('Broadcast channel post message error:', e);
+      }
+    }
+  }
+
+  public reloadFromStorageAndNotify() {
+    try {
+      const storedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+      if (storedStudents) {
+        this.students = JSON.parse(storedStudents);
+        this.notifyStudentListeners();
+      }
+
+      const storedLecturers = localStorage.getItem(STORAGE_KEYS.LECTURERS);
+      if (storedLecturers) {
+        this.lecturers = JSON.parse(storedLecturers);
+        this.notifyLecturerListeners();
+      }
+
+      const storedSubjects = localStorage.getItem(STORAGE_KEYS.SUBJECTS);
+      if (storedSubjects) {
+        this.subjects = JSON.parse(storedSubjects);
+        this.notifySubjectListeners();
+      }
+
+      const storedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+      if (storedSessions) {
+        this.sessions = JSON.parse(storedSessions);
+        this.notifySessionListeners();
+      }
+
+      const storedRecords = localStorage.getItem(STORAGE_KEYS.RECORDS);
+      if (storedRecords) {
+        this.attendanceRecords = JSON.parse(storedRecords);
+        this.notifyRecordListeners();
+      }
+
+      const storedEnrollments = localStorage.getItem(STORAGE_KEYS.ENROLLMENTS);
+      if (storedEnrollments) {
+        this.enrollments = JSON.parse(storedEnrollments);
+        this.notifyEnrollmentListeners();
+      }
+
+      const storedAssignments = localStorage.getItem(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
+      if (storedAssignments) {
+        this.teachingAssignments = JSON.parse(storedAssignments);
+        this.notifyTeachingAssignmentListeners();
+      }
+    } catch (err) {
+      console.warn('Error during cross-tab reload sync:', err);
+    }
   }
 
   private initializeData() {
@@ -382,9 +471,13 @@ class AttendanceEngine {
 
   // --- Subscriptions ---
   public subscribeStudents(callback: (students: Student[]) => void): () => void {
+    this.studentListeners.add(callback);
+    callback(this.students);
+
     if (!db) {
-      callback(this.students);
-      return () => {};
+      return () => {
+        this.studentListeners.delete(callback);
+      };
     }
 
     try {
@@ -415,10 +508,15 @@ class AttendanceEngine {
           callback(this.students);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.studentListeners.delete(callback);
+        unsubscribe();
+      };
     } catch (e) {
       callback(this.students);
-      return () => {};
+      return () => {
+        this.studentListeners.delete(callback);
+      };
     }
   }
 
@@ -460,9 +558,13 @@ class AttendanceEngine {
   }
 
   public subscribeLecturers(callback: (lecturers: Lecturer[]) => void): () => void {
+    this.lecturerListeners.add(callback);
+    callback(this.lecturers);
+
     if (!db) {
-      callback(this.lecturers);
-      return () => {};
+      return () => {
+        this.lecturerListeners.delete(callback);
+      };
     }
 
     try {
@@ -488,17 +590,26 @@ class AttendanceEngine {
           callback(this.lecturers);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.lecturerListeners.delete(callback);
+        unsubscribe();
+      };
     } catch {
       callback(this.lecturers);
-      return () => {};
+      return () => {
+        this.lecturerListeners.delete(callback);
+      };
     }
   }
 
   public subscribeSubjects(callback: (subjects: Subject[]) => void): () => void {
+    this.subjectListeners.add(callback);
+    callback(this.subjects);
+
     if (!db) {
-      callback(this.subjects);
-      return () => {};
+      return () => {
+        this.subjectListeners.delete(callback);
+      };
     }
 
     try {
@@ -543,17 +654,26 @@ class AttendanceEngine {
           callback(this.subjects);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.subjectListeners.delete(callback);
+        unsubscribe();
+      };
     } catch {
       callback(this.subjects);
-      return () => {};
+      return () => {
+        this.subjectListeners.delete(callback);
+      };
     }
   }
 
   public subscribeSessions(callback: (sessions: AttendanceSession[]) => void): () => void {
+    this.sessionListeners.add(callback);
+    callback(sortSessionsLatestFirst(this.sessions));
+
     if (!db) {
-      callback(sortSessionsLatestFirst(this.sessions));
-      return () => {};
+      return () => {
+        this.sessionListeners.delete(callback);
+      };
     }
 
     try {
@@ -573,17 +693,26 @@ class AttendanceEngine {
           callback(sortSessionsLatestFirst(this.sessions));
         }
       );
-      return unsubscribe;
+      return () => {
+        this.sessionListeners.delete(callback);
+        unsubscribe();
+      };
     } catch (e) {
       callback(sortSessionsLatestFirst(this.sessions));
-      return () => {};
+      return () => {
+        this.sessionListeners.delete(callback);
+      };
     }
   }
 
   public subscribeRecords(callback: (records: AttendanceRecord[]) => void): () => void {
+    this.recordListeners.add(callback);
+    callback(this.attendanceRecords);
+
     if (!db) {
-      callback(this.attendanceRecords);
-      return () => {};
+      return () => {
+        this.recordListeners.delete(callback);
+      };
     }
 
     try {
@@ -607,17 +736,26 @@ class AttendanceEngine {
           callback(this.attendanceRecords);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.recordListeners.delete(callback);
+        unsubscribe();
+      };
     } catch (e) {
       callback(this.attendanceRecords);
-      return () => {};
+      return () => {
+        this.recordListeners.delete(callback);
+      };
     }
   }
 
   public subscribeTeachingAssignments(callback: (assignments: TeachingAssignment[]) => void): () => void {
+    this.teachingAssignmentListeners.add(callback);
+    callback(this.teachingAssignments);
+
     if (!db) {
-      callback(this.teachingAssignments);
-      return () => {};
+      return () => {
+        this.teachingAssignmentListeners.delete(callback);
+      };
     }
 
     try {
@@ -635,37 +773,59 @@ class AttendanceEngine {
           callback(this.teachingAssignments);
         }
       );
-      return unsubscribe;
+      return () => {
+        this.teachingAssignmentListeners.delete(callback);
+        unsubscribe();
+      };
     } catch (e) {
       callback(this.teachingAssignments);
-      return () => {};
+      return () => {
+        this.teachingAssignmentListeners.delete(callback);
+      };
     }
   }
 
-  // --- Local Persistence Helpers ---
-  private saveStudentsLocally() {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
+  // --- Listener Notification Dispatchers ---
+  public notifyStudentListeners() {
+    const list = [...this.students];
+    this.studentListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Student listener notice:', e); }
+    });
   }
 
-  private saveLecturersLocally() {
-    localStorage.setItem(STORAGE_KEYS.LECTURERS, JSON.stringify(this.lecturers));
+  public notifyLecturerListeners() {
+    const list = [...this.lecturers];
+    this.lecturerListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Lecturer listener notice:', e); }
+    });
   }
 
-  private saveSubjectsLocally() {
-    localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(this.subjects));
+  public notifySubjectListeners() {
+    const list = [...this.subjects];
+    this.subjectListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Subject listener notice:', e); }
+    });
   }
 
-  private saveSessionsLocally() {
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(this.sessions));
+  public notifySessionListeners() {
+    const list = sortSessionsLatestFirst(this.sessions);
+    this.sessionListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Session listener notice:', e); }
+    });
   }
 
-  private saveRecordsLocally() {
-    localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(this.attendanceRecords));
+  public notifyRecordListeners() {
+    const list = [...this.attendanceRecords];
+    this.recordListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Record listener notice:', e); }
+    });
   }
 
-  private saveEnrollmentsLocally() {
-    localStorage.setItem(STORAGE_KEYS.ENROLLMENTS, JSON.stringify(this.enrollments));
-    this.notifyEnrollmentListeners();
+  public notifyTeachingAssignmentListeners() {
+    const list = [...this.teachingAssignments];
+    this.teachingAssignmentListeners.forEach((cb) => {
+      try { cb(list); } catch (e) { console.warn('Teaching assignment listener notice:', e); }
+    });
   }
 
   public notifyEnrollmentListeners() {
@@ -679,8 +839,47 @@ class AttendanceEngine {
     });
   }
 
+  // --- Local Persistence Helpers ---
+  private saveStudentsLocally() {
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
+    this.notifyStudentListeners();
+    this.broadcastChange(STORAGE_KEYS.STUDENTS);
+  }
+
+  private saveLecturersLocally() {
+    localStorage.setItem(STORAGE_KEYS.LECTURERS, JSON.stringify(this.lecturers));
+    this.notifyLecturerListeners();
+    this.broadcastChange(STORAGE_KEYS.LECTURERS);
+  }
+
+  private saveSubjectsLocally() {
+    localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(this.subjects));
+    this.notifySubjectListeners();
+    this.broadcastChange(STORAGE_KEYS.SUBJECTS);
+  }
+
+  private saveSessionsLocally() {
+    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(this.sessions));
+    this.notifySessionListeners();
+    this.broadcastChange(STORAGE_KEYS.SESSIONS);
+  }
+
+  private saveRecordsLocally() {
+    localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(this.attendanceRecords));
+    this.notifyRecordListeners();
+    this.broadcastChange(STORAGE_KEYS.RECORDS);
+  }
+
+  private saveEnrollmentsLocally() {
+    localStorage.setItem(STORAGE_KEYS.ENROLLMENTS, JSON.stringify(this.enrollments));
+    this.notifyEnrollmentListeners();
+    this.broadcastChange(STORAGE_KEYS.ENROLLMENTS);
+  }
+
   private saveTeachingAssignmentsLocally() {
     localStorage.setItem(STORAGE_KEYS.TEACHING_ASSIGNMENTS, JSON.stringify(this.teachingAssignments));
+    this.notifyTeachingAssignmentListeners();
+    this.broadcastChange(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
   }
 
   private saveActiveLecturerLocally() {
