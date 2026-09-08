@@ -582,6 +582,7 @@ class AttendanceEngine {
               assignedSubjects: Array.from(new Set(lec.assignedSubjects || []))
             }));
           this.lecturers = data;
+          this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
           this.saveLecturersLocally();
           callback(this.lecturers);
         },
@@ -633,19 +634,8 @@ class AttendanceEngine {
             data = [...data, ...missing];
           }
 
-          // Ensure standard catalog courses that have NOT been assigned by a lecturer have sections: []
-          data = data.map((sub) => {
-            const hasAssignedLecturer = sub.lecturerId && sub.lecturerId !== 'Belum Ditetapkan';
-            const hasTeachingAssignments = this.teachingAssignments.some(
-              (ta) => ta.subjectCode.toUpperCase() === sub.code.toUpperCase() && ta.status !== 'REJECTED'
-            );
-            if (initialCodesSet.has(sub.code.toUpperCase()) && !hasAssignedLecturer && !hasTeachingAssignments && (sub.sections || []).length > 0) {
-              return { ...sub, sections: [] };
-            }
-            return sub;
-          });
-
           this.subjects = data;
+          this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
           this.saveSubjectsLocally();
           callback(this.subjects);
         },
@@ -765,6 +755,7 @@ class AttendanceEngine {
         (snapshot) => {
           const data = snapshot.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
           this.teachingAssignments = data;
+          this.syncAssignmentsToSubjectsAndLecturers(data);
           this.saveTeachingAssignmentsLocally();
           callback(this.teachingAssignments);
         },
@@ -782,6 +773,105 @@ class AttendanceEngine {
       return () => {
         this.teachingAssignmentListeners.delete(callback);
       };
+    }
+  }
+
+  private syncAssignmentsToSubjectsAndLecturers(assignments: TeachingAssignment[]) {
+    if (!assignments || assignments.length === 0) return;
+    const activeAssignments = assignments.filter((ta) => ta.status !== 'REJECTED');
+
+    // 1. Group active assignments by subject code
+    const subToClassesMap = new Map<string, Set<string>>();
+    const subToLecturerMap = new Map<string, { id: string; name: string; email: string }>();
+
+    activeAssignments.forEach((ta) => {
+      const code = (ta.subjectCode || '').trim().toUpperCase();
+      if (!code) return;
+      if (!subToClassesMap.has(code)) {
+        subToClassesMap.set(code, new Set());
+      }
+      if (ta.className) {
+        subToClassesMap.get(code)!.add(ta.className.trim().toUpperCase());
+      }
+      if (ta.lecturerId && !subToLecturerMap.has(code)) {
+        subToLecturerMap.set(code, {
+          id: ta.lecturerId,
+          name: ta.lecturerName,
+          email: ta.lecturerEmail
+        });
+      }
+    });
+
+    let subjectsChanged = false;
+    this.subjects = this.subjects.map((sub) => {
+      const code = (sub.code || '').trim().toUpperCase();
+      const assignedClasses = subToClassesMap.get(code);
+      const lecInfo = subToLecturerMap.get(code);
+
+      if (assignedClasses && assignedClasses.size > 0) {
+        const mergedSections = Array.from(new Set([...(sub.sections || []), ...Array.from(assignedClasses)]));
+        if (
+          mergedSections.length !== (sub.sections || []).length ||
+          (lecInfo && sub.lecturerId !== lecInfo.id)
+        ) {
+          subjectsChanged = true;
+          return {
+            ...sub,
+            sections: mergedSections,
+            lecturerId: lecInfo?.id || sub.lecturerId,
+            lecturerName: lecInfo?.name || sub.lecturerName,
+            lecturerEmail: lecInfo?.email || sub.lecturerEmail
+          };
+        }
+      }
+      return sub;
+    });
+
+    if (subjectsChanged) {
+      this.saveSubjectsLocally();
+      this.notifySubjectListeners();
+    }
+
+    // 2. Sync to lecturers
+    const lecToSubjectsMap = new Map<string, Set<string>>();
+    const lecToClassesMap = new Map<string, Set<string>>();
+
+    activeAssignments.forEach((ta) => {
+      const lecId = ta.lecturerId;
+      if (!lecId) return;
+      if (!lecToSubjectsMap.has(lecId)) {
+        lecToSubjectsMap.set(lecId, new Set());
+        lecToClassesMap.set(lecId, new Set());
+      }
+      lecToSubjectsMap.get(lecId)!.add(`${(ta.subjectCode || '').toUpperCase()} - ${ta.subjectName || ''}`);
+      if (ta.className) {
+        lecToClassesMap.get(lecId)!.add(ta.className.trim().toUpperCase());
+      }
+    });
+
+    let lecturersChanged = false;
+    this.lecturers = this.lecturers.map((lec) => {
+      const assignedSubs = lecToSubjectsMap.get(lec.id);
+      const assignedCls = lecToClassesMap.get(lec.id);
+      if (assignedSubs || assignedCls) {
+        const newSubs = Array.from(new Set([...(lec.assignedSubjects || []), ...(assignedSubs ? Array.from(assignedSubs) : [])]));
+        const newCls = Array.from(new Set([...(lec.assignedClasses || []), ...(assignedCls ? Array.from(assignedCls) : [])]));
+        if (newSubs.length !== (lec.assignedSubjects || []).length || newCls.length !== (lec.assignedClasses || []).length) {
+          lecturersChanged = true;
+          return {
+            ...lec,
+            assignedSubjects: newSubs,
+            assignedClasses: newCls,
+            assignedSections: newCls
+          };
+        }
+      }
+      return lec;
+    });
+
+    if (lecturersChanged) {
+      this.saveLecturersLocally();
+      this.notifyLecturerListeners();
     }
   }
 

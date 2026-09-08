@@ -1,12 +1,12 @@
 {
-  "projectId": "subtle-furnace-sc9s2",
-  "appId": "1:915525482647:web:24f86b64a8802fdcbdd1d2",
-  "apiKey": "AIzaSyAUy9_lmgelOfuWvemEJQxbCqsFC3ksqyI",
-  "authDomain": "subtle-furnace-sc9s2.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "subtle-furnace-sc9s2.firebasestorage.app",
-  "messagingSenderId": "915525482647",
+  "projectId": "gen-lang-client-0739778545",
+  "appId": "1:592122598840:web:8877fee7a78426ac1feb4d",
+  "apiKey": "AIzaSyDf_pqCAHfWSS2vvzpXYVHMlFbKuBpWKBk",
+  "authDomain": "gen-lang-client-0739778545.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-classattend-8378814f-0aae-4f9a-99ea-468f3503ec55",
+  "storageBucket": "gen-lang-client-0739778545.firebasestorage.app",
+  "messagingSenderId": "592122598840",
   "measurementId": "",
-  "oAuthClientId": "",
+  "oAuthClientId": "592122598840-s7lpfj27a5jlorfr66ld7ua42qnigujc.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
