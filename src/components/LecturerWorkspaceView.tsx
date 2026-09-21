@@ -29,7 +29,8 @@ import {
   HardDrive,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Pencil
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
@@ -42,6 +43,7 @@ import {
 } from '../utils/csvHelper';
 import { StartAttendanceModal } from './StartAttendanceModal';
 import { LecturerManageSubjectsModal } from './LecturerManageSubjectsModal';
+import { EditSessionRemarkModal } from './EditSessionRemarkModal';
 
 interface LecturerWorkspaceViewProps {
   activeLecturer?: Lecturer | null;
@@ -60,6 +62,7 @@ interface LecturerWorkspaceViewProps {
   onCloseActiveSession: (sessionId: string) => void;
   onQuickSimulateScan?: (studentId: string) => ScanResult;
   onCreateSession?: (session: AttendanceSession) => void;
+  onUpdateSession?: (session: AttendanceSession) => void;
   onStartSessionForClass?: (subjectCode: string, subjectName: string, className: string) => void;
   onSwitchToAdminMode?: () => void;
 }
@@ -81,11 +84,24 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onCloseActiveSession,
   onQuickSimulateScan,
   onCreateSession,
+  onUpdateSession,
   onStartSessionForClass,
   onSwitchToAdminMode
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
   const [backupToast, setBackupToast] = useState<string | null>(null);
+
+  // Edit Session Remark Modal state
+  const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const handleSaveEditedSession = (updatedSession: AttendanceSession) => {
+    if (onUpdateSession) {
+      onUpdateSession(updatedSession);
+    }
+    setEditingSession(null);
+    setIsEditModalOpen(false);
+  };
   const [startModalContext, setStartModalContext] = useState<{
     subjectCode: string;
     subjectName: string;
@@ -310,9 +326,24 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                     SEDANG BERLANGSUNG (LIVE)
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-white mt-1">
-                  {activeSession.sessionName}
-                </h3>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <h3 className="text-lg font-bold text-white">
+                    {activeSession.sessionName}
+                  </h3>
+                  <button
+                    type="button"
+                    id="btn-workspace-edit-session-remark"
+                    onClick={() => {
+                      setEditingSession(activeSession);
+                      setIsEditModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer"
+                    title="Ubah tajuk atau remark sesi ini (cth: Kuliah Minggu 6a)"
+                  >
+                    <Pencil className="w-3 h-3 text-emerald-300" />
+                    <span>Ubah Remark</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -906,11 +937,8 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                                     <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide ${
                                       currentSelectedClass === 'ALL' ? 'text-amber-200' : 'text-slate-300'
                                     }`}>
-                                      SEMUA KELAS (GABUNGAN)
+                                      SEMUA KELAS
                                     </span>
-                                  </div>
-                                  <div className="text-[11px] text-slate-400 pl-5.5">
-                                    Sesi khas — Ujian / Peperiksaan / Taklimat Program
                                   </div>
                                 </div>
                               </div>
@@ -1249,6 +1277,17 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
           <span className="text-xs font-bold">{backupToast}</span>
         </div>
       )}
+
+      {/* Edit Session Remark Modal */}
+      <EditSessionRemarkModal
+        isOpen={isEditModalOpen}
+        session={editingSession}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingSession(null);
+        }}
+        onSave={handleSaveEditedSession}
+      />
     </div>
   );
 };

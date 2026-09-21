@@ -395,6 +395,21 @@ export default function App() {
     });
   };
 
+  // Update Session (e.g. rename session title / remark like "Kuliah Minggu 6" -> "Kuliah Minggu 6a")
+  const handleUpdateSession = (updatedSession: AttendanceSession) => {
+    const updated = attendanceEngine.updateSession(updatedSession);
+    setSessions(updated);
+    soundService.playSuccess();
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: 'Kemaskini Tajuk / Remark Sesi Kuliah',
+      details: `Tajuk/remark sesi "${updatedSession.sessionName}" (${updatedSession.subjectCode || ''} - ${updatedSession.className || ''}) telah dikemas kini.`,
+      performedBy: activeLecturer?.name || updatedSession.lecturerName || 'Pensyarah KPM',
+      target: updatedSession.sessionName,
+      severity: 'INFO'
+    });
+  };
+
   // Sprint 9: Seamless Start Attendance Session for Class
   const handleStartSessionForClass = (subjectCode: string, subjectName: string, className: string) => {
     // 1. Check if there's already an existing OPEN session for this subject and class
@@ -823,6 +838,7 @@ export default function App() {
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
                 onQuickSimulateScan={handleQuickSimulateScan}
                 onCreateSession={handleCreateSession}
+                onUpdateSession={handleUpdateSession}
                 onStartSessionForClass={handleStartSessionForClass}
                 onSwitchToAdminMode={handleToggleAdminMode}
               />
@@ -877,6 +893,7 @@ export default function App() {
               onSetSessionStatus={handleSetSessionStatus}
               onCreateSubject={handleCreateSubject}
               onCreateSession={handleCreateSession}
+              onUpdateSession={handleUpdateSession}
               onDeleteSession={handleDeleteSession}
               onDeleteSubject={handleDeleteSubject}
               onOpenScannerForSession={(sessionId) => {

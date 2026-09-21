@@ -6,6 +6,23 @@ class SoundService {
   private enabled: boolean = true;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
+  private volume: number = 0.85; // Default 85% volume
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedVol = localStorage.getItem('classattend_scanner_volume');
+        if (savedVol !== null) {
+          const parsed = parseFloat(savedVol);
+          if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+            this.volume = parsed;
+          }
+        }
+      } catch (e) {
+        // ignore localStorage errors
+      }
+    }
+  }
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
@@ -26,7 +43,7 @@ class SoundService {
           this.compressor.release.setValueAtTime(0.2, this.ctx.currentTime);
 
           this.masterGain = this.ctx.createGain();
-          this.masterGain.gain.setValueAtTime(1.0, this.ctx.currentTime); // Full high volume
+          this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
 
           this.compressor.connect(this.masterGain);
           this.masterGain.connect(this.ctx.destination);
@@ -47,6 +64,30 @@ class SoundService {
 
   public isEnabled(): boolean {
     return this.enabled;
+  }
+
+  public getVolume(): number {
+    return this.volume;
+  }
+
+  public setVolume(vol: number) {
+    const clamped = Math.max(0, Math.min(1, vol));
+    this.volume = clamped;
+    const ctx = this.getContext();
+    if (ctx && this.masterGain) {
+      try {
+        this.masterGain.gain.setValueAtTime(clamped, ctx.currentTime);
+      } catch {
+        // ignore
+      }
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('classattend_scanner_volume', clamped.toFixed(2));
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // Pre-warm audio context on user touch/click to ensure instant loud playback

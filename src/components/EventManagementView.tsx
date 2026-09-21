@@ -45,9 +45,11 @@ import {
   Calendar,
   CalendarPlus,
   Settings,
-  Check
+  Check,
+  Pencil
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
+import { EditSessionRemarkModal } from './EditSessionRemarkModal';
 
 interface ClassManagementViewProps {
   subjects: Subject[];
@@ -62,6 +64,7 @@ interface ClassManagementViewProps {
   onSetSessionStatus: (sessionId: string, newStatus: EventStatus) => void;
   onCreateSubject: (subject: Subject) => void;
   onCreateSession: (session: AttendanceSession) => void;
+  onUpdateSession?: (session: AttendanceSession) => void;
   onDeleteSession?: (sessionId: string) => void;
   onDeleteSubject?: (subjectId: string) => void;
   onOpenScannerForSession: (sessionId: string) => void;
@@ -90,6 +93,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onSetSessionStatus,
   onCreateSubject,
   onCreateSession,
+  onUpdateSession,
   onDeleteSession,
   onDeleteSubject,
   onOpenScannerForSession,
@@ -100,6 +104,25 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [, setRefreshKey] = useState<number>(0);
+
+  // Edit Session Remark Modal State
+  const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+
+  const handleOpenEditRemark = (session: AttendanceSession) => {
+    setEditingSession(session);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditedSession = (updatedSession: AttendanceSession) => {
+    if (onUpdateSession) {
+      onUpdateSession(updatedSession);
+    } else {
+      attendanceEngine.updateSession(updatedSession);
+    }
+    setEditingSession(null);
+    setIsEditModalOpen(false);
+  };
 
   // Enrollments from props or engine
   const activeEnrollments = propEnrollments || attendanceEngine.getEnrollments();
@@ -394,6 +417,28 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   // State to toggle past sessions for subjects (Progressive Disclosure)
   const [expandedPastSubjects, setExpandedPastSubjects] = useState<Record<string, boolean>>({});
 
+  // State to toggle expansion of subject cards (Default: HIDE / collapsed as requested)
+  const [expandedSubjectCards, setExpandedSubjectCards] = useState<Record<string, boolean>>({});
+
+  const toggleSubjectCard = (subjectId: string) => {
+    setExpandedSubjectCards((prev) => ({
+      ...prev,
+      [subjectId]: !prev[subjectId]
+    }));
+  };
+
+  const handleExpandAllSubjects = () => {
+    const allExpanded: Record<string, boolean> = {};
+    filteredSubjects.forEach((sub) => {
+      allExpanded[sub.id] = true;
+    });
+    setExpandedSubjectCards(allExpanded);
+  };
+
+  const handleCollapseAllSubjects = () => {
+    setExpandedSubjectCards({});
+  };
+
   const togglePastSessions = (subjectId: string) => {
     setExpandedPastSubjects((prev) => ({
       ...prev,
@@ -413,9 +458,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 PENGURUSAN KELAS & SUBJEK
               </span>
               {activeLecturer && (
-                <span className="text-[11px] text-slate-300 font-mono flex items-center gap-1">
+                <span className="text-[11px] text-indigo-200 bg-indigo-950/70 px-2.5 py-0.5 rounded-full border border-indigo-500/40 font-medium flex items-center gap-1.5 shadow-sm">
                   <User className="w-3 h-3 text-indigo-400" />
-                  {activeLecturer.name}
+                  <span>Pensyarah: <strong className="text-white font-bold">{activeLecturer.name}</strong></span>
                 </span>
               )}
             </div>
@@ -511,11 +556,35 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       </div>
 
                       <div>
-                        <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
-                          {activeSes.sessionName}
-                        </h3>
-                        <p className="text-xs text-slate-300 mt-0.5">
-                          {activeSes.subjectName || matchedSub?.name || 'Sesi Kuliah'} • Pensyarah: <strong className="text-white">{activeSes.lecturerName || matchedSub?.lecturerName}</strong>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
+                            {activeSes.sessionName}
+                          </h3>
+                          <button
+                            type="button"
+                            id={`btn-edit-live-banner-${activeSes.id}`}
+                            onClick={() => handleOpenEditRemark(activeSes)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer"
+                            title="Ubah tajuk atau remark sesi live ini"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-emerald-300" />
+                            <span>Ubah Remark</span>
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-slate-200">{activeSes.subjectName || matchedSub?.name || 'Sesi Kuliah'}</span>
+                          {activeSes.academicWeek && (
+                            <>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-indigo-300 font-semibold">{activeSes.academicWeek}</span>
+                            </>
+                          )}
+                          {activeSes.startTime && (
+                            <>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-slate-400 font-mono text-[11px]">{activeSes.startTime} - {activeSes.endTime}</span>
+                            </>
+                          )}
                         </p>
                       </div>
 
@@ -590,9 +659,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-white">Paparan Khusus Pensyarah:</span>
-                <span className="text-xs font-black text-indigo-300 font-mono bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-500/30">
-                  {activeLecturer.name}
+                <span className="text-xs font-bold text-white">Skop Paparan Subjek:</span>
+                <span className="text-xs font-semibold text-indigo-300 bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-500/30">
+                  {subjectViewScope === 'MY_SUBJECTS' ? 'Subjek Pengajaran Anda' : 'Semua Katalog Kolej'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 mt-0.5">
@@ -651,6 +720,36 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           LEVEL 2-4: SUBJECTS LIST WITH PROGRESSIVE DISCLOSURE
           ======================================================== */}
       <div className="space-y-4">
+        {filteredSubjects.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-1 text-xs text-slate-400">
+            <span className="font-bold flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-slate-400">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <span>SENARAI SUBJEK / KURSUS ({filteredSubjects.length})</span>
+              <span className="text-[11px] text-slate-500 font-normal">
+                — klik kad untuk papar / tutup sesi
+              </span>
+            </span>
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                id="btn-expand-all-subjects"
+                onClick={handleExpandAllSubjects}
+                className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer transition-colors"
+              >
+                Buka Semua
+              </button>
+              <span className="text-slate-600">•</span>
+              <button
+                type="button"
+                id="btn-collapse-all-subjects"
+                onClick={handleCollapseAllSubjects}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-300 hover:underline cursor-pointer transition-colors"
+              >
+                Tutup Semua
+              </button>
+            </div>
+          </div>
+        )}
         {filteredSubjects.length === 0 ? (
           <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center space-y-3">
             <BookOpen className="w-10 h-10 text-indigo-500/40" />
@@ -716,15 +815,34 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               );
             }).length;
 
+            const isSubjectExpanded = expandedSubjectCards[subject.id] || false;
+
             return (
               <div
                 key={subject.id}
-                className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-lg"
+                id={`subject-card-${subject.id}`}
+                className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-lg transition-all"
               >
                 {/* ========================================================
                     MAIN KATEGORI: SUBJEK / KURSUS UTAMA
                     ======================================================== */}
-                <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-slate-900 border-b-2 border-indigo-500/40 flex flex-col md:flex-row md:items-center justify-between gap-5 relative">
+                <div
+                  id={`subject-header-${subject.id}`}
+                  onClick={() => toggleSubjectCard(subject.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleSubjectCard(subject.id);
+                    }
+                  }}
+                  aria-expanded={isSubjectExpanded}
+                  title={isSubjectExpanded ? "Klik untuk tutup maklumat & jadual sesi" : "Klik untuk papar maklumat & jadual sesi"}
+                  className={`p-5 sm:p-6 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-slate-900 hover:from-indigo-950 hover:to-slate-850 cursor-pointer transition-colors flex flex-col md:flex-row md:items-center justify-between gap-5 relative select-none group ${
+                    isSubjectExpanded ? 'border-b-2 border-indigo-500/40' : ''
+                  }`}
+                >
                   <div className="space-y-2 flex-1">
                     {/* Main Category Identifier Badge */}
                     <div className="flex flex-wrap items-center gap-2">
@@ -734,15 +852,30 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <span className="text-xs font-semibold text-slate-300 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-slate-700">
                         {subject.department || 'Jabatan Perakaunan'}
                       </span>
+                      {activeInSub.length > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                          <Radio className="w-3 h-3 text-emerald-400" />
+                          SESI AKTIF
+                        </span>
+                      )}
                     </div>
 
                     <div>
-                      <h3 className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                        {subject.name}
+                      <h3 className="text-lg sm:text-2xl font-black text-white tracking-tight group-hover:text-indigo-200 transition-colors flex items-center gap-2">
+                        <span>{subject.name}</span>
+                        {isSubjectExpanded ? (
+                          <ChevronUp className="w-5 h-5 text-indigo-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-indigo-300 shrink-0 transition-colors" />
+                        )}
                       </h3>
                       <p className="text-xs sm:text-sm text-slate-300 mt-1 flex flex-wrap items-center gap-2">
-                        <span>Pensyarah: <strong className="text-white font-bold">{subject.lecturerName}</strong></span>
-                        <span className="text-slate-600">•</span>
+                        {!activeLecturer && subject.lecturerName && (
+                          <>
+                            <span>Pensyarah: <strong className="text-white font-bold">{subject.lecturerName}</strong></span>
+                            <span className="text-slate-600">•</span>
+                          </>
+                        )}
                         <span>Kelas: <strong className="text-indigo-300 font-bold">{effectiveSections.join(', ') || 'Semua'}</strong> ({totalSubjectStudents} Pelajar)</span>
                         <span className="text-slate-600">•</span>
                         <span className="text-slate-400 font-medium">{subjectSessions.length} Sesi Terjadual</span>
@@ -754,8 +887,12 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                   <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
                     {/* Primary Action for this Subject: Add a new session schedule */}
                     <button
+                      type="button"
                       id={`btn-add-session-${subject.id}`}
-                      onClick={() => handleOpenAddSession(subject.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenAddSession(subject.id);
+                      }}
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95 border border-indigo-500/50"
                       title="Cipta & jadualkan sesi kuliah/amali baharu untuk subjek ini"
                     >
@@ -765,8 +902,10 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
                     {/* Secondary: Enrolled Students List */}
                     <button
+                      type="button"
                       id={`btn-view-enrolled-${subject.id}`}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setEnrolledModalSubject({
                           ...subject,
                           sections: effectiveSections
@@ -783,8 +922,10 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
                     {/* Secondary: Generate QR */}
                     <button
+                      type="button"
                       id={`btn-qr-enroll-subject-${subject.id}`}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setQrModalSubject(subject);
                         setQrModalClass(subject.sections?.[0] || 'DIA_4A');
                         setIsGenerateQRModalOpen(true);
@@ -798,8 +939,12 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     {/* Destructive / Subdued: Delete Subject (Only visible for Admin / Lecturer) */}
                     {(isAdmin || activeLecturer) && (
                       <button
+                        type="button"
                         id={`btn-delete-subject-${subject.id}`}
-                        onClick={() => handleDeleteSubjectClick(subject)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSubjectClick(subject);
+                        }}
                         className="p-2.5 rounded-xl bg-slate-950/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 border border-slate-800/80 hover:border-rose-500/30 text-xs transition-all cursor-pointer"
                         title="Padam Maklumat Subjek Ini"
                       >
@@ -810,9 +955,10 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 </div>
 
                 {/* ========================================================
-                    SUB-KATEGORI: SESI & JADUAL KULIAH
+                    SUB-KATEGORI: SESI & JADUAL KULIAH (HIDE SEBAGAI DEFAULT)
                     ======================================================== */}
-                <div className="p-4 sm:p-5 bg-slate-950/60 space-y-3">
+                {isSubjectExpanded && (
+                  <div className="p-4 sm:p-5 bg-slate-950/60 space-y-3 animate-fadeIn">
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-indigo-400" />
@@ -872,9 +1018,21 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <h4 className="text-sm font-bold text-white">
-                                {session.sessionName}
-                              </h4>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm font-bold text-white">
+                                  {session.sessionName}
+                                </h4>
+                                <button
+                                  type="button"
+                                  id={`btn-edit-active-session-${session.id}`}
+                                  onClick={() => handleOpenEditRemark(session)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-[11px] font-semibold transition-all cursor-pointer"
+                                  title="Ubah tajuk atau remark sesi ini"
+                                >
+                                  <Pencil className="w-3 h-3 text-indigo-400" />
+                                  <span>Ubah Remark</span>
+                                </button>
+                              </div>
                               <div className="text-xs text-slate-400">
                                 Kehadiran: <strong className="text-emerald-400">{count} / {classTarget} Hadir</strong>
                               </div>
@@ -913,9 +1071,21 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                                 </span>
                               )}
                             </div>
-                            <h4 className="text-sm font-bold text-white">
-                              {nextSession.sessionName}
-                            </h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-bold text-white">
+                                {nextSession.sessionName}
+                              </h4>
+                              <button
+                                type="button"
+                                id={`btn-edit-session-remark-${nextSession.id}`}
+                                onClick={() => handleOpenEditRemark(nextSession)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-[11px] font-semibold transition-all cursor-pointer"
+                                title="Ubah remark / tajuk sesi kuliah ini (cth: Kuliah Minggu 6 kepada Minggu 6a)"
+                              >
+                                <Pencil className="w-3 h-3 text-indigo-400" />
+                                <span>Ubah Remark</span>
+                              </button>
+                            </div>
                             <div className="text-xs text-slate-400">
                               Status: Sedia untuk diimbas • Sasaran: {nextSession.className && nextSession.className !== 'ALL' ? (studentCountByClass[nextSession.className.toUpperCase()] || 0) : totalSubjectStudents} Pelajar
                             </div>
@@ -930,6 +1100,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                               aria-label="Mula imbasan kehadiran"
                             >
                               <Play className="w-4 h-4 fill-current" />
+                            </button>
+                            <button
+                              type="button"
+                              id={`btn-action-edit-session-${nextSession.id}`}
+                              onClick={() => handleOpenEditRemark(nextSession)}
+                              className="p-2 rounded-lg bg-slate-800 hover:bg-indigo-600/20 text-slate-400 hover:text-indigo-300 border border-slate-700 hover:border-indigo-500/40 transition-all cursor-pointer"
+                              title="Ubah tajuk atau remark sesi (cth: Kuliah Minggu 6a)"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
                             {(isAdmin || activeLecturer) && (
                               <button
@@ -982,6 +1161,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                                       <span className="font-semibold text-slate-300 truncate">
                                         {session.sessionName}
                                       </span>
+                                      <button
+                                        type="button"
+                                        id={`btn-edit-past-session-${session.id}`}
+                                        onClick={() => handleOpenEditRemark(session)}
+                                        className="p-1 rounded text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-all cursor-pointer shrink-0"
+                                        title="Ubah remark sesi"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
                                       <span className="text-slate-500 text-[11px] shrink-0">
                                         {count > 0 ? `${count} / ${classTarget} Hadir` : 'Belum berlangsung'}
                                       </span>
@@ -1015,6 +1203,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             );
           })
@@ -1321,6 +1510,17 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Kemaskini Remark / Tajuk Sesi Kuliah */}
+      <EditSessionRemarkModal
+        isOpen={isEditModalOpen}
+        session={editingSession}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingSession(null);
+        }}
+        onSave={handleSaveEditedSession}
+      />
     </div>
   );
 };

@@ -200,11 +200,8 @@ export const StartAttendanceModal: React.FC<StartAttendanceModalProps> = ({
                           <div className="flex items-center gap-1.5">
                             <Layers className={`w-3.5 h-3.5 shrink-0 ${className === 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
                             <span className="text-xs font-bold uppercase tracking-wider">
-                              SEMUA KELAS (GABUNGAN)
+                              SEMUA KELAS
                             </span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 pl-5">
-                            Sesi khas — Ujian / Taklimat
                           </div>
                         </div>
                       </div>

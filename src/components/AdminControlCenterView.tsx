@@ -30,7 +30,8 @@ import {
   AlertCircle,
   History,
   LayoutDashboard,
-  HardDrive
+  HardDrive,
+  Sliders
 } from 'lucide-react';
 import { getInitials } from '../utils/studentUtils';
 import {
@@ -41,6 +42,9 @@ import {
 } from '../utils/csvHelper';
 import { GenerateLecturerQRModal } from './GenerateLecturerQRModal';
 import { AuditLogSection } from './AuditLogSection';
+import { ScannerSettingsModal, CustomPaceValues } from './ScannerSettingsModal';
+import { ScanPaceMode } from './ScannerView';
+import { soundService } from '../services/soundService';
 
 interface AdminControlCenterViewProps {
   lecturers: Lecturer[];
@@ -81,6 +85,15 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'AUDIT_LOG'>('OVERVIEW');
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isScannerSettingsOpen, setIsScannerSettingsOpen] = useState(false);
+  const [scanPace, setScanPace] = useState<ScanPaceMode>(() => {
+    try {
+      const saved = localStorage.getItem('classattend_scan_pace');
+      if (saved === 'RELAXED' || saved === 'BALANCED' || saved === 'FAST') return saved;
+    } catch {}
+    return 'BALANCED';
+  });
+  const [soundEnabled, setSoundEnabled] = useState(() => soundService.isEnabled());
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [backupToast, setBackupToast] = useState<string | null>(null);
 
@@ -173,6 +186,16 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
             >
               <Download className="w-4 h-4 text-emerald-400" />
               <span>Backup Kehadiran</span>
+            </button>
+            <button
+              type="button"
+              id="btn-admin-scanner-settings"
+              onClick={() => setIsScannerSettingsOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              title="Tetapan Kelajuan Pengimbas (FPS/Jeda) & Kelantangan Audio Kejayaan"
+            >
+              <Sliders className="w-4 h-4 text-indigo-400" />
+              <span>Tetapan Scanner</span>
             </button>
             <button
               type="button"
@@ -627,6 +650,35 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
       <GenerateLecturerQRModal
         isOpen={isQRModalOpen}
         onClose={() => setIsQRModalOpen(false)}
+      />
+
+      {/* Scanner Pace & Audio Settings Modal */}
+      <ScannerSettingsModal
+        isOpen={isScannerSettingsOpen}
+        onClose={() => setIsScannerSettingsOpen(false)}
+        currentPace={scanPace}
+        onSavePace={(newPace, customValues) => {
+          setScanPace(newPace);
+          try {
+            localStorage.setItem('classattend_scan_pace', newPace);
+            if (customValues) {
+              localStorage.setItem('classattend_scan_pace_is_custom', 'true');
+              localStorage.setItem('classattend_custom_fps', String(customValues.fps));
+              localStorage.setItem('classattend_custom_cooldown_sec', String(customValues.cooldownMs / 1000));
+              localStorage.setItem('classattend_custom_grace_sec', String(customValues.sameCodeGraceMs / 1000));
+            } else {
+              localStorage.setItem('classattend_scan_pace_is_custom', 'false');
+            }
+          } catch {}
+          setBackupToast('Tetapan kelajuan pengimbas & audio berjaya dikemas kini!');
+          setTimeout(() => setBackupToast(null), 3500);
+        }}
+        soundEnabled={soundEnabled}
+        onToggleSound={(enabled) => {
+          soundService.setEnabled(enabled);
+          setSoundEnabled(enabled);
+        }}
+        isAdmin={true}
       />
 
       {/* Backup Toast Notification */}

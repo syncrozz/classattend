@@ -57,10 +57,11 @@ import {
   FileSpreadsheet,
   HardDrive
 } from 'lucide-react';
+import { ScannerSettingsModal, CustomPaceValues } from './ScannerSettingsModal';
 
 export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
 
-interface PaceConfig {
+export interface PaceConfig {
   label: string;
   fps: number;
   cooldownMs: number;
@@ -68,7 +69,7 @@ interface PaceConfig {
   desc: string;
 }
 
-const PACE_CONFIGS: Record<ScanPaceMode, PaceConfig> = {
+export const PACE_CONFIGS: Record<ScanPaceMode, PaceConfig> = {
   RELAXED: {
     label: 'Santai (Selesa)',
     fps: 4,
@@ -91,6 +92,27 @@ const PACE_CONFIGS: Record<ScanPaceMode, PaceConfig> = {
     desc: '1.5s jeda • Imbasan pantas berterusan'
   }
 };
+
+export function getActivePaceConfig(pace: ScanPaceMode): PaceConfig {
+  if (typeof window !== 'undefined') {
+    try {
+      const isCustom = localStorage.getItem('classattend_scan_pace_is_custom') === 'true';
+      if (isCustom) {
+        const fps = parseInt(localStorage.getItem('classattend_custom_fps') || '6', 10);
+        const cooldownSec = parseFloat(localStorage.getItem('classattend_custom_cooldown_sec') || '2.5');
+        const graceSec = parseFloat(localStorage.getItem('classattend_custom_grace_sec') || '4.0');
+        return {
+          label: `Kustom (${fps} FPS)`,
+          fps,
+          cooldownMs: Math.round(cooldownSec * 1000),
+          sameCodeGraceMs: Math.round(graceSec * 1000),
+          desc: `${cooldownSec.toFixed(1)}s jeda • ${fps} FPS kadar kamera kustom`
+        };
+      }
+    } catch {}
+  }
+  return PACE_CONFIGS[pace] || PACE_CONFIGS.BALANCED;
+}
 
 interface ScannerViewProps {
   activeSession: AttendanceSession | null;
@@ -163,9 +185,12 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     } catch (e) {}
     return 'BALANCED';
   });
-  const [showPaceSettings, setShowPaceSettings] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [currentVolume, setCurrentVolume] = useState<number>(() => soundService.getVolume());
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [backupToast, setBackupToast] = useState<string | null>(null);
+
+  const activePaceConfig = getActivePaceConfig(scanPace);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const qrRegionId = 'qr-reader-studentattend';
@@ -264,7 +289,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   // Core scan execution with smart duplicate protection and dynamic cooldown
   const handleScannedData = useCallback((dataString: string, method: AttendanceMethod = 'CAMERA_SCAN') => {
     const now = Date.now();
-    const pace = PACE_CONFIGS[scanPaceRef.current];
+    const pace = getActivePaceConfig(scanPaceRef.current);
 
     // 1. SMART DUPLICATE PROTECTION:
     // If the exact same QR code was scanned within the sameCodeGraceMs window (e.g. 5 seconds),
@@ -343,7 +368,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         html5QrCodeRef.current = new Html5Qrcode(qrRegionId);
       }
 
-      const activeConfig = PACE_CONFIGS[scanPaceRef.current];
+      const activeConfig = getActivePaceConfig(scanPaceRef.current);
 
       await html5QrCodeRef.current.start(
         { facingMode: 'environment' },
@@ -379,11 +404,19 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   };
 
   // Restart camera when user changes FPS pace if camera is running
-  const handlePaceChange = async (newPace: ScanPaceMode) => {
+  const handlePaceChange = async (newPace: ScanPaceMode, customValues?: CustomPaceValues) => {
     setScanPace(newPace);
     scanPaceRef.current = newPace;
     try {
       localStorage.setItem('classattend_scan_pace', newPace);
+      if (customValues) {
+        localStorage.setItem('classattend_scan_pace_is_custom', 'true');
+        localStorage.setItem('classattend_custom_fps', String(customValues.fps));
+        localStorage.setItem('classattend_custom_cooldown_sec', String(customValues.cooldownMs / 1000));
+        localStorage.setItem('classattend_custom_grace_sec', String(customValues.sameCodeGraceMs / 1000));
+      } else {
+        localStorage.setItem('classattend_scan_pace_is_custom', 'false');
+      }
     } catch (e) {}
 
     isProcessingRef.current = false;
@@ -393,7 +426,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     if (isCameraActive && html5QrCodeRef.current) {
       try {
         await html5QrCodeRef.current.stop();
-        const activeConfig = PACE_CONFIGS[newPace];
+        const activeConfig = getActivePaceConfig(newPace);
         await html5QrCodeRef.current.start(
           { facingMode: 'environment' },
           {
@@ -555,6 +588,26 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Backup CSV</span>
+            </button>
+
+            {/* Master Admin Scanner Pace & Audio Settings Button */}
+            <button
+              type="button"
+              id="btn-scanner-settings-header"
+              onClick={() => {
+                if (!isAdmin) {
+                  onRequestAdminAccess('Tetapan Kelajuan & Audio Pengimbas');
+                }
+                setIsSettingsModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              title="Tetapan Kelajuan Imbasan (Pace) & Tahap Audio Kejayaan (Master Admin)"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Tetapan Pace & Audio</span>
+              <span className="px-1.5 py-0.5 rounded bg-indigo-500/30 text-[10px] font-mono text-indigo-200">
+                {activePaceConfig.label.split(' ')[0]} • {Math.round(currentVolume * 100)}%
+              </span>
             </button>
 
             {/* Sound Toggle */}
@@ -741,9 +794,24 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           {scannerMode === 'CAMERA' && (
             <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Camera className="w-4 h-4 text-indigo-400" />
                   <h3 className="text-sm font-bold text-white">Kamera Pengimbas QR</h3>
+                  <button
+                    type="button"
+                    id="btn-camera-pace-badge"
+                    onClick={() => {
+                      if (!isAdmin) {
+                        onRequestAdminAccess('Tetapan Kelajuan & Audio Pengimbas');
+                      }
+                      setIsSettingsModalOpen(true);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Ubah kadar kelajuan imbasan (Pace) atau kelantangan bunyi"
+                  >
+                    <Gauge className="w-3 h-3 text-indigo-400" />
+                    <span>Pace: {activePaceConfig.label.split(' ')[0]} ({activePaceConfig.fps} FPS)</span>
+                  </button>
                 </div>
                 <div className="flex items-center gap-2">
                   {!isCameraActive ? (
@@ -1392,6 +1460,24 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           <span className="text-xs font-bold">{backupToast}</span>
         </div>
       )}
+
+      {/* MASTER ADMIN SCANNER SETTINGS MODAL */}
+      <ScannerSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          setCurrentVolume(soundService.getVolume());
+        }}
+        currentPace={scanPace}
+        onSavePace={(newPace, customValues) => {
+          handlePaceChange(newPace, customValues);
+          setCurrentVolume(soundService.getVolume());
+        }}
+        soundEnabled={soundEnabled}
+        onToggleSound={onToggleSound}
+        isAdmin={isAdmin}
+        onRequestAdminAccess={onRequestAdminAccess}
+      />
     </div>
   );
 };

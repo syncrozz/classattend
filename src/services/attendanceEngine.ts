@@ -2718,6 +2718,19 @@ class AttendanceEngine {
     return updated;
   }
 
+  public updateSession(session: AttendanceSession): AttendanceSession[] {
+    const updated = this.sessions.map((s) => (s.id === session.id ? { ...s, ...session } : s));
+    this.sessions = updated;
+    this.saveSessionsLocally();
+    this.notifySessionListeners();
+
+    if (db) {
+      setDoc(doc(db, 'sessions', session.id), sanitizeForFirestore(session), { merge: true }).catch(console.warn);
+    }
+
+    return updated;
+  }
+
   public deleteSession(sessionId: string): AttendanceSession[] {
     const updated = this.sessions.filter((s) => s.id !== sessionId);
     this.sessions = updated;
