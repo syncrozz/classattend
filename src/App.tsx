@@ -234,7 +234,8 @@ export default function App() {
     };
   }, []);
 
-  const activeSession = sessions.find((s) => s.status === 'OPEN') || null;
+  const [selectedScannerSessionId, setSelectedScannerSessionId] = useState<string | null>(null);
+  const activeSession = (selectedScannerSessionId ? sessions.find((s) => s.id === selectedScannerSessionId && s.status === 'OPEN') : null) || sessions.find((s) => s.status === 'OPEN') || null;
 
   // Toggle Admin / Lecturer Auth Mode
   const handleToggleAdminMode = () => {
@@ -843,35 +844,27 @@ export default function App() {
                 onOpenLecturerRegistration={() => setIsLecturerSelfRegOpen(true)}
               />
             ) : currentRole === 'LECTURER' && activeLecturer ? (
-              <EventManagementView
-                subjects={subjects}
-                sessions={sessions}
-                attendanceRecords={attendanceRecords}
-                students={students}
-                lecturers={lecturers}
-                enrollments={enrollments}
-                teachingAssignments={teachingAssignments}
+              <LecturerWorkspaceView
                 activeLecturer={activeLecturer}
                 isAdmin={isAdmin}
-                onSetSessionStatus={handleSetSessionStatus}
-                onCreateSubject={handleCreateSubject}
-                onCreateSession={handleCreateSession}
-                onCreateMultipleSessions={handleCreateMultipleSessions}
-                onUpdateSession={handleUpdateSession}
-                onDeleteSession={handleDeleteSession}
-                onDeleteSubject={handleDeleteSubject}
+                subjects={subjects}
+                sessions={sessions}
+                students={students}
+                attendanceRecords={attendanceRecords}
+                teachingAssignments={teachingAssignments}
+                enrollments={enrollments}
+                activeSession={activeSession}
+                onOpenScanner={() => handleTabChange('scanner')}
                 onOpenScannerForSession={(sessionId) => {
+                  setSelectedScannerSessionId(sessionId);
                   handleSetSessionStatus(sessionId, 'OPEN');
                   handleTabChange('scanner');
                 }}
-                onOpenScanner={() => handleTabChange('scanner')}
-                onRequestAdminAccess={handleRequestAdminAccess}
-                onOpenCSVImport={() => setIsCSVModalOpen(true)}
-                onNavigateToStudents={() => handleTabChange('students')}
-                onOpenSelfRegistrationTest={(ctx) => {
-                  setSelfRegistrationContext(ctx);
-                  setIsSelfRegistrationOpen(true);
-                }}
+                onCreateSession={handleCreateSession}
+                onSetSessionStatus={handleSetSessionStatus}
+                onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+                onGoToStudents={() => handleTabChange('students')}
+                onGoToReports={() => handleTabChange('reports')}
               />
             ) : (
               <DashboardView
@@ -895,6 +888,7 @@ export default function App() {
           {activeTab === 'scanner' && (
             <ScannerView
               activeSession={activeSession}
+              initialSessionId={selectedScannerSessionId || activeSession?.id}
               allSessions={sessions}
               students={students}
               attendanceRecords={attendanceRecords}

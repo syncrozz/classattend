@@ -113,6 +113,7 @@ export interface AttendanceSession {
   section?: string;
   lecturerName: string; // e.g. "Khairi bin Abdul Rahman"
   lecturerEmail?: string; // e.g. "khairi@bpenawar.kpm.edu.my"
+  lecturerId?: string;
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm
@@ -122,6 +123,9 @@ export interface AttendanceSession {
   location?: string; // e.g. "Bilik Kuliah 3" / "Makmal Komputer"
   topic?: string;
   createdAt?: string;
+  updatedAt?: string;
+  targetCount?: number;
+  actualCount?: number;
   
   // Backward compatibility fields
   activityId?: string;
@@ -138,6 +142,7 @@ export interface AttendanceRecord {
   id: string; // Record ID (e.g. REC-172354890)
   sessionId: string; // Associated Session ID
   studentId: string; // Associated Student ID (No_Pelajar)
+  studentName?: string; // Cached or denormalized student name for offline/audit view
   timestamp: string; // ISO String
   status: AttendanceStatus; // PRESENT, ABSENT, etc.
   method: AttendanceMethod;

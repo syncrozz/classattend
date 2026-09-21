@@ -24,13 +24,16 @@ const dbId = rawDbId === '(default)' ? undefined : rawDbId;
 
 // Initialize Firestore with memoryLocalCache to prevent IndexedDB multi-tab primary lease lock contention
 // in iframes and multi-tab environments (avoiding 'Backfill Indexes' and 'Collect garbage' lease errors).
+// experimentalAutoDetectLongPolling enables automatic fallback to long-polling when WebSocket channels encounter proxy/network hiccups.
 try {
   firestoreInstance = dbId
     ? initializeFirestore(app, {
-        localCache: memoryLocalCache()
+        localCache: memoryLocalCache(),
+        experimentalAutoDetectLongPolling: true,
       }, dbId)
     : initializeFirestore(app, {
-        localCache: memoryLocalCache()
+        localCache: memoryLocalCache(),
+        experimentalAutoDetectLongPolling: true,
       });
 } catch {
   firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
@@ -44,8 +47,12 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Please check your Firebase configuration: client is offline.");
+    if (error instanceof Error) {
+      if (error.message.includes('the client is offline') || error.message.includes('unavailable') || error.message.includes('Could not reach Cloud Firestore')) {
+        console.warn("Firestore running in offline/cache mode until connection is restored.");
+      } else {
+        console.warn("Firestore connection check notice:", error.message);
+      }
     }
   }
 }

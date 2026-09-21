@@ -116,6 +116,7 @@ export function getActivePaceConfig(pace: ScanPaceMode): PaceConfig {
 
 interface ScannerViewProps {
   activeSession: AttendanceSession | null;
+  initialSessionId?: string;
   allSessions: AttendanceSession[];
   students: Student[];
   attendanceRecords: AttendanceRecord[];
@@ -132,6 +133,7 @@ interface ScannerViewProps {
 
 export const ScannerView: React.FC<ScannerViewProps> = ({
   activeSession,
+  initialSessionId,
   allSessions,
   students,
   attendanceRecords,
@@ -146,7 +148,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   onToggleSound
 }) => {
   const sortedSessions = sortSessionsLatestFirst(allSessions);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(activeSession?.id || sortedSessions[0]?.id || '');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(
+    initialSessionId || activeSession?.id || sortedSessions[0]?.id || ''
+  );
   
   // Tabs: 'CAMERA' | 'PROJECTOR_QR' | 'MANUAL'
   const [scannerMode, setScannerMode] = useState<'CAMERA' | 'PROJECTOR_QR' | 'MANUAL'>('CAMERA');
@@ -231,12 +235,14 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
 
-  // Ensure selectedSessionId defaults to activeSession when changed
+  // Ensure selectedSessionId defaults to initialSessionId or activeSession when changed
   useEffect(() => {
-    if (activeSession) {
+    if (initialSessionId) {
+      setSelectedSessionId(initialSessionId);
+    } else if (activeSession) {
       setSelectedSessionId(activeSession.id);
     }
-  }, [activeSession]);
+  }, [initialSessionId, activeSession]);
 
   const currentSession = allSessions.find((s) => s.id === selectedSessionId) || activeSession || sortedSessions[0];
 

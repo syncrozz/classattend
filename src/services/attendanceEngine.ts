@@ -2827,19 +2827,6 @@ class AttendanceEngine {
 
   public addSession(session: AttendanceSession) {
     let updated = [...this.sessions];
-    const sessionsToUpdate: AttendanceSession[] = [session];
-
-    if (session.status === 'OPEN') {
-      updated = updated.map((s) => {
-        if (s.id !== session.id && s.status === 'OPEN') {
-          const closed = { ...s, status: 'CLOSED' as EventStatus };
-          sessionsToUpdate.push(closed);
-          return closed;
-        }
-        return s;
-      });
-    }
-    
     const index = updated.findIndex((s) => s.id === session.id);
     if (index >= 0) {
       updated[index] = session;
@@ -2851,9 +2838,7 @@ class AttendanceEngine {
     this.saveSessionsLocally();
 
     if (db) {
-      sessionsToUpdate.forEach((s) => {
-        setDoc(doc(db, 'sessions', s.id), sanitizeForFirestore(s), { merge: true }).catch(console.warn);
-      });
+      setDoc(doc(db, 'sessions', session.id), sanitizeForFirestore(session), { merge: true }).catch(console.warn);
     }
 
     return updated;
@@ -2862,20 +2847,6 @@ class AttendanceEngine {
   public addMultipleSessions(newSessions: AttendanceSession[]): AttendanceSession[] {
     if (!newSessions || newSessions.length === 0) return this.sessions;
     let updated = [...this.sessions];
-    const sessionsToUpdate: AttendanceSession[] = [...newSessions];
-
-    const hasOpen = newSessions.some((s) => s.status === 'OPEN');
-    if (hasOpen) {
-      const openId = newSessions.find((s) => s.status === 'OPEN')?.id;
-      updated = updated.map((s) => {
-        if (s.id !== openId && s.status === 'OPEN') {
-          const closed = { ...s, status: 'CLOSED' as EventStatus };
-          sessionsToUpdate.push(closed);
-          return closed;
-        }
-        return s;
-      });
-    }
 
     for (const s of newSessions) {
       const index = updated.findIndex((item) => item.id === s.id);
@@ -2891,7 +2862,7 @@ class AttendanceEngine {
     this.notifySessionListeners();
 
     if (db) {
-      sessionsToUpdate.forEach((s) => {
+      newSessions.forEach((s) => {
         setDoc(doc(db, 'sessions', s.id), sanitizeForFirestore(s), { merge: true }).catch(console.warn);
       });
     }
@@ -2925,17 +2896,19 @@ class AttendanceEngine {
   }
 
   public setSessionStatus(sessionId: string, newStatus: EventStatus): AttendanceSession[] {
-    const sessionsToUpdate: AttendanceSession[] = [];
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    let targetUpdated: AttendanceSession | null = null;
+
     const updated = this.sessions.map((session) => {
       if (session.id === sessionId) {
-        const modified = { ...session, status: newStatus };
-        sessionsToUpdate.push(modified);
-        return modified;
-      }
-      if (newStatus === 'OPEN' && session.status === 'OPEN') {
-        const closed = { ...session, status: 'CLOSED' as EventStatus };
-        sessionsToUpdate.push(closed);
-        return closed;
+        targetUpdated = {
+          ...session,
+          status: newStatus,
+          endTime: newStatus === 'CLOSED' ? (session.endTime || timeStr) : session.endTime,
+          updatedAt: now.toISOString()
+        };
+        return targetUpdated;
       }
       return session;
     });
@@ -2943,14 +2916,75 @@ class AttendanceEngine {
     this.sessions = updated;
     this.saveSessionsLocally();
 
-    if (db) {
-      sessionsToUpdate.forEach((s) => {
-        setDoc(doc(db, 'sessions', s.id), sanitizeForFirestore(s), { merge: true }).catch(console.warn);
-      });
+    if (db && targetUpdated) {
+      setDoc(doc(db, 'sessions', (targetUpdated as AttendanceSession).id), sanitizeForFirestore(targetUpdated), { merge: true }).catch(console.warn);
     }
 
     return updated;
   }
+
+  public findActiveSession(subjectCode: string, className: string, lecturerId?: string): AttendanceSession | undefined {
+    const normTargetClass = normalizeClassCode(className);
+    return this.sessions.find((s) => {
+      if (s.status !== 'OPEN') return false;
+      const isSubjMatch = s.subjectCode === subjectCode || s.subjectId === subjectCode;
+      const isClassMatch = normalizeClassCode(s.className) === normTargetClass;
+      const isLecMatch = !lecturerId || s.lecturerId === lecturerId;
+      return isSubjMatch && isClassMatch && isLecMatch;
+    });
+  }
+
+  public activateClassSession(
+    subject: Subject,
+    className: string,
+    lecturer: Lecturer
+  ): { session: AttendanceSession; isExisting: boolean; conflictingSession?: AttendanceSession } {
+    // 1. Check for existing OPEN session for the exact same subject and class (Duplicate Protection)
+    const existing = this.findActiveSession(subject.code, className, lecturer.id);
+    if (existing) {
+      return { session: existing, isExisting: true };
+    }
+
+    // 2. Check for other OPEN sessions by this lecturer or college (Information only - DO NOT AUTO CLOSE)
+    const conflicting = this.sessions.find((s) => s.status === 'OPEN' && (s.lecturerId === lecturer.id || s.subjectCode === subject.code));
+
+    // 3. Determine target student count
+    const targetStudents = this.getStudentsForSubjectClass(subject.code, className);
+    const targetCount = targetStudents.length > 0 ? targetStudents.length : 30;
+
+    // 4. Current timestamp
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // 5. Synthesize authoritative session payload (SES v4.5 Simple by Default)
+    // Preserves exact className without silent destructive rewriting
+    const newSession: AttendanceSession = {
+      id: `SES-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      subjectId: subject.id,
+      subjectCode: subject.code,
+      subjectName: subject.name,
+      className: className,
+      lecturerId: lecturer.id,
+      lecturerName: lecturer.name,
+      lecturerEmail: lecturer.email,
+      sessionName: `${subject.code} - ${className}`,
+      date: dateStr,
+      startTime: timeStr,
+      endTime: '',
+      status: 'OPEN',
+      attendanceMethod: 'QR',
+      targetCount,
+      actualCount: 0,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
+
+    // Add session without closing any existing session
+    this.addSession(newSession);
+    return { session: newSession, isExisting: false, conflictingSession: conflicting };
+  }
+
 
   public addAttendanceRecord(record: AttendanceRecord) {
     this.attendanceRecords = [record, ...this.attendanceRecords.filter((r) => r.id !== record.id)];

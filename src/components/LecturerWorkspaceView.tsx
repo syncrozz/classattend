@@ -1,1293 +1,1207 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Lecturer,
   Subject,
   AttendanceSession,
-  AttendanceRecord,
   Student,
+  AttendanceRecord,
   TeachingAssignment,
-  ScanResult
+  Enrollment,
+  Lecturer
 } from '../types';
 import {
-  BookOpen,
   QrCode,
   Users,
   CheckCircle2,
+  Calendar,
   Clock,
   Sparkles,
-  ArrowRight,
-  Plus,
-  Layers,
-  CalendarCheck,
   Search,
-  FileSpreadsheet,
-  AlertCircle,
-  ExternalLink,
+  BookOpen,
   GraduationCap,
   Play,
-  Download,
-  HardDrive,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Pencil
+  Maximize2,
+  Minimize2,
+  X,
+  AlertTriangle,
+  ArrowRight,
+  ShieldCheck,
+  PlusCircle,
+  FolderPlus
 } from 'lucide-react';
-import { soundService } from '../services/soundService';
-import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import { attendanceEngine } from '../services/attendanceEngine';
 import {
-  exportScannedAttendeesOnlyToCSV,
-  exportAllAttendanceRecordsToCSV,
-  generateAttendanceBackupJSON,
-  downloadCSV,
-  downloadJSON
-} from '../utils/csvHelper';
-import { StartAttendanceModal } from './StartAttendanceModal';
-import { LecturerManageSubjectsModal } from './LecturerManageSubjectsModal';
-import { EditSessionRemarkModal } from './EditSessionRemarkModal';
+  validateClassCode,
+  STANDARD_CLASS_CATALOGUE,
+  normalizeClassCode
+} from '../utils/classHelper';
+import {
+  filterAuthorizedSessions,
+  calculateAttendanceMetrics,
+  formatSafeEndTime,
+  isLecturerAuthorizedForSession
+} from '../utils/sessionAuth';
+import { SessionDetailView } from './SessionDetailView';
 
 interface LecturerWorkspaceViewProps {
-  activeLecturer?: Lecturer | null;
-  lecturer?: Lecturer | null;
-  isAdmin?: boolean;
+  activeLecturer: Lecturer;
+  isAdmin: boolean;
   subjects: Subject[];
   sessions: AttendanceSession[];
   students: Student[];
   attendanceRecords: AttendanceRecord[];
   teachingAssignments: TeachingAssignment[];
+  enrollments: Enrollment[];
+  activeSession: AttendanceSession | null;
   onOpenScanner: () => void;
-  onGoToActivities: () => void;
-  onGoToStudents?: () => void;
-  onGoToReports: () => void;
-  onGoToGuide?: () => void;
+  onOpenScannerForSession: (sessionId: string) => void;
+  onCreateSession: (session: AttendanceSession) => void;
+  onSetSessionStatus: (sessionId: string, status: 'OPEN' | 'CLOSED' | 'ARCHIVED') => void;
   onCloseActiveSession: (sessionId: string) => void;
-  onQuickSimulateScan?: (studentId: string) => ScanResult;
-  onCreateSession?: (session: AttendanceSession) => void;
-  onUpdateSession?: (session: AttendanceSession) => void;
-  onStartSessionForClass?: (subjectCode: string, subjectName: string, className: string) => void;
-  onSwitchToAdminMode?: () => void;
+  onGoToStudents: () => void;
+  onGoToReports: () => void;
 }
 
 export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   activeLecturer,
-  lecturer: propLecturer,
-  isAdmin = false,
+  isAdmin,
   subjects,
   sessions,
   students,
   attendanceRecords,
   teachingAssignments,
+  enrollments: _enrollments,
+  activeSession: propActiveSession,
   onOpenScanner,
-  onGoToActivities,
-  onGoToStudents,
-  onGoToReports,
-  onGoToGuide,
-  onCloseActiveSession,
-  onQuickSimulateScan,
-  onCreateSession,
-  onUpdateSession,
-  onStartSessionForClass,
-  onSwitchToAdminMode
+  onOpenScannerForSession,
+  onCreateSession: _onCreateSession,
+  onSetSessionStatus,
+  onCloseActiveSession: _onCloseActiveSession,
+  onGoToStudents: _onGoToStudents,
+  onGoToReports: _onGoToReports
 }) => {
-  const [searchFilter, setSearchFilter] = useState('');
-  const [backupToast, setBackupToast] = useState<string | null>(null);
+  // 1. Build Official Class Catalogue from database & standard fallback
+  const officialCatalogue = useMemo(() => {
+    const set = new Set<string>(STANDARD_CLASS_CATALOGUE);
+    teachingAssignments.forEach((ta) => {
+      if (ta.className) set.add(ta.className.trim().toUpperCase());
+    });
+    subjects.forEach((sub) => {
+      (sub.sections || []).forEach((sec) => set.add(sec.trim().toUpperCase()));
+    });
+    students.forEach((st) => {
+      if (st.className) set.add(st.className.trim().toUpperCase());
+    });
+    return Array.from(set).sort();
+  }, [teachingAssignments, subjects, students]);
 
-  // Edit Session Remark Modal state
-  const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // 2. Identify Lecturer's assigned subjects & classes
+  const myAssignments = useMemo(() => {
+    return teachingAssignments.filter((ta) => {
+      const matchId = ta.lecturerId === activeLecturer.id;
+      const matchEmail = ta.lecturerEmail && activeLecturer.email && ta.lecturerEmail.toLowerCase() === activeLecturer.email.toLowerCase();
+      const matchName = ta.lecturerName && activeLecturer.name && ta.lecturerName.toLowerCase() === activeLecturer.name.toLowerCase();
+      return matchId || matchEmail || matchName;
+    });
+  }, [teachingAssignments, activeLecturer]);
 
-  const handleSaveEditedSession = (updatedSession: AttendanceSession) => {
-    if (onUpdateSession) {
-      onUpdateSession(updatedSession);
+  // Assigned subject codes
+  const myAssignedSubjectCodes = useMemo(() => {
+    const codes = new Set<string>();
+    myAssignments.forEach((ta) => {
+      if (ta.subjectCode) codes.add(ta.subjectCode.toUpperCase());
+    });
+    // Fallback: If no explicit assignment, give access to college subjects
+    if (codes.size === 0) {
+      subjects.forEach((s) => codes.add(s.code.toUpperCase()));
     }
-    setEditingSession(null);
-    setIsEditModalOpen(false);
-  };
-  const [startModalContext, setStartModalContext] = useState<{
-    subjectCode: string;
-    subjectName: string;
-    className: string;
-    studentCount: number;
-    availableClasses: string[];
-  } | null>(null);
-  const [selectedClassMap, setSelectedClassMap] = useState<Record<string, string>>({});
-  const [isManageSubjectsModalOpen, setIsManageSubjectsModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'READY' | 'RUNNING'>('ALL');
-  const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
+    return codes;
+  }, [myAssignments, subjects]);
 
-  const toggleExpand = (subjectCode: string) => {
-    soundService.playClick();
-    setExpandedCodes((prev) => ({
-      ...prev,
-      [subjectCode]: !prev[subjectCode]
-    }));
-  };
+  // Available subjects for this lecturer
+  const availableSubjects = useMemo(() => {
+    const filtered = subjects.filter((s) => myAssignedSubjectCodes.has(s.code.toUpperCase()));
+    return filtered.length > 0 ? filtered : subjects;
+  }, [subjects, myAssignedSubjectCodes]);
 
-  // Resolve current active lecturer with safe fallback
-  const lecturer: Lecturer = activeLecturer || propLecturer || {
-    id: 'LEC-ACTIVE',
-    name: 'PENSYARAH KPM',
-    email: 'pensyarah@bpenawar.kpm.edu.my',
-    icNumber: '861115-01-5305',
-    pin: '5305',
-    department: 'Jabatan Perakaunan',
-    role: 'LECTURER',
-    status: 'ACTIVE',
-    assignedClasses: ['DIA_4A', 'DIA_4B'],
-    assignedSubjects: ['FAR210 - Financial Accounting 2']
-  };
-
-  // 1. Filter teaching assignments for this lecturer
-  const myAssignments = teachingAssignments.filter(
-    (ta) =>
-      ta.lecturerId === lecturer.id ||
-      ta.lecturerEmail?.toLowerCase() === lecturer.email.toLowerCase() ||
-      ta.lecturerName?.toLowerCase().includes(lecturer.name.toLowerCase())
-  );
-
-  // Group assignments by Subject Code
-  const mySubjectsMap = new Map<string, { subjectCode: string; subjectName: string; classes: string[] }>();
-
-  myAssignments.forEach((ta) => {
-    const code = ta.subjectCode.toUpperCase();
-    if (!mySubjectsMap.has(code)) {
-      mySubjectsMap.set(code, {
-        subjectCode: code,
-        subjectName: ta.subjectName,
-        classes: [ta.className]
-      });
-    } else {
-      const existing = mySubjectsMap.get(code)!;
-      if (!existing.classes.includes(ta.className)) {
-        existing.classes.push(ta.className);
-      }
-    }
+  // State: Selection
+  const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(() => {
+    return availableSubjects[0]?.code || '';
   });
 
-  // Fallback: If no teaching assignments table records, derive from lecturer.assignedSubjects & assignedClasses
-  if (mySubjectsMap.size === 0) {
-    const defaultClasses = lecturer.assignedClasses && lecturer.assignedClasses.length > 0 ? lecturer.assignedClasses : ['DIA_4A'];
-    (lecturer.assignedSubjects || []).forEach((sub) => {
-      const code = sub.includes('-') ? sub.split('-')[0].trim().toUpperCase() : sub.trim().toUpperCase();
-      const name = sub.includes('-') ? sub.split('-')[1].trim() : sub;
-      mySubjectsMap.set(code, {
-        subjectCode: code,
-        subjectName: name,
-        classes: defaultClasses
+  const selectedSubject = useMemo(() => {
+    return availableSubjects.find((s) => s.code.toUpperCase() === selectedSubjectCode.toUpperCase()) || availableSubjects[0];
+  }, [availableSubjects, selectedSubjectCode]);
+
+  // Classes for the selected subject: Admin-assigned classes appear FIRST
+  const availableClassesForSubject = useMemo(() => {
+    if (!selectedSubject) return [];
+
+    const assignedSet = new Set<string>();
+    myAssignments
+      .filter((ta) => ta.subjectCode.toUpperCase() === selectedSubject.code.toUpperCase())
+      .forEach((ta) => {
+        if (ta.className) assignedSet.add(ta.className.trim().toUpperCase());
       });
-    });
-  }
 
-  const mySubjectsList = Array.from(mySubjectsMap.values());
-  const myClassNamesSet = new Set<string>();
-  mySubjectsList.forEach((s) => s.classes.forEach((c) => myClassNamesSet.add(c.toUpperCase())));
-
-  // Dynamic counts for top control bar
-  const countAllSubjects = mySubjectsList.length;
-  const countRunningSubjects = mySubjectsList.filter((sub) =>
-    sessions.some(
-      (s) =>
-        s.status === 'OPEN' &&
-        (s.subjectCode || '').toUpperCase() === sub.subjectCode.toUpperCase()
-    )
-  ).length;
-  const countReadySubjects = countAllSubjects - countRunningSubjects;
-
-  // Filter subjects by search and status
-  const filteredSubjectsList = mySubjectsList.filter((sub) => {
-    if (searchFilter.trim()) {
-      const q = searchFilter.trim().toLowerCase();
-      const matchCode = sub.subjectCode.toLowerCase().includes(q);
-      const matchName = sub.subjectName.toLowerCase().includes(q);
-      const matchClass = sub.classes.some((c) => c.toLowerCase().includes(q));
-      if (!matchCode && !matchName && !matchClass) {
-        return false;
-      }
-    }
-
-    const isRunning = sessions.some(
-      (s) =>
-        s.status === 'OPEN' &&
-        (s.subjectCode || '').toUpperCase() === sub.subjectCode.toUpperCase()
+    // Subject sections from subject entity
+    const subjectSections = new Set<string>(
+      (selectedSubject.sections || []).map((s) => s.trim().toUpperCase())
     );
 
-    if (statusFilter === 'RUNNING') return isRunning;
-    if (statusFilter === 'READY') return !isRunning;
-    return true;
+    // List admin-assigned first
+    const assignedList = Array.from(assignedSet);
+    const otherSections = Array.from(subjectSections).filter((s) => !assignedSet.has(s));
+
+    // Combine: Assigned first, then other sections
+    const combined = [...assignedList, ...otherSections];
+
+    // If still empty, provide standard college accounting classes
+    if (combined.length === 0) {
+      return ['DIA3A', 'DIA3B', 'DIA3C', 'DLM4A'];
+    }
+
+    return combined;
+  }, [selectedSubject, myAssignments]);
+
+  const [selectedClass, setSelectedClass] = useState<string>(() => {
+    return availableClassesForSubject[0] || 'DIA3A';
   });
 
-  // 2. Active Session for this Lecturer's classes or opened by this Lecturer
-  const activeSession = sessions.find((s) => {
-    if (s.status !== 'OPEN') return false;
-    const sessionClass = (s.className || '').toUpperCase();
-    const sessionSubCode = (s.subjectCode || '').toUpperCase();
-    const matchClass = !sessionClass || sessionClass === 'ALL' || myClassNamesSet.has(sessionClass);
-    const matchSub = !sessionSubCode || mySubjectsMap.has(sessionSubCode);
-    const matchLecturer = (s.lecturerEmail && s.lecturerEmail.toLowerCase() === lecturer.email.toLowerCase()) ||
-                          (s.lecturerName && s.lecturerName.toLowerCase().includes(lecturer.name.toLowerCase()));
-    return matchLecturer || (matchClass && matchSub);
-  }) || null;
+  // Keep selectedClass synchronized if available classes change
+  React.useEffect(() => {
+    if (availableClassesForSubject.length > 0 && !availableClassesForSubject.includes(selectedClass)) {
+      setSelectedClass(availableClassesForSubject[0]);
+    }
+  }, [availableClassesForSubject, selectedClass]);
 
-  // Active session stats
-  const activeSessionRecords = activeSession
-    ? attendanceRecords.filter((r) => r.sessionId === activeSession.id && r.status === 'PRESENT')
-    : [];
+  // State: Add other class picker
+  const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+  const [customClassInput, setCustomClassInput] = useState('');
+  const [customClassValidation, setCustomClassValidation] = useState<{
+    isValid: boolean;
+    suggestions: string[];
+    message?: string;
+  } | null>(null);
 
-  const targetStudentsForActive = activeSession
-    ? activeSession.className && activeSession.className !== 'ALL'
-      ? students.filter((s) => s.className.toUpperCase() === activeSession.className?.toUpperCase())
-      : students.filter((s) => myClassNamesSet.has(s.className.toUpperCase()))
-    : [];
+  // Active Session Detection (Check if ANY session is OPEN)
+  const currentOpenSession = useMemo(() => {
+    if (propActiveSession && propActiveSession.status === 'OPEN') return propActiveSession;
+    return sessions.find((s) => s.status === 'OPEN') || null;
+  }, [propActiveSession, sessions]);
 
-  const activePercent =
-    targetStudentsForActive.length > 0
-      ? Math.round((activeSessionRecords.length / targetStudentsForActive.length) * 100)
-      : 0;
+  // Does selected subject and class match an active session?
+  const isSelectedActive = useMemo(() => {
+    if (!currentOpenSession || !selectedSubject) return false;
+    const subjMatch = currentOpenSession.subjectCode === selectedSubject.code || currentOpenSession.subjectId === selectedSubject.id;
+    const classMatch = normalizeClassCode(currentOpenSession.className) === normalizeClassCode(selectedClass);
+    return subjMatch && classMatch;
+  }, [currentOpenSession, selectedSubject, selectedClass]);
 
-  // 3. Filter recent records for my classes/subjects
-  const myRecentRecords = attendanceRecords
-    .filter((r) => {
-      const st = students.find((s) => s.id === r.studentId);
-      if (!st) return false;
-      const classMatch = myClassNamesSet.has(st.className.toUpperCase());
-      const session = sessions.find((sess) => sess.id === r.sessionId);
-      const subMatch = session?.subjectCode && mySubjectsMap.has(session.subjectCode.toUpperCase());
-      return classMatch || subMatch;
-    })
-    .slice(-10)
-    .reverse();
+  // Is there another session OPEN for a different subject/class?
+  const isAnotherSessionOpen = useMemo(() => {
+    if (!currentOpenSession || !selectedSubject) return false;
+    return !isSelectedActive;
+  }, [currentOpenSession, isSelectedActive, selectedSubject]);
+
+  // Persistent Detail Session across refresh and URL navigation
+  const DETAIL_SESSION_STORAGE_KEY = 'syncrozz_active_detail_session_id';
+
+  const getInitialDetailSessionId = (): string | null => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash.startsWith('#session-detail')) {
+        const q = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
+        const params = new URLSearchParams(q);
+        const id = params.get('id');
+        if (id) return id;
+      }
+      const stored = sessionStorage.getItem(DETAIL_SESSION_STORAGE_KEY);
+      if (stored) return stored;
+    }
+    return null;
+  };
+
+  // Modal & Subview states
+  const [selectedSessionIdForDetail, setSelectedSessionIdForDetail] = useState<string | null>(getInitialDetailSessionId);
+  const [isQrProjectorOpen, setIsQrProjectorOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [inspectSession, setInspectSession] = useState<AttendanceSession | null>(null);
+  const [confirmEndSessionId, setConfirmEndSessionId] = useState<string | null>(null);
+  const [confirmCloseOtherSessionId, setConfirmCloseOtherSessionId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+
+  const handleOpenSessionDetail = (sessionId: string) => {
+    setSelectedSessionIdForDetail(sessionId);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(DETAIL_SESSION_STORAGE_KEY, sessionId);
+      window.location.hash = `#session-detail?id=${sessionId}`;
+    }
+  };
+
+  const handleCloseSessionDetail = () => {
+    setSelectedSessionIdForDetail(null);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(DETAIL_SESSION_STORAGE_KEY);
+      if (window.location.hash.startsWith('#session-detail')) {
+        window.location.hash = '';
+      }
+    }
+  };
+
+  // Synchronize hash back/forward button navigation
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      if (typeof window === 'undefined') return;
+      const hash = window.location.hash;
+      if (hash.startsWith('#session-detail')) {
+        const q = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
+        const params = new URLSearchParams(q);
+        const id = params.get('id');
+        if (id) {
+          setSelectedSessionIdForDetail(id);
+          sessionStorage.setItem(DETAIL_SESSION_STORAGE_KEY, id);
+          return;
+        }
+      } else if (selectedSessionIdForDetail && !hash.startsWith('#session-detail')) {
+        setSelectedSessionIdForDetail(null);
+        sessionStorage.removeItem(DETAIL_SESSION_STORAGE_KEY);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [selectedSessionIdForDetail]);
+
+  // Active session statistics
+  const activeSessionRecords = useMemo(() => {
+    if (!currentOpenSession) return [];
+    return attendanceRecords.filter((r) => r.sessionId === currentOpenSession.id && r.status === 'PRESENT');
+  }, [currentOpenSession, attendanceRecords]);
+
+  const activeTargetStudents = useMemo(() => {
+    if (!currentOpenSession) return [];
+    const norm = normalizeClassCode(currentOpenSession.className);
+    return students.filter((s) => normalizeClassCode(s.className) === norm);
+  }, [currentOpenSession, students]);
+
+  const activeTargetCount = currentOpenSession?.targetCount || (activeTargetStudents.length > 0 ? activeTargetStudents.length : 30);
+  const activePercent = Math.min(100, Math.round((activeSessionRecords.length / Math.max(1, activeTargetCount)) * 100));
+
+  // Attendance History: sorted descending newest first, strictly respecting lecturer identity & authorized teaching assignments
+  const historySessions = useMemo(() => {
+    return filterAuthorizedSessions(sessions, activeLecturer, isAdmin, teachingAssignments);
+  }, [sessions, activeLecturer, isAdmin, teachingAssignments]);
+
+  const selectedSessionForDetail = useMemo(() => {
+    if (!selectedSessionIdForDetail) return null;
+    const found = sessions.find((s) => s.id === selectedSessionIdForDetail);
+    if (!found) return null;
+    if (!isLecturerAuthorizedForSession(found, activeLecturer, isAdmin, teachingAssignments)) {
+      return null;
+    }
+    return found;
+  }, [selectedSessionIdForDetail, sessions, activeLecturer, isAdmin, teachingAssignments]);
+
+  const recentSessions = historySessions;
+
+  // Validation handler for custom class input
+  const handleCustomClassInputChange = (val: string) => {
+    setCustomClassInput(val);
+    if (!val.trim()) {
+      setCustomClassValidation(null);
+      return;
+    }
+    const result = validateClassCode(val, officialCatalogue);
+    setCustomClassValidation(result);
+  };
+
+  const handleSelectSuggestedClass = (className: string) => {
+    setSelectedClass(className);
+    setCustomClassInput('');
+    setCustomClassValidation(null);
+    setIsAddClassOpen(false);
+  };
+
+  const handleConfirmCustomClass = () => {
+    if (!customClassInput.trim()) return;
+    const result = validateClassCode(customClassInput, officialCatalogue);
+    if (result.isValid && result.exactMatch) {
+      setSelectedClass(result.exactMatch);
+      setCustomClassInput('');
+      setCustomClassValidation(null);
+      setIsAddClassOpen(false);
+    } else {
+      setCustomClassValidation(result);
+    }
+  };
+
+  // 1-Tap Activation Handler
+  const handleActivateSession = () => {
+    if (!selectedSubject || !selectedClass) {
+      setActionNotice({ type: 'error', message: 'Sila pilih subjek dan kelas terlebih dahulu.' });
+      return;
+    }
+
+    // 1. If this exact session is already open -> Resume it!
+    if (isSelectedActive && currentOpenSession) {
+      onOpenScannerForSession(currentOpenSession.id);
+      return;
+    }
+
+    // 2. If another session is OPEN -> Do NOT automatically close it!
+    // Offer warning to let lecturer resume or explicitly close first
+    if (isAnotherSessionOpen && currentOpenSession) {
+      setActionNotice({
+        type: 'warning',
+        message: `Sesi "${currentOpenSession.subjectCode} - ${currentOpenSession.className}" sedang dibuka. Sistem tidak menutup sesi tersebut secara automatik untuk memelihara integriti data.`
+      });
+      return;
+    }
+
+    // 3. Activate session via authoritative engine
+    try {
+      const res = attendanceEngine.activateClassSession(selectedSubject, selectedClass, activeLecturer);
+      setActionNotice({
+        type: 'success',
+        message: `Sesi kehadiran untuk ${selectedSubject.code} (${selectedClass}) berjaya diaktifkan!`
+      });
+      // Seamlessly navigate to scanner
+      onOpenScannerForSession(res.session.id);
+    } catch (err) {
+      console.error('Failed to activate session:', err);
+      setActionNotice({ type: 'error', message: 'Ralat mengaktifkan sesi. Sila cuba lagi.' });
+    }
+  };
+
+  // Explicit End Session Confirmation Handler
+  const handleConfirmEndSession = () => {
+    if (!confirmEndSessionId) return;
+    onSetSessionStatus(confirmEndSessionId, 'CLOSED');
+    setConfirmEndSessionId(null);
+    setActionNotice({ type: 'success', message: 'Sesi kehadiran berjaya ditamatkan dan rekod disimpan.' });
+  };
+
+  // Explicit Close Other Session to proceed
+  const handleExplicitCloseOtherSession = () => {
+    if (!confirmCloseOtherSessionId) return;
+    onSetSessionStatus(confirmCloseOtherSessionId, 'CLOSED');
+    setConfirmCloseOtherSessionId(null);
+    setActionNotice({ type: 'success', message: 'Sesi terdahulu telah ditamatkan. Anda kini boleh memulakan sesi baharu.' });
+  };
+
+  // SUBVIEW: SESSION DETAIL VIEW
+  if (selectedSessionForDetail) {
+    return (
+      <SessionDetailView
+        session={selectedSessionForDetail}
+        activeLecturer={activeLecturer}
+        isAdmin={isAdmin}
+        attendanceRecords={attendanceRecords}
+        students={students}
+        teachingAssignments={teachingAssignments}
+        myAssignedSubjectCodes={myAssignedSubjectCodes}
+        onBack={handleCloseSessionDetail}
+        onOpenScannerForSession={onOpenScannerForSession}
+      />
+    );
+  }
 
   return (
-    <div id="lecturer-workspace" className="space-y-6 animate-fadeIn pb-12">
-      {/* 1. Lecturer Workspace Greeting Header */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Ruang Kerja Pensyarah</span>
+    <div id="lecturer-workspace-view" className="space-y-6 max-w-6xl mx-auto pb-12">
+      {/* 1. LECTURER IDENTITY BAR (Compact, ≤64px height) */}
+      <header
+        id="lecturer-identity-bar"
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md backdrop-blur-sm"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-bold text-lg shadow-inner flex-shrink-0">
+            {activeLecturer.name?.charAt(0) || 'P'}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                {activeLecturer.name}
+              </h1>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                {activeLecturer.department || 'Jabatan Perakaunan'}
+              </span>
             </div>
-            <h1 id="lecturer-greeting-heading" className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              Hi, {lecturer.name}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-300 flex items-center gap-2">
-              <span>{lecturer.department || 'Jabatan Perakaunan'}</span>
-              <span className="text-slate-500">•</span>
-              <span className="text-indigo-400 font-mono">{lecturer.email}</span>
+            <p className="text-xs text-slate-400 font-mono">
+              {activeLecturer.email}
             </p>
           </div>
-
-          {/* Quick Action to Start or View Sessions */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              id="btn-workspace-open-scanner"
-              onClick={onOpenScanner}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Buka Pengimbas</span>
-            </button>
-            <button
-              type="button"
-              id="btn-workspace-new-session"
-              onClick={onGoToActivities}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Sesi Baharu</span>
-            </button>
-          </div>
         </div>
-      </div>
 
-      {/* 2. Active Class / Attendance Banner */}
-      {activeSession ? (
+        <div className="flex items-center gap-2">
+          <button
+            id="header-open-scanner-btn"
+            type="button"
+            onClick={onOpenScanner}
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[48px] rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98]"
+          >
+            <QrCode className="w-5 h-5 text-indigo-200" />
+            <span>Buka Pengimbas</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Action Notification / Feedback Banner */}
+      {actionNotice && (
         <div
-          id="lecturer-active-session-card"
-          className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 space-y-4"
+          className={`p-3.5 rounded-xl border text-sm flex items-center justify-between gap-3 animate-fadeIn ${
+            actionNotice.type === 'success'
+              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+              : actionNotice.type === 'warning'
+              ? 'bg-amber-950/60 border-amber-500/40 text-amber-200'
+              : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+          }`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="relative flex h-3.5 w-3.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-bold">
-                    {activeSession.subjectCode || 'SUBJEK'}
-                  </span>
-                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-bold">
-                    Kelas {activeSession.className || 'Semua'}
-                  </span>
-                  <span className="text-[10px] uppercase font-extrabold text-emerald-400 tracking-wider">
-                    SEDANG BERLANGSUNG (LIVE)
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <h3 className="text-lg font-bold text-white">
-                    {activeSession.sessionName}
-                  </h3>
-                  <button
-                    type="button"
-                    id="btn-workspace-edit-session-remark"
-                    onClick={() => {
-                      setEditingSession(activeSession);
-                      setIsEditModalOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer"
-                    title="Ubah tajuk atau remark sesi ini (cth: Kuliah Minggu 6a)"
-                  >
-                    <Pencil className="w-3 h-3 text-emerald-300" />
-                    <span>Ubah Remark</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                id="btn-workspace-backup-active-csv"
-                onClick={() => {
-                  const csvContent = exportScannedAttendeesOnlyToCSV(activeSession, students, attendanceRecords);
-                  const dateStr = activeSession.date || new Date().toISOString().split('T')[0];
-                  const subStr = (activeSession.subjectCode || activeSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
-                  downloadCSV(csvContent, `Backup_Kehadiran_${subStr}_${dateStr}.csv`);
-                  setBackupToast(`Backup CSV (${activeSessionRecords.length} pelajar hadir) berjaya dimuat turun!`);
-                  setTimeout(() => setBackupToast(null), 4000);
-                }}
-                disabled={activeSessionRecords.length === 0}
-                className="px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Backup rekod pelajar hadir sesi ini (.CSV)"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Backup CSV</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-workspace-continue-attendance"
-                onClick={onOpenScanner}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>MULA / SAMBUNG KEHADIRAN</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onCloseActiveSession(activeSession.id)}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-                title="Tutup sesi kelas ini"
-              >
-                Tutup Sesi
-              </button>
-            </div>
-          </div>
-
-          {/* Progress Bar & Stats */}
-          <div className="space-y-2 pt-2 border-t border-slate-800/80">
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-slate-300">
-                Kehadiran: <strong className="text-emerald-400">{activeSessionRecords.length}</strong> / {targetStudentsForActive.length} Pelajar Hadir
-              </span>
-              <span className="text-emerald-400 font-mono font-bold text-sm">
-                {activePercent}%
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, activePercent)}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="p-5 rounded-3xl bg-slate-900/60 border border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-left">
-            <div className="w-10 h-10 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-              <CalendarCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Tiada Sesi Kehadiran Sedang Dibuka</h3>
-              <p className="text-xs text-slate-400">
-                Pilih subjek di bawah atau klik butang untuk memulakan sesi kelas hari ini.
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            {actionNotice.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+            )}
+            <span>{actionNotice.message}</span>
           </div>
           <button
             type="button"
-            onClick={onGoToActivities}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+            onClick={() => setActionNotice(null)}
+            className="p-1 text-slate-400 hover:text-white rounded-lg"
           >
-            <Plus className="w-4 h-4" />
-            <span>Mula Sesi Kelas Baharu</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* 3. Subjek & Seksyen Kelas Ditugaskan (RC ZONE-Style Operational List) */}
-      <div className="space-y-3">
-        {/* Section Header */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-indigo-400" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-              Subjek & Kelas ({mySubjectsList.length})
-            </h2>
+      {/* 2. ACTIVE ATTENDANCE SESSION HERO BANNER (Visible whenever a session is OPEN) */}
+      {currentOpenSession && (
+        <section
+          id="active-session-banner"
+          aria-label="Sesi Kehadiran Aktif"
+          className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/50 shadow-xl shadow-emerald-950/20 relative overflow-hidden"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>SESI SEDANG DIBUKA</span>
+              </div>
+
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                  {currentOpenSession.subjectCode || currentOpenSession.subjectName}
+                </h2>
+                <span className="text-base sm:text-lg font-bold text-emerald-300 px-2.5 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                  {currentOpenSession.className}
+                </span>
+                <span className="text-xs text-slate-300">
+                  ({currentOpenSession.subjectName || 'Subjek'})
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  {currentOpenSession.date}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  Mula: {currentOpenSession.startTime || '11:00 AM'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-slate-400" />
+                  Pensyarah: {currentOpenSession.lecturerName}
+                </span>
+              </div>
+            </div>
+
+            {/* Attendance Progress & Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-center min-w-[140px]">
+                <div className="flex justify-between items-baseline text-xs mb-1">
+                  <span className="text-slate-400 font-medium">Kehadiran</span>
+                  <span className="text-emerald-400 font-bold">{activePercent}%</span>
+                </div>
+                <div className="text-base font-extrabold text-white">
+                  {activeSessionRecords.length} <span className="text-xs text-slate-400 font-normal">/ {activeTargetCount} Pelajar</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${activePercent}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  id="active-session-scan-btn"
+                  type="button"
+                  onClick={() => onOpenScannerForSession(currentOpenSession.id)}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[48px] rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98]"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Imbas Sekarang</span>
+                </button>
+
+                <button
+                  id="active-session-projector-btn"
+                  type="button"
+                  onClick={() => setIsQrProjectorOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 font-medium text-xs border border-slate-700 transition-all"
+                  title="Papar QR Projektor untuk paparan kelas"
+                >
+                  <Maximize2 className="w-4 h-4 text-slate-400" />
+                  <span className="hidden sm:inline">Papar QR</span>
+                </button>
+
+                <button
+                  id="active-session-end-btn"
+                  type="button"
+                  onClick={() => setConfirmEndSessionId(currentOpenSession.id)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all"
+                  title="Tamatkan sesi dan simpan rekod kehadiran"
+                >
+                  <span>Tamatkan Sesi</span>
+                </button>
+              </div>
+            </div>
           </div>
-          {mySubjectsList.length > 0 && (
-            <div className="text-xs text-slate-400">
-              Menunjukkan <span className="font-bold text-white">{filteredSubjectsList.length}</span> daripada {mySubjectsList.length} subjek
+        </section>
+      )}
+
+      {/* Warning Banner if ANOTHER session is open while viewing a different subject/class */}
+      {isAnotherSessionOpen && currentOpenSession && (
+        <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">
+                Perhatian: Sesi "{currentOpenSession.subjectCode} - {currentOpenSession.className}" sedang dibuka.
+              </p>
+              <p className="text-xs text-amber-300/80 mt-0.5">
+                Sistem tidak menutup sesi tersebut secara automatik untuk melindungi integriti rekod kehadiran.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => onOpenScannerForSession(currentOpenSession.id)}
+              className="px-3 py-1.5 min-h-[44px] rounded-lg bg-amber-600/30 hover:bg-amber-600/40 text-amber-200 text-xs font-bold border border-amber-500/40"
+            >
+              Sambung Sesi Tersebut
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmCloseOtherSessionId(currentOpenSession.id)}
+              className="px-3 py-1.5 min-h-[44px] rounded-lg bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 text-xs font-bold border border-rose-500/40"
+            >
+              Tutup Sesi Tersebut
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. PUSAT AKTIVASI SESI PANTAS (2-Step Direct Selector) */}
+      <section
+        id="quick-session-activation-hub"
+        aria-label="Pusat Aktivasi Sesi Pantas"
+        className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-6"
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              <Play className="w-4 h-4 text-indigo-400 fill-indigo-400" />
+              <span>Aktivasi Sesi Kehadiran</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Pilih subjek dan kelas, kemudian klik butang pengaktifan di bawah.
+            </p>
+          </div>
+        </div>
+
+        {/* STEP 1: SUBJEK SAYA */}
+        <div className="space-y-2.5">
+          <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Langkah 1: Pilih Subjek</span>
+          </label>
+
+          {availableSubjects.length === 0 ? (
+            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700 text-center text-slate-400 text-sm">
+              Tiada subjek ditugaskan. Sila hubungi pentadbir untuk penetapan jadual subjek.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {availableSubjects.map((sub) => {
+                const isSelected = selectedSubject?.code.toUpperCase() === sub.code.toUpperCase();
+                return (
+                  <button
+                    key={sub.id || sub.code}
+                    type="button"
+                    onClick={() => setSelectedSubjectCode(sub.code)}
+                    className={`text-left p-3.5 rounded-xl transition-all min-h-[56px] border flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-950/40 text-white shadow-md shadow-indigo-500/10 ring-1 ring-indigo-500'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-sm tracking-wide">
+                        {sub.code}
+                      </span>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-400 truncate mt-1">
+                      {sub.name}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* RC ZONE-Style Control Bar (Filters + Search) */}
-        {mySubjectsList.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm">
-            {/* Status Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              <button
-                type="button"
-                onClick={() => {
-                  soundService.playClick();
-                  setStatusFilter('ALL');
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer select-none whitespace-nowrap ${
-                  statusFilter === 'ALL'
-                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <span>ALL SUBJECTS</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                  statusFilter === 'ALL' ? 'bg-indigo-700/80 text-white' : 'bg-slate-900 text-slate-400'
-                }`}>
-                  {countAllSubjects}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  soundService.playClick();
-                  setStatusFilter('READY');
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer select-none whitespace-nowrap ${
-                  statusFilter === 'READY'
-                    ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-teal-400"></span>
-                <span>READY</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                  statusFilter === 'READY' ? 'bg-teal-700/80 text-white' : 'bg-slate-900 text-slate-400'
-                }`}>
-                  {countReadySubjects}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  soundService.playClick();
-                  setStatusFilter('RUNNING');
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer select-none whitespace-nowrap ${
-                  statusFilter === 'RUNNING'
-                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span>RUNNING</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                  statusFilter === 'RUNNING' ? 'bg-emerald-700/80 text-white' : 'bg-slate-900 text-slate-400'
-                }`}>
-                  {countRunningSubjects}
-                </span>
-              </button>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative w-full sm:w-72">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Cari subjek / kod / kelas..."
-                className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-              {searchFilter && (
-                <button
-                  type="button"
-                  onClick={() => setSearchFilter('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
-                >
-                  ×
-                </button>
-              )}
-            </div>
+        {/* STEP 2: KELAS SAYA */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Langkah 2: Pilih Kelas</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsAddClassOpen(!isAddClassOpen)}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>{isAddClassOpen ? 'Tutup Pilihan' : '+ Tambah Kelas Lain'}</span>
+            </button>
           </div>
-        )}
 
-        {/* Operational List / Table Body */}
-        {mySubjectsList.length > 0 ? (
-          filteredSubjectsList.length > 0 ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-lg divide-y divide-slate-800/80">
-              {/* Desktop Table Header */}
-              <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-3 bg-slate-950/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider items-center border-b border-slate-800">
-                <div className="col-span-2">KOD SUBJEK</div>
-                <div className="col-span-4">SUBJEK / KURSUS</div>
-                <div className="col-span-2">KELAS</div>
-                <div className="col-span-1 text-center">PELAJAR</div>
-                <div className="col-span-1 text-center">STATUS</div>
-                <div className="col-span-2 text-right">TINDAKAN</div>
+          {/* Class Badges / Chips */}
+          <div className="flex flex-wrap gap-2.5">
+            {availableClassesForSubject.map((cls) => {
+              const isSelected = normalizeClassCode(selectedClass) === normalizeClassCode(cls);
+              const isAssigned = myAssignments.some(
+                (ta) =>
+                  ta.subjectCode.toUpperCase() === selectedSubject?.code.toUpperCase() &&
+                  normalizeClassCode(ta.className) === normalizeClassCode(cls)
+              );
+
+              return (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => setSelectedClass(cls)}
+                  className={`px-4 py-2.5 min-h-[48px] rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
+                      : 'bg-slate-950/80 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <span>{cls}</span>
+                  {isAssigned && (
+                    <span
+                      title="Kelas Ditugaskan oleh Pentadbir"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 font-semibold"
+                    >
+                      ⭐ Ditugaskan
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Add Other Class with Official Catalogue Validation */}
+          {isAddClassOpen && (
+            <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <span className="font-semibold">Pilih atau taip kod kelas daripada katalog kolej:</span>
+                <span className="text-slate-400">Contoh: DIA3A, DIA3B, DLM4A</span>
               </div>
 
-              {/* Subject Operational Rows */}
-              {filteredSubjectsList.map((sub) => {
-                const enrolledCount = students.filter((st) =>
-                  sub.classes.some((c) => c.toUpperCase() === st.className.toUpperCase())
-                ).length;
-                const rawClasses = Array.from(new Set(sub.classes || []));
-                const currentSelectedClass = selectedClassMap[sub.subjectCode] || (rawClasses.length > 0 ? rawClasses[0] : 'ALL');
-                const selectedClassStudentCount = currentSelectedClass === 'ALL'
-                  ? students.filter((st) =>
-                      rawClasses.some((c) => c.toUpperCase() === st.className?.toUpperCase())
-                    ).length
-                  : students.filter(
-                      (st) => st.className?.toUpperCase() === currentSelectedClass.toUpperCase()
-                    ).length;
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customClassInput}
+                  onChange={(e) => handleCustomClassInputChange(e.target.value)}
+                  placeholder="Taip kod kelas (cth: DIA3A)..."
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 min-h-[48px]"
+                />
+                <button
+                  type="button"
+                  onClick={handleConfirmCustomClass}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold min-h-[48px]"
+                >
+                  Gunakan Kelas
+                </button>
+              </div>
 
-                const isRunning = sessions.some(
-                  (s) =>
-                    s.status === 'OPEN' &&
-                    (s.subjectCode || '').toUpperCase() === sub.subjectCode.toUpperCase()
-                );
-                const isExpanded = Boolean(expandedCodes[sub.subjectCode]);
+              {/* Validation & Suggestion Output */}
+              {customClassValidation && !customClassValidation.isValid && (
+                <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs space-y-2">
+                  <p>{customClassValidation.message}</p>
+                  {customClassValidation.suggestions.length > 0 && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-slate-300">Pilihan sah:</span>
+                      {customClassValidation.suggestions.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => handleSelectSuggestedClass(sug)}
+                          className="px-2.5 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
+                        >
+                          {sug}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quick Catalogue Picker */}
+              <div className="space-y-1">
+                <span className="text-[11px] text-slate-400">Katalog Kelas Kolej:</span>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                  {officialCatalogue.map((catClass) => (
+                    <button
+                      key={catClass}
+                      type="button"
+                      onClick={() => handleSelectSuggestedClass(catClass)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
+                    >
+                      {catClass}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* STEP 3: THE PRIMARY ACTIVATION BAR (Min 52-56px height, Mobile-First) */}
+        <div className="pt-2">
+          {isSelectedActive && currentOpenSession ? (
+            <button
+              id="resume-active-session-btn"
+              type="button"
+              onClick={() => onOpenScannerForSession(currentOpenSession.id)}
+              className="w-full min-h-[56px] px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 active:from-emerald-700 text-white font-extrabold text-base shadow-lg shadow-emerald-600/30 transition-all flex flex-col sm:flex-row items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-100" />
+                <span>Sambung Sesi Sedang Berjalan: {selectedSubject?.code} ({selectedClass})</span>
+              </div>
+              <span className="text-xs text-emerald-100 font-normal opacity-90">
+                (Sesi aktif sejak {currentOpenSession.startTime})
+              </span>
+            </button>
+          ) : (
+            <button
+              id="activate-session-primary-btn"
+              type="button"
+              onClick={handleActivateSession}
+              disabled={!selectedSubject || !selectedClass}
+              className="w-full min-h-[56px] px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:from-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-base shadow-lg shadow-indigo-600/30 transition-all flex flex-col sm:flex-row items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-200" />
+                <span>Aktifkan Sesi Kehadiran: {selectedSubject?.code} — {selectedClass}</span>
+              </div>
+              <span className="text-xs text-indigo-100 font-normal opacity-85">
+                (Buka Imbasan QR Langsung)
+              </span>
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* 4. RECENT ATTENDANCE HISTORY (Compact, Non-Weekly, Preserving All Records) */}
+      <section
+        id="recent-attendance-history-section"
+        aria-label="Sejarah Kehadiran Terkini"
+        className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4"
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              <Clock className="w-4 h-4 text-indigo-400" />
+              <span>Sejarah Sesi Kehadiran Terkini</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Paparan 10 sesi terakhir bagi kelas dan subjek anda.
+            </p>
+          </div>
+        </div>
+
+        {historySessions.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm space-y-2">
+            <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+            <div className="font-semibold text-slate-400">Tiada rekod sesi terdahulu dijumpai.</div>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Mulakan sesi baharu dengan memilih subjek dan kelas di atas, kemudian klik butang "Aktifkan Sesi Kehadiran".
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/60 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Tarikh & Masa</th>
+                    <th className="py-3 px-4">Subjek</th>
+                    <th className="py-3 px-4">Kelas</th>
+                    <th className="py-3 px-4">Pensyarah</th>
+                    <th className="py-3 px-4">Kehadiran</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Tindakan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {historySessions.map((s) => {
+                    const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
+                    const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(records.length, s.targetCount);
+                    const isOpen = s.status === 'OPEN';
+                    const safeEndTime = formatSafeEndTime(s.endTime, s.status);
+
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3 px-4 font-mono text-slate-200">
+                          <div className="font-bold text-white">{s.date}</div>
+                          <div className="text-[11px] text-slate-400">
+                            {s.startTime || '-'} &rarr; {safeEndTime}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-white">{s.subjectCode}</span>
+                          <span className="text-slate-400 block truncate max-w-[180px]">{s.subjectName || s.sessionName}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="px-2.5 py-1 rounded bg-slate-800 font-semibold text-indigo-300 border border-slate-700">
+                            {s.className}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-300">
+                          <span className="font-medium text-white">{s.lecturerName || activeLecturer.name}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-white">{records.length}</span>
+                          <span className="text-slate-400"> / {target} ({percent}%)</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isOpen ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              AKTIF
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium">
+                              SELESAI
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {isOpen && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenScannerForSession(s.id)}
+                                className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs min-h-[48px] flex items-center gap-1.5"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>Imbas</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSessionDetail(s.id)}
+                              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold min-h-[48px] border border-slate-700 transition-colors"
+                            >
+                              Butiran Sesi
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Card View */}
+            <div className="md:hidden space-y-3">
+              {historySessions.map((s) => {
+                const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
+                const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(records.length, s.targetCount);
+                const isOpen = s.status === 'OPEN';
+                const safeEndTime = formatSafeEndTime(s.endTime, s.status);
 
                 return (
                   <div
-                    key={sub.subjectCode}
-                    className="transition-colors hover:bg-slate-800/20"
+                    key={s.id}
+                    className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3 shadow-sm"
                   >
-                    {/* Desktop View Row: lg:grid */}
-                    <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-3.5 items-center">
-                      {/* 1. Kod Subjek */}
-                      <div className="col-span-2 flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-lg bg-indigo-600/90 text-white font-mono font-black text-xs shadow-sm tracking-wide border border-indigo-500/40">
-                          {sub.subjectCode}
-                        </span>
-                      </div>
-
-                      {/* 2. Subjek / Kursus */}
-                      <div className="col-span-4 min-w-0 pr-2">
-                        <h4 className="text-sm font-bold text-white truncate" title={sub.subjectName}>
-                          {sub.subjectName}
-                        </h4>
-                        <div className="text-[11px] text-slate-400">
-                          {rawClasses.length > 1 ? `${rawClasses.length} Kelas` : '1 Kelas'}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-base">{s.subjectCode}</span>
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 text-xs font-semibold border border-indigo-500/20">
+                            {s.className}
+                          </span>
                         </div>
+                        <p className="text-xs text-slate-400 font-medium">
+                          {s.subjectName || s.sessionName}
+                        </p>
                       </div>
 
-                      {/* 3. Kelas */}
-                      <div className="col-span-2 flex items-center gap-1.5">
-                        {rawClasses.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(sub.subjectCode)}
-                            className={`group/cls inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                              currentSelectedClass === 'ALL'
-                                ? 'bg-amber-500/15 text-amber-200 border-amber-500/40 hover:bg-amber-500/25'
-                                : 'bg-teal-500/15 text-teal-200 border-teal-500/40 hover:bg-teal-500/25'
-                            }`}
-                            title="Klik untuk memilih kelas sasaran lain"
-                          >
-                            <span className="font-mono">
-                              {currentSelectedClass === 'ALL' ? 'SEMUA KELAS' : currentSelectedClass.replace('_', ' ')}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              ({rawClasses.length})
-                            </span>
-                            <ChevronDown
-                              className={`w-3.5 h-3.5 text-slate-400 group-hover/cls:text-white transition-transform ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-xs font-mono font-bold">
-                            {rawClasses[0] ? rawClasses[0].replace('_', ' ') : '-'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* 4. Pelajar */}
-                      <div className="col-span-1 text-center">
-                        <span className="text-xs font-mono font-bold text-slate-200">
-                          {selectedClassStudentCount}
+                      {isOpen ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          AKTIF
                         </span>
-                        {rawClasses.length > 1 && currentSelectedClass !== 'ALL' && (
-                          <span className="text-[10px] text-slate-500 block font-normal font-mono">
-                            /{enrolledCount}
-                          </span>
-                        )}
+                      ) : (
+                        <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium shrink-0">
+                          SELESAI
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 pt-1 border-t border-slate-800/60">
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase">Pensyarah</span>
+                        <span className="text-slate-200 font-medium truncate block">
+                          {s.lecturerName || activeLecturer.name}
+                        </span>
                       </div>
-
-                      {/* 5. Status */}
-                      <div className="col-span-1 flex items-center justify-center">
-                        {isRunning ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                            </span>
-                            <span>RUNNING</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/80 text-teal-300 text-[11px] font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
-                            <span>READY</span>
-                          </span>
-                        )}
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase">Kehadiran</span>
+                        <span className="text-emerald-400 font-bold">
+                          {records.length} / {target} ({percent}%)
+                        </span>
                       </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase">Tarikh</span>
+                        <span className="text-slate-300 font-mono">{s.date}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase">Masa</span>
+                        <span className="text-slate-300 font-mono">
+                          {s.startTime || '-'} &rarr; {safeEndTime}
+                        </span>
+                      </div>
+                    </div>
 
-                      {/* 6. Tindakan */}
-                      <div className="col-span-2 flex items-center justify-end gap-1.5">
-                        {rawClasses.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(sub.subjectCode)}
-                            className={`w-8 h-8 rounded-xl border transition-colors flex items-center justify-center cursor-pointer shrink-0 ${
-                              isExpanded
-                                ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300'
-                                : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                            }`}
-                            title={isExpanded ? 'Tutup pemilihan kelas' : 'Pilih kelas sasaran'}
-                            aria-label={isExpanded ? 'Tutup pemilihan kelas' : 'Pilih kelas sasaran'}
-                          >
-                            <ChevronDown
-                              className={`w-4 h-4 transition-transform duration-200 ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        )}
-
+                    <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800/60">
+                      {isOpen && (
                         <button
                           type="button"
-                          onClick={() => {
-                            soundService.playClick();
-                            setStartModalContext({
-                              subjectCode: sub.subjectCode,
-                              subjectName: sub.subjectName,
-                              className: currentSelectedClass,
-                              studentCount: selectedClassStudentCount,
-                              availableClasses: rawClasses
-                            });
-                          }}
-                          className={`w-8 h-8 rounded-xl text-white transition-all flex items-center justify-center cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                            currentSelectedClass === 'ALL'
-                              ? 'bg-gradient-to-r from-amber-600 via-indigo-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 shadow-amber-950/50'
-                              : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/50'
-                          }`}
-                          title={`Mulakan sesi kehadiran untuk ${currentSelectedClass === 'ALL' ? 'Semua Kelas' : currentSelectedClass}`}
-                          aria-label={`Mulakan sesi kehadiran untuk ${currentSelectedClass === 'ALL' ? 'Semua Kelas' : currentSelectedClass}`}
+                          onClick={() => onOpenScannerForSession(s.id)}
+                          className="flex-1 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs min-h-[48px] flex items-center justify-center gap-1.5"
                         >
-                          <Play className="w-3.5 h-3.5 fill-white shrink-0" />
+                          <QrCode className="w-4 h-4" />
+                          <span>Imbas Kehadiran</span>
                         </button>
-                      </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSessionDetail(s.id)}
+                        className="flex-1 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold min-h-[48px] border border-slate-700 flex items-center justify-center transition-colors"
+                      >
+                        Lihat Butiran Sesi
+                      </button>
                     </div>
-
-                    {/* Mobile / Tablet Operational Row: lg:hidden */}
-                    <div className="lg:hidden p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-mono font-black text-xs shadow-sm">
-                            {sub.subjectCode}
-                          </span>
-                          <span className="text-xs text-slate-400 font-medium truncate">
-                            {rawClasses.length > 1 ? `${rawClasses.length} Kelas` : '1 Kelas'} · {enrolledCount} Pelajar
-                          </span>
-                        </div>
-
-                        {isRunning ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span>RUNNING</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-teal-300 text-[10px] font-semibold shrink-0 border border-slate-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
-                            <span>READY</span>
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="text-sm font-bold text-white">
-                        {sub.subjectName}
-                      </h4>
-
-                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[11px] text-slate-400">Kelas:</span>
-                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md border ${
-                            currentSelectedClass === 'ALL'
-                              ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
-                              : 'bg-teal-500/20 text-teal-200 border-teal-500/40'
-                          }`}>
-                            {currentSelectedClass === 'ALL' ? 'Semua (Khas)' : currentSelectedClass.replace('_', ' ')}
-                          </span>
-                          <span className="text-[10px] text-slate-400">({selectedClassStudentCount})</span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {rawClasses.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(sub.subjectCode)}
-                              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <span>{isExpanded ? 'Tutup' : 'Tukar'}</span>
-                              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              soundService.playClick();
-                              setStartModalContext({
-                                subjectCode: sub.subjectCode,
-                                subjectName: sub.subjectName,
-                                className: currentSelectedClass,
-                                studentCount: selectedClassStudentCount,
-                                availableClasses: rawClasses
-                              });
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-white text-xs font-bold flex items-center gap-1 shadow-md active:scale-95 ${
-                              currentSelectedClass === 'ALL'
-                                ? 'bg-gradient-to-r from-amber-600 to-purple-600'
-                                : 'bg-gradient-to-r from-emerald-600 to-teal-600'
-                            }`}
-                          >
-                            <Play className="w-3 h-3 fill-white" />
-                            <span>MULA</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Multiple-Choice Class Selection Level (Expandable Detail Interaction) */}
-                    {isExpanded && (
-                      <div className="p-4 sm:p-5 bg-slate-950/80 border-t border-slate-800 space-y-3.5 animate-fadeIn">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-teal-400"></div>
-                            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                              Pilih Kelas Sasaran
-                            </span>
-                            <span className="text-[11px] text-slate-400">
-                              (Pilih satu kelas untuk kehadiran harian)
-                            </span>
-                          </div>
-                          <span className="text-xs text-slate-400">
-                            Jumlah Sasaran: <strong className="text-emerald-400 font-mono">{selectedClassStudentCount}</strong> Pelajar
-                          </span>
-                        </div>
-
-                        {/* Multiple-Choice Selectable Option List */}
-                        <div className="space-y-1.5">
-                          {rawClasses.map((cls) => {
-                            const isSelected = currentSelectedClass.toUpperCase() === cls.toUpperCase();
-                            const count = students.filter(
-                              (st) => st.className?.trim().toUpperCase() === cls.trim().toUpperCase()
-                            ).length;
-
-                            return (
-                              <div
-                                key={`mc-cls-${sub.subjectCode}-${cls}`}
-                                role="radio"
-                                aria-checked={isSelected}
-                                tabIndex={0}
-                                onClick={() => {
-                                  soundService.playClick();
-                                  setSelectedClassMap((prev) => ({
-                                    ...prev,
-                                    [sub.subjectCode]: cls
-                                  }));
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    soundService.playClick();
-                                    setSelectedClassMap((prev) => ({
-                                      ...prev,
-                                      [sub.subjectCode]: cls
-                                    }));
-                                  }
-                                }}
-                                className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
-                                  isSelected
-                                    ? 'bg-gradient-to-r from-teal-500/15 via-emerald-500/10 to-transparent border-teal-400/80 ring-1 ring-teal-400/40 shadow-sm shadow-teal-950'
-                                    : 'bg-slate-900/60 hover:bg-slate-900 border-slate-800/80 hover:border-slate-700 text-slate-300'
-                                }`}
-                              >
-                                {/* Left: Radio Indicator + Class Name */}
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div
-                                    className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                                      isSelected
-                                        ? 'border-teal-400 bg-teal-500/20'
-                                        : 'border-slate-600 bg-slate-900'
-                                    }`}
-                                  >
-                                    {isSelected && (
-                                      <div className="w-2 h-2 rounded-full bg-teal-400 animate-scaleIn" />
-                                    )}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <span className={`text-xs sm:text-sm font-mono font-extrabold tracking-wide ${
-                                      isSelected ? 'text-teal-200 font-black' : 'text-slate-200 font-bold'
-                                    }`}>
-                                      {cls.replace('_', ' ')}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Right: Student Count & Checkmark */}
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className={`text-xs px-2.5 py-0.5 rounded-lg font-mono font-bold ${
-                                    isSelected
-                                      ? 'bg-teal-500/20 text-teal-200 border border-teal-500/40'
-                                      : 'bg-slate-800 text-slate-400 border border-slate-700/60'
-                                  }`}>
-                                    {count} Pelajar
-                                  </span>
-
-                                  {isSelected && (
-                                    <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center">
-                                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Separator for Sesi Khas: Gabung Semua Kelas */}
-                        {rawClasses.length > 1 && (
-                          <div className="pt-2 border-t border-slate-800/80 space-y-2">
-                            <div
-                              role="radio"
-                              aria-checked={currentSelectedClass === 'ALL'}
-                              tabIndex={0}
-                              onClick={() => {
-                                soundService.playClick();
-                                setSelectedClassMap((prev) => ({
-                                  ...prev,
-                                  [sub.subjectCode]: currentSelectedClass === 'ALL' ? (rawClasses[0] || 'ALL') : 'ALL'
-                                }));
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  soundService.playClick();
-                                  setSelectedClassMap((prev) => ({
-                                    ...prev,
-                                    [sub.subjectCode]: currentSelectedClass === 'ALL' ? (rawClasses[0] || 'ALL') : 'ALL'
-                                  }));
-                                }
-                              }}
-                              className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
-                                currentSelectedClass === 'ALL'
-                                  ? 'bg-gradient-to-r from-amber-500/20 via-indigo-500/15 to-purple-500/20 border-amber-500/80 ring-1 ring-amber-400/40 shadow-sm shadow-amber-950'
-                                  : 'bg-slate-900/40 hover:bg-slate-900/80 border-slate-800/80 hover:border-slate-700 text-slate-400'
-                              }`}
-                            >
-                              {/* Left: Radio indicator + Title + Subtitle */}
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div
-                                  className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                                    currentSelectedClass === 'ALL'
-                                      ? 'border-amber-400 bg-amber-500/20'
-                                      : 'border-slate-600 bg-slate-900'
-                                  }`}
-                                >
-                                  {currentSelectedClass === 'ALL' && (
-                                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-scaleIn" />
-                                  )}
-                                </div>
-
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <Layers className={`w-3.5 h-3.5 shrink-0 ${currentSelectedClass === 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
-                                    <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide ${
-                                      currentSelectedClass === 'ALL' ? 'text-amber-200' : 'text-slate-300'
-                                    }`}>
-                                      SEMUA KELAS
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Right: Enrolled Count + Checkmark */}
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-xs px-2.5 py-0.5 rounded-lg font-mono font-bold ${
-                                  currentSelectedClass === 'ALL'
-                                    ? 'bg-amber-500/30 text-amber-200 border border-amber-500/40'
-                                    : 'bg-slate-800 text-slate-400 border border-slate-700/60'
-                                }`}>
-                                  {enrolledCount} Pelajar
-                                </span>
-
-                                {currentSelectedClass === 'ALL' && (
-                                  <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center">
-                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Expanded Action Footer */}
-                        <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-xs text-slate-400">
-                            Kelas sasaran aktif:{' '}
-                            <strong className={`font-bold ${currentSelectedClass === 'ALL' ? 'text-amber-300' : 'text-teal-300'}`}>
-                              {currentSelectedClass === 'ALL' ? 'Semua Kelas (Sesi Khas)' : currentSelectedClass.replace('_', ' ')}
-                            </strong>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              soundService.playClick();
-                              setStartModalContext({
-                                subjectCode: sub.subjectCode,
-                                subjectName: sub.subjectName,
-                                className: currentSelectedClass,
-                                studentCount: selectedClassStudentCount,
-                                availableClasses: rawClasses
-                              });
-                            }}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 ${
-                              currentSelectedClass === 'ALL'
-                                ? 'bg-gradient-to-r from-amber-600 via-indigo-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 shadow-amber-950/50'
-                                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/50'
-                            }`}
-                          >
-                            <Play className="w-3.5 h-3.5 fill-white" />
-                            <span>
-                              MULA SESI: {currentSelectedClass === 'ALL' ? 'SEMUA KELAS' : currentSelectedClass.replace('_', ' ')}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-              <Search className="w-8 h-8 text-slate-500 mx-auto" />
-              <h4 className="text-sm font-bold text-white">Tiada Subjek Ditemui</h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Tiada subjek sepadan dengan kriteria carian "{searchFilter}" atau penapis status "{statusFilter}".
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchFilter('');
-                  setStatusFilter('ALL');
-                }}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-indigo-300 font-semibold transition cursor-pointer"
-              >
-                Set Semula Penapis
-              </button>
+          </>
+        )}
+      </section>
+
+      {/* CONFIRMATION MODAL: END SESSION */}
+      {confirmEndSessionId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <AlertTriangle className="w-6 h-6" />
+              <h4 className="text-lg font-bold text-white">Tamatkan Sesi Kehadiran?</h4>
             </div>
-          )
-        ) : (
-          <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-teal-500/10 border border-teal-500/30 text-teal-400 flex items-center justify-center mx-auto">
-              <BookOpen className="w-6 h-6" />
-            </div>
-            <h4 className="text-base font-bold text-white">Tiada Subjek Ditetapkan oleh Pentadbir</h4>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Subjek dan kelas pengajaran anda diagihkan secara berpusat oleh Pentadbir Kolej melalui fail CSV Induk atau pengagihan pentadbir. Sila hubungi Admin KPM jika agihan subjek anda memerlukan penyelarasan.
+            <p className="text-sm text-slate-300">
+              Adakah anda pasti untuk menamatkan sesi ini? Masa tamat akan disimpan dan sesi akan ditandakan sebagai SELESAI. Semua rekod imbasan pelajar kekal terpelihara.
             </p>
-            {isAdmin && activeLecturer?.role === 'ADMIN' && (
+            <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                id="btn-empty-manage-subjects"
-                onClick={() => setIsManageSubjectsModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition shadow-lg shadow-teal-600/30 cursor-pointer"
+                onClick={() => setConfirmEndSessionId(null)}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold"
               >
-                <Plus className="w-4 h-4" />
-                <span>Tetapkan Subjek & Kelas (Admin)</span>
+                Batal
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Elemen tindakan disusun di bahagian bawah section dalam row berbeza */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          {isAdmin && activeLecturer?.role === 'ADMIN' ? (
-            <button
-              type="button"
-              id="btn-workspace-manage-subjects"
-              onClick={() => setIsManageSubjectsModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 hover:text-white border border-teal-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
-            >
-              <Plus className="w-3.5 h-3.5 text-teal-400" />
-              <span>Pilih / Urus Subjek Pengajaran (Admin)</span>
-            </button>
-          ) : (
-            <div className="text-[11px] text-slate-500 italic">
-              * Agihan subjek & kelas dikendalikan oleh Pentadbir Sistem
+              <button
+                type="button"
+                onClick={handleConfirmEndSession}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold shadow-lg shadow-rose-600/30"
+              >
+                Sahkan Tamatkan Sesi
+              </button>
             </div>
-          )}
-          <button
-            type="button"
-            onClick={onGoToActivities}
-            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer px-2 py-1 hover:underline"
-          >
-            <span>Semua Kelas</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 4. Quick Actions Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <button
-          type="button"
-          onClick={onOpenScanner}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <QrCode className="w-4 h-4" />
+      {/* CONFIRMATION MODAL: CLOSE OTHER SESSION FIRST */}
+      {confirmCloseOtherSessionId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-400">
+              <AlertTriangle className="w-6 h-6" />
+              <h4 className="text-lg font-bold text-white">Tutup Sesi Terdahulu?</h4>
+            </div>
+            <p className="text-sm text-slate-300">
+              Sesi terdahulu akan ditutup secara eksplisit. Rekod kehadiran yang telah diimbas tetap selamat dalam pangkalan data.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCloseOtherSessionId(null)}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExplicitCloseOtherSession}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold shadow-lg shadow-amber-600/30"
+              >
+                Tutup Sesi Tersebut
+              </button>
+            </div>
           </div>
-          <div>
-            <div className="text-xs font-bold text-white">Imbas QR Kelas</div>
-            <div className="text-[11px] text-slate-400">Imbas kehadiran langsung</div>
-          </div>
-        </button>
+        </div>
+      )}
 
-        <button
-          type="button"
-          onClick={onGoToActivities}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <CalendarCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white">Pengurusan Sesi</div>
-            <div className="text-[11px] text-slate-400">Buka & tutup sesi kelas</div>
-          </div>
-        </button>
+      {/* STUDENT ATTENDANCE LIST INSPECT MODAL */}
+      {inspectSession && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-base font-bold text-white">
+                  Senarai Hadir: {inspectSession.subjectCode} ({inspectSession.className})
+                </h4>
+                <p className="text-xs text-slate-400">
+                  {inspectSession.date} • {inspectSession.startTime || '11:00'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectSession(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-        <button
-          type="button"
-          onClick={onGoToReports}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <FileSpreadsheet className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white">Rekod Kehadiran</div>
-            <div className="text-[11px] text-slate-400">Laporan & analisis kelas</div>
-          </div>
-        </button>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {attendanceRecords.filter((r) => r.sessionId === inspectSession.id && r.status === 'PRESENT').length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-sm">
+                  Tiada rekod pelajar hadir direkodkan bagi sesi ini.
+                </div>
+              ) : (
+                attendanceRecords
+                  .filter((r) => r.sessionId === inspectSession.id && r.status === 'PRESENT')
+                  .map((rec, idx) => {
+                    const st = students.find((s) => s.id === rec.studentId || s.studentId === rec.studentId);
+                    return (
+                      <div
+                        key={rec.id || idx}
+                        className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="font-bold text-white">{st?.name || rec.studentName || 'Pelajar'}</div>
+                          <div className="text-slate-400 font-mono">{st?.studentId || rec.studentId} • {st?.className || inspectSession.className}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-emerald-400 font-bold">HADIR</span>
+                          <div className="text-slate-500 text-[10px]">{rec.timestamp?.split('T')[1]?.substring(0, 5) || ''}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
 
-        <button
-          type="button"
-          onClick={onGoToGuide}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-800/50 transition-all text-left space-y-2 group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <BookOpen className="w-4 h-4" />
+            <div className="pt-2 border-t border-slate-800 text-right">
+              <button
+                type="button"
+                onClick={() => setInspectSession(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
-          <div>
-            <div className="text-xs font-bold text-white">Panduan Penggunaan</div>
-            <div className="text-[11px] text-slate-400">Tatacara & panduan SOP</div>
-          </div>
-        </button>
-      </div>
+        </div>
+      )}
 
-      {/* 5. Rekod Terkini Kelas Saya */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-400" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-              Rekod Kehadiran Terkini ({myRecentRecords.length})
-            </h2>
-          </div>
-          {myRecentRecords.length > 0 && (
+      {/* FULLSCREEN PROJECTOR QR MODAL */}
+      {isQrProjectorOpen && currentOpenSession && (
+        <div className={`fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-6 ${isFullscreen ? 'p-0' : ''}`}>
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
             <button
               type="button"
-              onClick={onGoToReports}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
             >
-              Lihat Semua Rekod
+              {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
-          )}
-        </div>
-
-        {myRecentRecords.length > 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/80">
-            {myRecentRecords.map((rec) => {
-              const student = students.find((s) => s.id === rec.studentId);
-              const session = sessions.find((sess) => sess.id === rec.sessionId);
-              const timeFormatted = new Date(rec.timestamp).toLocaleTimeString('ms-MY', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              });
-
-              return (
-                <div
-                  key={rec.id}
-                  className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-800/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
-                      {student ? getInitials(student.name) : 'P'}
-                    </div>
-                    <div>
-                      <div className="text-xs sm:text-sm font-bold text-white leading-tight">
-                        {student?.name || rec.studentId}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        {student?.studentId || rec.studentId} • <span className="text-slate-300 font-semibold">{student?.className}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-right">
-                    <div className="hidden sm:block">
-                      <div className="text-[11px] font-semibold text-slate-300">
-                        {session?.subjectCode || session?.sessionName || 'Sesi Kelas'}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-mono">{timeFormatted}</div>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase">
-                      HADIR
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            <button
+              type="button"
+              onClick={() => setIsQrProjectorOpen(false)}
+              className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-        ) : (
-          <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-1 text-slate-400">
-            <Users className="w-8 h-8 mx-auto text-slate-600" />
-            <p className="text-xs">Belum ada rekod kehadiran bagi kelas anda hari ini.</p>
+
+          <div className="max-w-md w-full text-center space-y-6">
+            <div className="space-y-1">
+              <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase">
+                Imbas Kod QR Kehadiran
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-2">
+                {currentOpenSession.subjectCode} — {currentOpenSession.className}
+              </h2>
+              <p className="text-sm text-slate-400">{currentOpenSession.subjectName}</p>
+            </div>
+
+            <div className="p-8 rounded-3xl bg-white shadow-2xl flex items-center justify-center mx-auto w-64 h-64 sm:w-72 sm:h-72">
+              {/* QR Code Payload Representation */}
+              <div className="flex flex-col items-center justify-center text-slate-900 space-y-2">
+                <QrCode className="w-44 h-44 text-slate-900" />
+                <span className="text-[10px] font-mono text-slate-500 truncate max-w-[200px]">
+                  {currentOpenSession.id}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400">
+                Buka aplikasi Class Attend atau imbas menggunakan kamera telefon pintar.
+              </p>
+              <div className="text-base font-bold text-emerald-400">
+                {activeSessionRecords.length} Pelajar Telah Diimbas
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Start Attendance Confirmation Modal */}
-      {startModalContext && (
-        <StartAttendanceModal
-          isOpen={Boolean(startModalContext)}
-          onClose={() => setStartModalContext(null)}
-          subjectCode={startModalContext.subjectCode}
-          subjectName={startModalContext.subjectName}
-          className={startModalContext.className}
-          lecturerName={lecturer.name}
-          studentCount={startModalContext.studentCount}
-          availableClasses={startModalContext.availableClasses}
-          classStudentCounts={(startModalContext.availableClasses || []).reduce((acc, cls) => {
-            acc[cls] = students.filter(
-              (st) => st.className?.trim().toUpperCase() === cls.trim().toUpperCase()
-            ).length;
-            return acc;
-          }, {} as Record<string, number>)}
-          totalStudentsCount={students.filter((st) =>
-            (startModalContext.availableClasses || []).some(
-              (c) => c.trim().toUpperCase() === st.className?.trim().toUpperCase()
-            )
-          ).length}
-          onSelectClass={(newCls) => {
-            const count = newCls === 'ALL'
-              ? students.filter((st) =>
-                  (startModalContext.availableClasses || []).some(
-                    (c) => c.toUpperCase() === st.className?.toUpperCase()
-                  )
-                ).length
-              : students.filter((st) => st.className?.toUpperCase() === newCls.toUpperCase()).length;
-            setStartModalContext({
-              ...startModalContext,
-              className: newCls,
-              studentCount: count
-            });
-            setSelectedClassMap((prev) => ({
-              ...prev,
-              [startModalContext.subjectCode]: newCls
-            }));
-          }}
-          onConfirmStart={() => {
-            const ctx = startModalContext;
-            setStartModalContext(null);
-            if (onStartSessionForClass) {
-              onStartSessionForClass(ctx.subjectCode, ctx.subjectName, ctx.className);
-            } else {
-              onOpenScanner();
-            }
-          }}
-        />
-      )}
-
-      {/* Lecturer Manage Subjects Modal */}
-      {isManageSubjectsModalOpen && (
-        <LecturerManageSubjectsModal
-          isOpen={isManageSubjectsModalOpen}
-          onClose={() => setIsManageSubjectsModalOpen(false)}
-          lecturer={lecturer}
-          allSubjects={subjects}
-          onSaved={() => {
-            setBackupToast('Subjek dan kelas pengajaran anda berjaya dikemaskini!');
-            setTimeout(() => setBackupToast(null), 4000);
-          }}
-        />
-      )}
-
-      {/* Backup Toast Notification */}
-      {backupToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span className="text-xs font-bold">{backupToast}</span>
         </div>
       )}
-
-      {/* Edit Session Remark Modal */}
-      <EditSessionRemarkModal
-        isOpen={isEditModalOpen}
-        session={editingSession}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingSession(null);
-        }}
-        onSave={handleSaveEditedSession}
-      />
     </div>
   );
 };

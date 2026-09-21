@@ -92,3 +92,80 @@ export const isStudentInClasses = (studentClass: string, targetClasses: string[]
     return tc.toUpperCase() === studentClass.toUpperCase() || normalizeClassCode(tc) === sNorm;
   });
 };
+
+/**
+ * Standard College Class Catalogue fallback if not yet loaded from DB
+ */
+export const STANDARD_CLASS_CATALOGUE = [
+  'DIA3A', 'DIA3B', 'DIA3C', 'DIA3D',
+  'DIA4A', 'DIA4B', 'DIA4C', 'DIA4D',
+  'DLM4A', 'DLM4B', 'DLM4C', 'DLM4E',
+  'DLC1A', 'DLC1B', 'DLC1C',
+  'DLS2A', 'DLS2B'
+];
+
+export interface ClassValidationResult {
+  isValid: boolean;
+  exactMatch?: string;
+  suggestions: string[];
+  message?: string;
+}
+
+/**
+ * Validates a class code against the official class catalogue.
+ * Strictly avoids silent auto-mutation of invalid codes like "D1A3A".
+ * Instead, identifies closest official matches and requires explicit user confirmation.
+ */
+export const validateClassCode = (
+  rawCode: string,
+  officialCatalogue: string[] = STANDARD_CLASS_CATALOGUE
+): ClassValidationResult => {
+  if (!rawCode || !rawCode.trim()) {
+    return { isValid: false, suggestions: [], message: 'Kod kelas diperlukan.' };
+  }
+
+  const trimmed = rawCode.trim();
+  const upper = trimmed.toUpperCase();
+  const normalized = normalizeClassCode(trimmed);
+
+  // 1. Direct exact or case-insensitive match against catalogue
+  const exact = officialCatalogue.find((c) => c.toUpperCase() === upper);
+  if (exact) {
+    return { isValid: true, exactMatch: exact, suggestions: [] };
+  }
+
+  // 2. Normalized match (e.g. DIA_4A against DIA4A - preserving formatting conventions)
+  const normMatch = officialCatalogue.find((c) => normalizeClassCode(c) === normalized);
+  if (normMatch && (normMatch.toUpperCase() === upper || normalizeClassCode(normMatch) === normalized)) {
+    return { isValid: true, exactMatch: normMatch, suggestions: [] };
+  }
+
+  // 3. Not valid: Find potential typo matches (e.g. D1A3A -> DIA3A, 0 vs O)
+  // We DO NOT silently convert; we surface them as explicit suggestions.
+  const typoAlternative = upper.replace(/1/g, 'I').replace(/0/g, 'O').replace(/5/g, 'S');
+  const suggestions: string[] = [];
+
+  officialCatalogue.forEach((catClass) => {
+    const catNorm = normalizeClassCode(catClass);
+    // Check if typo alternative matches
+    if (normalizeClassCode(typoAlternative) === catNorm) {
+      if (!suggestions.includes(catClass)) suggestions.push(catClass);
+    }
+    // Prefix / Suffix similarities
+    else if (catNorm.length === normalized.length && (
+      catNorm.substring(0, 3) === normalized.substring(0, 3) ||
+      catNorm.substring(catNorm.length - 2) === normalized.substring(normalized.length - 2)
+    )) {
+      if (!suggestions.includes(catClass)) suggestions.push(catClass);
+    }
+  });
+
+  return {
+    isValid: false,
+    suggestions: suggestions.slice(0, 4),
+    message: suggestions.length > 0
+      ? `Kod kelas "${trimmed}" tidak dijumpai dalam katalog rasmi. Adakah anda bermaksud: ${suggestions.join(', ')}?`
+      : `Kod kelas "${trimmed}" tidak dijumpai dalam katalog kelas rasmi kolej.`
+  };
+};
+
