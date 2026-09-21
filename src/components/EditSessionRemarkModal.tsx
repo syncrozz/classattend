@@ -18,9 +18,6 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
 }) => {
   const [sessionName, setSessionName] = useState<string>('');
   const [topic, setTopic] = useState<string>('');
-  const [date, setDate] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -28,9 +25,6 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
     if (session && isOpen) {
       setSessionName(session.sessionName || '');
       setTopic(session.topic || '');
-      setDate(session.date || new Date().toISOString().split('T')[0]);
-      setStartTime(session.startTime || '08:00');
-      setEndTime(session.endTime || '10:00');
       setError(null);
       // Auto focus and select input text
       setTimeout(() => {
@@ -71,10 +65,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
     const updatedSession: AttendanceSession = {
       ...session,
       sessionName: sessionName.trim(),
-      topic: topic.trim() || undefined,
-      date: date || session.date,
-      startTime: startTime || session.startTime,
-      endTime: endTime || session.endTime
+      topic: topic.trim() || undefined
     };
 
     onSave(updatedSession);
@@ -164,7 +155,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all cursor-pointer"
                 title="Tukar ke Minggu ...a (cth: Minggu 6a)"
               >
-                + Tambah &quot;a&quot; (Minggu 6a)
+                Tambah &quot;a&quot;
               </button>
               <button
                 type="button"
@@ -172,7 +163,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all cursor-pointer"
                 title="Tukar ke Minggu ...b (cth: Minggu 6b)"
               >
-                + Tambah &quot;b&quot; (Minggu 6b)
+                Tambah &quot;b&quot;
               </button>
               <button
                 type="button"
@@ -211,39 +202,6 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
               placeholder="cth: Bab 4: Hak Asasi dan Kewarganegaraan"
               className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
-          </div>
-
-          {/* Date & Time Row */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div className="space-y-1">
-              <label htmlFor="edit-session-date-input" className="block text-[11px] font-semibold text-slate-400">
-                Tarikh Kuliah
-              </label>
-              <div className="relative">
-                <input
-                  id="edit-session-date-input"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="edit-session-time-input" className="block text-[11px] font-semibold text-slate-400">
-                Masa Mula
-              </label>
-              <div className="relative">
-                <input
-                  id="edit-session-time-input"
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all"
-                />
-              </div>
-            </div>
           </div>
 
           {/* Action Buttons */}

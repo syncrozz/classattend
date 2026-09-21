@@ -305,6 +305,24 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     }
   };
 
+  const [classToDeleteFromMaster, setClassToDeleteFromMaster] = useState<{
+    className: string;
+    studentCount: number;
+  } | null>(null);
+
+  const handleDeleteClassPrompt = (cls: string, studentCount: number) => {
+    setClassToDeleteFromMaster({ className: cls, studentCount });
+  };
+
+  const handleConfirmDeleteClassFromMaster = () => {
+    if (!classToDeleteFromMaster) return;
+    attendanceEngine.deleteClass(classToDeleteFromMaster.className, { deleteStudents: false });
+    soundService.playSuccess();
+    setCleanupMessage(`Kelas [${classToDeleteFromMaster.className}] berjaya dipadamkan daripada sistem kolej.`);
+    setTimeout(() => setCleanupMessage(null), 4000);
+    setClassToDeleteFromMaster(null);
+  };
+
   // Students for batch printing
   const batchPrintStudents = students.filter((student) =>
     batchPrintCategory === 'ALL' ? true : student.className === batchPrintCategory
@@ -1614,6 +1632,16 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           >
                             <Printer className="w-3.5 h-3.5 text-purple-400" />
                             <span>Cetak QR</span>
+                          </button>
+
+                          <button
+                            id={`btn-delete-class-${cls}`}
+                            onClick={() => handleDeleteClassPrompt(cls, classStudents.length)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all cursor-pointer"
+                            title={`Padam kelas ${cls} daripada sistem kolej`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Padam Kelas</span>
                           </button>
 
                           <button
@@ -3117,6 +3145,59 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pengesahan Padam Kelas daripada Master Data (100% iframe compatible) */}
+      {classToDeleteFromMaster && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  Padam Kelas [{classToDeleteFromMaster.className}]
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Adakah anda pasti mahu memadamkan rekod <span className="text-white font-semibold">Kelas {classToDeleteFromMaster.className}</span> secara kekal daripada sistem kolej?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-400">
+                <span>Pelajar Terdaftar di Bawah Kelas Ini:</span>
+                <span className="font-semibold text-rose-400 font-mono">
+                  {classToDeleteFromMaster.studentCount} Pelajar
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 pt-1 leading-relaxed border-t border-slate-800/80">
+                Tindakan ini akan mengeluarkan kelas ini daripada semua senarai subjek, jadual pensyarah, dan mengosongkan rekod nama kelas bagi {classToDeleteFromMaster.studentCount} orang pelajar ini.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                id="btn-cancel-delete-class-master"
+                onClick={() => setClassToDeleteFromMaster(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-class-master"
+                onClick={handleConfirmDeleteClassFromMaster}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950/50 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Padam Kelas Ini</span>
+              </button>
             </div>
           </div>
         </div>

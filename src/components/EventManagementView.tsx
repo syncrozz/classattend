@@ -11,6 +11,7 @@ import {
   TeachingAssignment
 } from '../types';
 import { getClassBadgeColor, sortSessionsLatestFirst } from '../utils/studentUtils';
+import { soundService } from '../services/soundService';
 import { GenerateEnrollmentQRModal } from './GenerateEnrollmentQRModal';
 import { EnrolledStudentsModal } from './EnrolledStudentsModal';
 import { LecturerManageSubjectsModal } from './LecturerManageSubjectsModal';
@@ -64,11 +65,13 @@ interface ClassManagementViewProps {
   onSetSessionStatus: (sessionId: string, newStatus: EventStatus) => void;
   onCreateSubject: (subject: Subject) => void;
   onCreateSession: (session: AttendanceSession) => void;
+  onCreateMultipleSessions?: (sessions: AttendanceSession[]) => void;
   onUpdateSession?: (session: AttendanceSession) => void;
   onDeleteSession?: (sessionId: string) => void;
   onDeleteSubject?: (subjectId: string) => void;
   onOpenScannerForSession: (sessionId: string) => void;
   onRequestAdminAccess: (actionName?: string) => void;
+  onOpenScanner?: () => void;
   onOpenCSVImport?: () => void;
   onNavigateToStudents?: () => void;
   onOpenSelfRegistrationTest?: (context: {
@@ -93,11 +96,13 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   onSetSessionStatus,
   onCreateSubject,
   onCreateSession,
+  onCreateMultipleSessions,
   onUpdateSession,
   onDeleteSession,
   onDeleteSubject,
   onOpenScannerForSession,
   onRequestAdminAccess,
+  onOpenScanner,
   onOpenCSVImport,
   onNavigateToStudents,
   onOpenSelfRegistrationTest
@@ -171,17 +176,111 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
   const [newSessionClasses, setNewSessionClasses] = useState<string[]>([]);
+  // Meeting remark toggles: Meeting 1st 'a' & Meeting 2nd 'b' (Default: true)
+  const [includeMeetingA, setIncludeMeetingA] = useState<boolean>(true);
+  const [includeMeetingB, setIncludeMeetingB] = useState<boolean>(true);
+  // Separate session per class (Default: true - generates distinct session for each individual class)
+  const [generatePerClass, setGeneratePerClass] = useState<boolean>(true);
+
+  // Clean base session name (stripping trailing 'a' or 'b' if user already typed it)
+  const cleanBaseSessionName = useMemo(() => {
+    const raw = newSessionName.trim();
+    if (!raw) return 'Kuliah Minggu';
+    if (includeMeetingA || includeMeetingB) {
+      return raw.replace(/\s*([ab])$/i, '').trim();
+    }
+    return raw;
+  }, [newSessionName, includeMeetingA, includeMeetingB]);
+
+  // Selected meeting suffixes
+  const meetingSuffixes = useMemo(() => {
+    const arr: string[] = [];
+    if (includeMeetingA) arr.push('a');
+    if (includeMeetingB) arr.push('b');
+    if (arr.length === 0) arr.push('');
+    return arr;
+  }, [includeMeetingA, includeMeetingB]);
 
   // Available classes for selected subject in session modal
   const targetClassesForModal = useMemo(() => {
     const sub = subjects.find((s) => s.id === selectedSubjectId);
-    const subSections = (sub?.sections || []).filter(Boolean);
-    const combined = Array.from(new Set([
-      ...subSections,
-      ...classesWithData
-    ])).filter(Boolean);
-    return combined.length > 0 ? combined : (classesWithData.length > 0 ? classesWithData : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']);
+    // 1. If subject explicitly has sections defined
+    if (sub && Array.isArray(sub.sections) && sub.sections.length > 0) {
+      return sub.sections.filter(Boolean);
+    }
+    // 2. Otherwise fallback to registered classes with student data
+    return classesWithData.length > 0 ? classesWithData : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D'];
   }, [subjects, selectedSubjectId, classesWithData]);
+
+  // Dynamic preview of all sessions that will be generated
+  const previewGeneratedSessions = useMemo(() => {
+    if (newSessionClasses.length === 0) return [];
+    const results: { sessionName: string; className: string }[] = [];
+    if (generatePerClass) {
+      newSessionClasses.forEach((cls) => {
+        meetingSuffixes.forEach((suffix) => {
+          results.push({
+            sessionName: suffix ? `${cleanBaseSessionName}${suffix}` : cleanBaseSessionName,
+            className: cls
+          });
+        });
+      });
+    } else {
+      const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
+      const finalCls = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
+      meetingSuffixes.forEach((suffix) => {
+        results.push({
+          sessionName: suffix ? `${cleanBaseSessionName}${suffix}` : cleanBaseSessionName,
+          className: finalCls
+        });
+      });
+    }
+    return results;
+  }, [newSessionClasses, generatePerClass, meetingSuffixes, cleanBaseSessionName, targetClassesForModal.length]);
+
+  // In-app prompt state for removing/deleting class (100% iframe compatible, no window.confirm)
+  const [classToDeletePrompt, setClassToDeletePrompt] = useState<{
+    className: string;
+    studentCount: number;
+    subjectName: string;
+  } | null>(null);
+  const [classActionNotice, setClassActionNotice] = useState<string | null>(null);
+
+  // Open the deletion / removal prompt
+  const handleOpenRemoveClassPrompt = (sec: string) => {
+    const sub = subjects.find((s) => s.id === selectedSubjectId);
+    const subName = sub ? `${sub.code} - ${sub.name}` : 'Subjek ini';
+    const count = studentCountByClass[sec.toUpperCase()] || 0;
+    setClassToDeletePrompt({
+      className: sec,
+      studentCount: count,
+      subjectName: subName
+    });
+  };
+
+  // Option 1: Remove from selected subject only
+  const handleConfirmRemoveFromSubject = () => {
+    if (!classToDeletePrompt || !selectedSubjectId) return;
+    const cls = classToDeletePrompt.className;
+    attendanceEngine.removeSectionFromSubject(selectedSubjectId, cls, targetClassesForModal);
+    setNewSessionClasses((prev) => prev.filter((c) => c !== cls));
+    soundService.playSuccess();
+    setClassActionNotice(`Kelas ${cls} berjaya dikeluarkan daripada ${classToDeletePrompt.subjectName}.`);
+    setTimeout(() => setClassActionNotice(null), 4000);
+    setClassToDeletePrompt(null);
+  };
+
+  // Option 2: Delete class globally from whole system (for accidental classes)
+  const handleConfirmDeleteClassGlobally = () => {
+    if (!classToDeletePrompt) return;
+    const cls = classToDeletePrompt.className;
+    attendanceEngine.deleteClass(cls, { deleteStudents: false });
+    setNewSessionClasses((prev) => prev.filter((c) => c !== cls));
+    soundService.playSuccess();
+    setClassActionNotice(`Kelas ${cls} telah dipadamkan sepenuhnya daripada sistem kolej.`);
+    setTimeout(() => setClassActionNotice(null), 4000);
+    setClassToDeletePrompt(null);
+  };
 
   // Toggle individual class in session modal
   const handleToggleSessionClass = (cls: string) => {
@@ -302,8 +401,22 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setSelectedSubjectId(subId);
     if (sub) {
       const existingSubSessions = sessions.filter((s) => s.subjectId === subId || s.activityId === subId);
-      const nextWeekNum = existingSubSessions.length + 1;
+      // Smart week deduction from existing sessions
+      let maxWeek = 0;
+      existingSubSessions.forEach((ses) => {
+        const m = ses.sessionName.match(/Minggu\s*(\d+)/i);
+        if (m && m[1]) {
+          const w = parseInt(m[1], 10);
+          if (w > maxWeek) maxWeek = w;
+        }
+      });
+      const nextWeekNum = maxWeek > 0 ? maxWeek + 1 : (existingSubSessions.length > 0 ? Math.max(1, Math.floor(existingSubSessions.length / 2) + 1) : 1);
       setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
+      // Default: Every class has Meeting 1st 'a' and Meeting 2nd 'b' ticked
+      setIncludeMeetingA(true);
+      setIncludeMeetingB(true);
+      setGeneratePerClass(true);
+
       // Default: Tick all sections registered for this subject, or fallback to classes with data
       const subSections = (sub.sections || []).filter(Boolean);
       if (subSections.length > 0) {
@@ -317,7 +430,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setIsCreateSessionOpen(true);
   };
 
-  // Handle Submit New Session
+  // Handle Submit New Session (Supports automatic generation of Meeting 1st 'a' & 2nd 'b' per class)
   const handleSubmitSession = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSessionName.trim() || !selectedSubjectId) return;
@@ -328,30 +441,87 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     }
 
     const parentSub = subjects.find((s) => s.id === selectedSubjectId);
-    const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
-    const finalClassName = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
+    const meetings: string[] = [];
+    if (includeMeetingA) meetings.push('a');
+    if (includeMeetingB) meetings.push('b');
+    if (meetings.length === 0) meetings.push('');
 
-    const newSes: AttendanceSession = {
-      id: `SES-${Date.now().toString(36).toUpperCase()}`,
-      activityId: selectedSubjectId,
-      activityName: parentSub ? `[${parentSub.code}] ${parentSub.name}` : 'Kelas',
-      subjectId: selectedSubjectId,
-      subjectCode: parentSub?.code || '',
-      subjectName: parentSub?.name || '',
-      category: 'CLASS',
-      sessionName: newSessionName.trim(),
-      date: new Date().toISOString().split('T')[0],
-      startTime: '',
-      endTime: '',
-      status: 'OPEN',
-      attendanceMethod: 'QR',
-      organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-      lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-      className: finalClassName,
-      createdAt: new Date().toISOString()
-    };
+    const rawBase = newSessionName.trim();
+    const cleanBase = (includeMeetingA || includeMeetingB)
+      ? rawBase.replace(/\s*([ab])$/i, '').trim()
+      : rawBase;
 
-    onCreateSession(newSes);
+    const newSessionsToCreate: AttendanceSession[] = [];
+    const now = Date.now();
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    if (generatePerClass) {
+      // 1 separate session for each individual class
+      newSessionClasses.forEach((cls, clsIdx) => {
+        meetings.forEach((meetSuffix, meetIdx) => {
+          const sName = meetSuffix ? `${cleanBase}${meetSuffix}` : cleanBase;
+          const uniqueId = `SES-${now.toString(36).toUpperCase()}-${clsIdx}${meetIdx}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+          newSessionsToCreate.push({
+            id: uniqueId,
+            activityId: selectedSubjectId,
+            activityName: parentSub ? `[${parentSub.code}] ${parentSub.name}` : 'Kelas',
+            subjectId: selectedSubjectId,
+            subjectCode: parentSub?.code || '',
+            subjectName: parentSub?.name || '',
+            category: 'CLASS',
+            sessionName: sName,
+            date: dateStr,
+            startTime: '',
+            endTime: '',
+            status: 'CLOSED', // Sedia untuk diimbas semasa kuliah bermula
+            attendanceMethod: 'QR',
+            organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+            lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+            className: cls,
+            createdAt: new Date(now + (clsIdx * 10 + meetIdx) * 1000).toISOString()
+          });
+        });
+      });
+    } else {
+      // Combined session for all checked classes
+      const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
+      const finalClassName = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
+
+      meetings.forEach((meetSuffix, meetIdx) => {
+        const sName = meetSuffix ? `${cleanBase}${meetSuffix}` : cleanBase;
+        const uniqueId = `SES-${now.toString(36).toUpperCase()}-${meetIdx}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+        newSessionsToCreate.push({
+          id: uniqueId,
+          activityId: selectedSubjectId,
+          activityName: parentSub ? `[${parentSub.code}] ${parentSub.name}` : 'Kelas',
+          subjectId: selectedSubjectId,
+          subjectCode: parentSub?.code || '',
+          subjectName: parentSub?.name || '',
+          category: 'CLASS',
+          sessionName: sName,
+          date: dateStr,
+          startTime: '',
+          endTime: '',
+          status: 'CLOSED',
+          attendanceMethod: 'QR',
+          organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+          lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+          className: finalClassName,
+          createdAt: new Date(now + meetIdx * 1000).toISOString()
+        });
+      });
+    }
+
+    if (newSessionsToCreate.length === 1 && onCreateSession) {
+      onCreateSession(newSessionsToCreate[0]);
+    } else if (onCreateMultipleSessions && newSessionsToCreate.length > 0) {
+      onCreateMultipleSessions(newSessionsToCreate);
+    } else if (onCreateSession) {
+      newSessionsToCreate.forEach((s) => onCreateSession(s));
+    }
+
     setIsCreateSessionOpen(false);
   };
 
@@ -450,31 +620,63 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
       <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4">
-        {/* Row 1: Title, Metadata & Main Create Action */}
+        {/* Row 1: Title, Metadata & Main Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                PENGURUSAN KELAS & SUBJEK
+                {activeLecturer ? 'RUANG KERJA PENSYARAH' : 'PENGURUSAN KELAS & SUBJEK'}
               </span>
               {activeLecturer && (
                 <span className="text-[11px] text-indigo-200 bg-indigo-950/70 px-2.5 py-0.5 rounded-full border border-indigo-500/40 font-medium flex items-center gap-1.5 shadow-sm">
                   <User className="w-3 h-3 text-indigo-400" />
-                  <span>Pensyarah: <strong className="text-white font-bold">{activeLecturer.name}</strong></span>
+                  <span>{activeLecturer.department || 'Jabatan Perakaunan'}</span>
                 </span>
               )}
             </div>
-            <h2 className="text-xl font-bold text-white tracking-tight mt-1">
-              Subjek & Sesi Kuliah
+            <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-1">
+              {activeLecturer ? `Hi, ${activeLecturer.name}` : 'Subjek & Sesi Kuliah'}
             </h2>
-            <p className="text-xs text-slate-400">
-              Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan mingguan.
+            <p className="text-xs text-slate-400 mt-0.5">
+              {activeLecturer ? (
+                <span>Urus subjek, jadualkan sesi kuliah mingguan, dan mulakan imbasan kehadiran di satu tempat.</span>
+              ) : (
+                <span>Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan mingguan.</span>
+              )}
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onOpenScanner && (
+              <button
+                type="button"
+                id="btn-workspace-open-scanner"
+                onClick={onOpenScanner}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                title="Buka kamera pengimbas kehadiran"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Buka Pengimbas</span>
+              </button>
+            )}
+            <button
+              id="btn-open-global-enrollment-qr"
+              onClick={() => {
+                setQrModalSubject(subjects[0] || null);
+                setQrModalClass(subjects[0]?.sections?.[0] || 'DIA_4A');
+                setIsGenerateQRModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              title="Jana Kod QR Pendaftaran Kelas untuk dipancarkan kepada pelajar"
+            >
+              <QrCode className="w-4 h-4 text-indigo-400" />
+              <span>Jana QR Pendaftaran Kelas</span>
+            </button>
           </div>
         </div>
 
-        {/* Row 2: Search & Quick Enrollment QR Button */}
-        <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Row 2: Search */}
+        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-3">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
@@ -484,22 +686,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              id="btn-open-global-enrollment-qr"
-              onClick={() => {
-                setQrModalSubject(subjects[0] || null);
-                setQrModalClass(subjects[0]?.sections?.[0] || 'DIA_4A');
-                setIsGenerateQRModalOpen(true);
-              }}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold shadow-sm transition-all cursor-pointer"
-              title="Jana Kod QR Pendaftaran Kelas untuk dipancarkan kepada pelajar"
-            >
-              <QrCode className="w-4 h-4 text-indigo-400" />
-              <span>Jana QR Pendaftaran Kelas</span>
-            </button>
           </div>
         </div>
       </div>
@@ -783,11 +969,25 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               )
             );
 
-            // Separate into Active, Next/Available, and Past Sessions
+            // Separate into Active, Scheduled (Upcoming), and Past Sessions
             const activeInSub = subjectSessions.filter((s) => s.status === 'OPEN');
             const nonActiveInSub = subjectSessions.filter((s) => s.status !== 'OPEN');
-            const nextSession = nonActiveInSub[0] || null;
-            const pastSessions = nonActiveInSub.slice(1);
+            
+            // Scheduled sessions: not currently active and have 0 attendance records
+            const scheduledSessions = nonActiveInSub.filter((s) => {
+              const count = attendanceRecords.filter(
+                (r) => r.sessionId === s.id && r.status === 'PRESENT'
+              ).length;
+              return count === 0;
+            });
+
+            // Past sessions: have attendance records or were previously completed
+            const pastSessions = nonActiveInSub.filter((s) => {
+              const count = attendanceRecords.filter(
+                (r) => r.sessionId === s.id && r.status === 'PRESENT'
+              ).length;
+              return count > 0;
+            });
             const isPastExpanded = expandedPastSubjects[subject.id] || false;
 
             // Calculate assigned classes for this subject from teaching assignments or subject sections
@@ -849,9 +1049,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <span className="text-sm font-mono font-black px-3 py-1 rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
                         {subject.code}
                       </span>
-                      <span className="text-xs font-semibold text-slate-300 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-slate-700">
-                        {subject.department || 'Jabatan Perakaunan'}
-                      </span>
                       {activeInSub.length > 0 && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
                           <Radio className="w-3 h-3 text-emerald-400" />
@@ -870,14 +1067,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         )}
                       </h3>
                       <p className="text-xs sm:text-sm text-slate-300 mt-1 flex flex-wrap items-center gap-2">
-                        {!activeLecturer && subject.lecturerName && (
-                          <>
-                            <span>Pensyarah: <strong className="text-white font-bold">{subject.lecturerName}</strong></span>
-                            <span className="text-slate-600">•</span>
-                          </>
-                        )}
-                        <span>Kelas: <strong className="text-indigo-300 font-bold">{effectiveSections.join(', ') || 'Semua'}</strong> ({totalSubjectStudents} Pelajar)</span>
-                        <span className="text-slate-600">•</span>
                         <span className="text-slate-400 font-medium">{subjectSessions.length} Sesi Terjadual</span>
                       </p>
                     </div>
@@ -1057,68 +1246,89 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         );
                       })}
 
-                      {/* LEVEL 2: NEXT AVAILABLE SESSION */}
-                      {nextSession && (
-                        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                                TERJADUAL
+                      {/* LEVEL 2: SCHEDULED SESSIONS (READY TO SCAN) */}
+                      {scheduledSessions.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs text-slate-400 font-semibold px-1">
+                            <span className="flex items-center gap-1.5 text-blue-400">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Sesi Terjadual & Sedia Diimbas ({scheduledSessions.length})</span>
+                            </span>
+                            {scheduledSessions.length > 1 && (
+                              <span className="text-[11px] text-slate-500 font-normal">
+                                Pilih kelas untuk mula imbasan
                               </span>
-                              {nextSession.className && (
-                                <span className="text-[11px] font-semibold text-slate-300">
-                                  Kelas {nextSession.className}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-sm font-bold text-white">
-                                {nextSession.sessionName}
-                              </h4>
-                              <button
-                                type="button"
-                                id={`btn-edit-session-remark-${nextSession.id}`}
-                                onClick={() => handleOpenEditRemark(nextSession)}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-[11px] font-semibold transition-all cursor-pointer"
-                                title="Ubah remark / tajuk sesi kuliah ini (cth: Kuliah Minggu 6 kepada Minggu 6a)"
-                              >
-                                <Pencil className="w-3 h-3 text-indigo-400" />
-                                <span>Ubah Remark</span>
-                              </button>
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              Status: Sedia untuk diimbas • Sasaran: {nextSession.className && nextSession.className !== 'ALL' ? (studentCountByClass[nextSession.className.toUpperCase()] || 0) : totalSubjectStudents} Pelajar
-                            </div>
+                            )}
                           </div>
 
-                          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                            <button
-                              id={`btn-open-session-${nextSession.id}`}
-                              onClick={() => onSetSessionStatus(nextSession.id, 'OPEN')}
-                              className="p-2 rounded-lg bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 transition-all flex items-center justify-center cursor-pointer shadow-sm active:scale-95"
-                              title="Mula imbasan kehadiran"
-                              aria-label="Mula imbasan kehadiran"
-                            >
-                              <Play className="w-4 h-4 fill-current" />
-                            </button>
-                            <button
-                              type="button"
-                              id={`btn-action-edit-session-${nextSession.id}`}
-                              onClick={() => handleOpenEditRemark(nextSession)}
-                              className="p-2 rounded-lg bg-slate-800 hover:bg-indigo-600/20 text-slate-400 hover:text-indigo-300 border border-slate-700 hover:border-indigo-500/40 transition-all cursor-pointer"
-                              title="Ubah tajuk atau remark sesi (cth: Kuliah Minggu 6a)"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            {(isAdmin || activeLecturer) && (
-                              <button
-                                onClick={() => handleDeleteSessionClick(nextSession)}
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-all cursor-pointer"
-                                title="Padam sesi ini"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                          <div className="space-y-2">
+                            {scheduledSessions.map((session) => {
+                              const classTarget = session.className && session.className !== 'ALL' && session.className !== 'SEMUA'
+                                ? session.className.split(',').reduce((sum, c) => sum + (studentCountByClass[c.trim().toUpperCase()] || 0), 0)
+                                : totalSubjectStudents || availableStudents.length;
+
+                              return (
+                                <div
+                                  key={session.id}
+                                  id={`card-scheduled-session-${session.id}`}
+                                  className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                >
+                                  <div className="space-y-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                                        TERJADUAL
+                                      </span>
+                                      {session.className && (
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+                                          Kelas {session.className}
+                                        </span>
+                                      )}
+                                      <span className="text-xs text-slate-400">
+                                        • Sasaran: {classTarget} Pelajar
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="text-sm font-bold text-white truncate">
+                                        {session.sessionName}
+                                      </h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                                    <button
+                                      id={`btn-open-session-${session.id}`}
+                                      onClick={() => {
+                                        onSetSessionStatus(session.id, 'OPEN');
+                                        onOpenScannerForSession(session.id);
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+                                      title="Mula imbasan kehadiran bagi sesi ini"
+                                    >
+                                      <Play className="w-3.5 h-3.5 fill-current" />
+                                      <span>Mula Imbas</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      id={`btn-action-edit-session-${session.id}`}
+                                      onClick={() => handleOpenEditRemark(session)}
+                                      className="p-2 rounded-lg bg-slate-800 hover:bg-indigo-600/20 text-slate-400 hover:text-indigo-300 border border-slate-700 hover:border-indigo-500/40 transition-all cursor-pointer"
+                                      title="Ubah tajuk atau remark sesi"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    {(isAdmin || activeLecturer) && (
+                                      <button
+                                        onClick={() => handleDeleteSessionClick(session)}
+                                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-all cursor-pointer"
+                                        title="Padam sesi ini"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1131,7 +1341,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                             onClick={() => togglePastSessions(subject.id)}
                             className="text-xs font-semibold text-slate-400 hover:text-indigo-300 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
                           >
-                            <span>Sesi Terdahulu / Jadual Lain ({pastSessions.length})</span>
+                            <span>Rekod Sesi Terdahulu / Selesai ({pastSessions.length})</span>
                             {isPastExpanded ? (
                               <ChevronUp className="w-3.5 h-3.5" />
                             ) : (
@@ -1212,36 +1422,230 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
       {/* CREATE SESSION MODAL */}
       {isCreateSessionOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 text-white">
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 text-white my-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white">Cipta & Jadualkan Sesi Kuliah Baharu</h3>
-                <p className="text-xs text-slate-400">
-                  Subjek: {subjects.find((s) => s.id === selectedSubjectId)?.code} - {subjects.find((s) => s.id === selectedSubjectId)?.name}
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <CalendarPlus className="w-5 h-5 text-indigo-400" />
+                  <span>Cipta & Jadualkan Sesi Kuliah Baharu</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Subjek: <span className="text-indigo-300 font-semibold">{subjects.find((s) => s.id === selectedSubjectId)?.code}</span> - {subjects.find((s) => s.id === selectedSubjectId)?.name}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsCreateSessionOpen(false)}
-                className="text-slate-400 hover:text-white cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitSession} className="space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold text-slate-300">Nama Sesi Kelas *</label>
+            <form onSubmit={handleSubmitSession} className="space-y-4">
+              {/* 1. Base Session Name & Quick Week Presets */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>Nama Asas Sesi Kuliah *</span>
+                  <span className="text-[11px] text-slate-400">Pilih atau taip minggu:</span>
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="Contoh: Kuliah Minggu 3 / Tutorial Bab 2"
                   value={newSessionName}
                   onChange={(e) => setNewSessionName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
+                {/* Week Preset Quick Selectors */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Cadangan:</span>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((wk) => {
+                    const presetVal = `Kuliah Minggu ${wk}`;
+                    const isSelected = cleanBaseSessionName === presetVal;
+                    return (
+                      <button
+                        key={`preset-wk-${wk}`}
+                        type="button"
+                        onClick={() => setNewSessionName(presetVal)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                        }`}
+                      >
+                        Minggu {wk}
+                      </button>
+                    );
+                  })}
+                  {['Amali', 'Tutorial'].map((other) => {
+                    const isSelected = cleanBaseSessionName === other;
+                    return (
+                      <button
+                        key={`preset-${other}`}
+                        type="button"
+                        onClick={() => setNewSessionName(other)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {other}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
+              {/* 2. Meeting 1st ('a') & Meeting 2nd ('b') Harmonization */}
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-bold text-white">
+                      Pertemuan Kuliah Mingguan (Meeting 1st & 2nd)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => { setIncludeMeetingA(true); setIncludeMeetingB(true); }}
+                      className="text-indigo-400 hover:text-indigo-300 hover:underline px-1 cursor-pointer font-medium"
+                    >
+                      Kedua-dua (a & b)
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      type="button"
+                      onClick={() => { setIncludeMeetingA(true); setIncludeMeetingB(false); }}
+                      className="text-slate-400 hover:text-slate-300 hover:underline px-1 cursor-pointer font-medium"
+                    >
+                      Meeting 1st (a) Sahaja
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      type="button"
+                      onClick={() => { setIncludeMeetingA(false); setIncludeMeetingB(true); }}
+                      className="text-slate-400 hover:text-slate-300 hover:underline px-1 cursor-pointer font-medium"
+                    >
+                      Meeting 2nd (b) Sahaja
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Setiap kelas mempunyai pertemuan 1st &amp; 2nd yang diwakili oleh remark <strong>a</strong> dan <strong>b</strong>. Tandakan sesi yang ingin dijana:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Card 1: Meeting 1st 'a' */}
+                  <button
+                    type="button"
+                    id="btn-toggle-meeting-a"
+                    onClick={() => setIncludeMeetingA((prev) => !prev)}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      includeMeetingA
+                        ? 'bg-indigo-950/60 border-indigo-500 text-white ring-1 ring-indigo-500/40 shadow-sm'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 mt-0.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                        includeMeetingA
+                          ? 'bg-indigo-600 border-indigo-500 text-white'
+                          : 'border-slate-700 bg-slate-900'
+                      }`}
+                    >
+                      {includeMeetingA && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-white">Meeting 1st ("a")</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold">
+                          {cleanBaseSessionName}a
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Pertemuan pertama dalam minggu
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Card 2: Meeting 2nd 'b' */}
+                  <button
+                    type="button"
+                    id="btn-toggle-meeting-b"
+                    onClick={() => setIncludeMeetingB((prev) => !prev)}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      includeMeetingB
+                        ? 'bg-indigo-950/60 border-indigo-500 text-white ring-1 ring-indigo-500/40 shadow-sm'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 mt-0.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                        includeMeetingB
+                          ? 'bg-indigo-600 border-indigo-500 text-white'
+                          : 'border-slate-700 bg-slate-900'
+                      }`}
+                    >
+                      {includeMeetingB && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-white">Meeting 2nd ("b")</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold">
+                          {cleanBaseSessionName}b
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Pertemuan kedua dalam minggu
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Per-Class Generation Mode */}
+              <button
+                type="button"
+                id="btn-toggle-generate-per-class"
+                onClick={() => setGeneratePerClass((prev) => !prev)}
+                className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  generatePerClass
+                    ? 'bg-emerald-950/30 border-emerald-500/50 text-white shadow-sm'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 mt-0.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                    generatePerClass
+                      ? 'bg-emerald-600 border-emerald-500 text-white'
+                      : 'border-slate-700 bg-slate-900'
+                  }`}
+                >
+                  {generatePerClass && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-white">
+                      Hasilkan sesi berasingan mengikut kelas masing-masing
+                    </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Disyorkan
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {generatePerClass
+                      ? `Menjana sesi berasingan secara automatik bagi setiap kelas (${newSessionClasses.length} kelas ditandakan) untuk pengasingan rekod kehadiran yang tepat.`
+                      : 'Menggabungkan semua kelas ke dalam satu sesi kuliah serentak (ALL).'}
+                  </p>
+                </div>
+              </button>
+
+              {/* 4. Target Classes Checklist */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
@@ -1268,63 +1672,88 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                     >
                       Kosongkan
                     </button>
+                    <span className="text-slate-600 text-xs">|</span>
+                    <button
+                      type="button"
+                      id="btn-manage-subject-classes-session"
+                      onClick={() => {
+                        setIsCreateSessionOpen(false);
+                        setIsManageSubjectsModalOpen(true);
+                      }}
+                      className="text-[11px] font-semibold text-teal-400 hover:text-teal-300 hover:underline px-1.5 py-0.5 rounded transition cursor-pointer"
+                      title="Urus dan buang/tambah kelas bagi subjek ini"
+                    >
+                      Urus Kelas Subjek
+                    </button>
                   </div>
                 </div>
 
-                {/* Interactive Checkbox Tick Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                {/* Interactive Checkbox Tick Grid with Quick Remove */}
+                {classActionNotice && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{classActionNotice}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                   {targetClassesForModal.map((sec, secIdx) => {
                     const isChecked = newSessionClasses.includes(sec);
                     const count = studentCountByClass[sec.toUpperCase()] || 0;
                     return (
-                      <button
-                        key={`tick-class-${sec}-${secIdx}`}
-                        id={`btn-tick-class-${sec}`}
-                        type="button"
-                        onClick={() => handleToggleSessionClass(sec)}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                          isChecked
-                            ? 'bg-indigo-950/60 border-indigo-500 shadow-sm shadow-indigo-900/40 text-white ring-1 ring-indigo-500/50'
-                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-300'
-                        }`}
+                      <div
+                        key={`tick-class-wrap-${sec}-${secIdx}`}
+                        className="flex items-center gap-1"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${
-                              isChecked
-                                ? 'bg-indigo-600 border-indigo-500 text-white'
-                                : 'border-slate-700 bg-slate-900'
-                            }`}
-                          >
-                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                          <span className={`text-xs font-bold truncate ${isChecked ? 'text-white' : 'text-slate-300'}`}>
-                            Kelas {sec}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
+                        <button
+                          id={`btn-tick-class-${sec}`}
+                          type="button"
+                          onClick={() => handleToggleSessionClass(sec)}
+                          className={`flex-1 flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
                             isChecked
-                              ? 'bg-indigo-500/25 text-indigo-200 border-indigo-500/40'
-                              : 'bg-slate-900 text-slate-500 border-slate-800'
+                              ? 'bg-indigo-950/60 border-indigo-500 shadow-sm shadow-indigo-900/40 text-white ring-1 ring-indigo-500/50'
+                              : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-300'
                           }`}
                         >
-                          {count} Pelajar
-                        </span>
-                      </button>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                                isChecked
+                                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                                  : 'border-slate-700 bg-slate-900'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                            <span className={`text-xs font-bold truncate ${isChecked ? 'text-white' : 'text-slate-300'}`}>
+                              Kelas {sec}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
+                              isChecked
+                                ? 'bg-indigo-500/25 text-indigo-200 border-indigo-500/40'
+                                : 'bg-slate-900 text-slate-500 border-slate-800'
+                            }`}
+                          >
+                            {count} Pelajar
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          id={`btn-remove-section-${sec}`}
+                          onClick={() => handleOpenRemoveClassPrompt(sec)}
+                          className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-rose-500/60 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 active:scale-95 transition cursor-pointer shrink-0 shadow-sm"
+                          title={`Padam / Keluarkan Kelas ${sec}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
 
-                {/* Target student count summary & validation feedback */}
-                {newSessionClasses.length > 0 ? (
-                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-300">
-                    <span className="text-slate-400">Jumlah pelajar dijangka:</span>
-                    <span className="font-bold text-emerald-400 font-mono">
-                      {totalStudentsInTargetClasses} Pelajar ({newSessionClasses.join(', ')})
-                    </span>
-                  </div>
-                ) : (
+                {newSessionClasses.length === 0 && (
                   <div className="px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-300 flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>Sila tandakan (tick) sekurang-kurangnya satu kelas untuk sesi ini.</span>
@@ -1332,24 +1761,57 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 )}
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                💡 Sesi kelas ini akan dicipta serta-merta dan sedia untuk diimbas oleh pelajar bagi kelas yang dipilih.
-              </div>
+              {/* 5. Live Preview of Sessions to be Generated */}
+              {previewGeneratedSessions.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-indigo-200 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Ringkasan: {previewGeneratedSessions.length} Sesi Kelas Akan Dijana</span>
+                    </span>
+                    <span className="text-[11px] text-indigo-300 font-mono">
+                      {generatePerClass ? `${newSessionClasses.length} Kelas × ${meetingSuffixes.length} Pertemuan` : `1 Sesi Gabungan`}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                    {previewGeneratedSessions.map((ps, idx) => (
+                      <span
+                        key={`prev-ses-${idx}`}
+                        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-indigo-900/60 border border-indigo-500/40 text-indigo-100 font-medium"
+                      >
+                        <span className="font-bold">{ps.sessionName}</span>
+                        <span className="text-[10px] px-1 py-0.2 rounded bg-indigo-950 text-indigo-300 font-mono">
+                          {ps.className}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-indigo-500/20">
+                    <span>Jumlah Pelajar Sasaran:</span>
+                    <span className="font-bold text-emerald-400 font-mono">
+                      {totalStudentsInTargetClasses} Pelajar ({newSessionClasses.length} Kelas)
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsCreateSessionOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-all cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-all cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  disabled={newSessionClasses.length === 0}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  disabled={newSessionClasses.length === 0 || previewGeneratedSessions.length === 0}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  Simpan & Cipta Sesi
+                  <CalendarPlus className="w-4 h-4" />
+                  <span>Jana & Cipta {previewGeneratedSessions.length} Sesi Kelas</span>
                 </button>
               </div>
             </form>
@@ -1505,6 +1967,93 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Ya, Padam Sekarang</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL PENGESAHAN PADAM / KELUARKAN KELAS
+          100% iframe compatible - Tiada window.confirm
+          ======================================================== */}
+      {classToDeletePrompt && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  Keluarkan / Padam Kelas {classToDeletePrompt.className}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Sila pilih tindakan bagi Kelas <span className="text-white font-semibold">{classToDeletePrompt.className}</span>:
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-400">
+                <span>Subjek Terpilih:</span>
+                <span className="font-semibold text-slate-200 text-right truncate max-w-[210px]">
+                  {classToDeletePrompt.subjectName}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Pelajar Berdaftar:</span>
+                <span className="font-semibold text-indigo-400 font-mono">
+                  {classToDeletePrompt.studentCount} Orang Pelajar
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              {/* Option 1: Remove from Subject only */}
+              <button
+                type="button"
+                id="btn-confirm-remove-from-subject"
+                onClick={handleConfirmRemoveFromSubject}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/40 text-left transition cursor-pointer group"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-indigo-300 group-hover:text-indigo-200">
+                    Keluarkan daripada Subjek Ini Sahaja
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-tight">
+                    Kelas {classToDeletePrompt.className} tidak lagi akan muncul dalam senarai sesi kuliah bagi subjek ini.
+                  </div>
+                </div>
+              </button>
+
+              {/* Option 2: Delete globally (for accidentally created class) */}
+              <button
+                type="button"
+                id="btn-confirm-delete-class-globally"
+                onClick={handleConfirmDeleteClassGlobally}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-left transition cursor-pointer group"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-rose-300 group-hover:text-rose-200 flex items-center gap-1.5">
+                    <span>Padam Sepenuhnya dari Sistem Kolej</span>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold">Disyorkan</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-tight">
+                    Jika kelas ini wujud secara tidak sengaja, pilihan ini akan memadamkannya daripada semua subjek, pensyarah & jadual.
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                id="btn-cancel-remove-class-modal"
+                onClick={() => setClassToDeletePrompt(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Batal
               </button>
             </div>
           </div>

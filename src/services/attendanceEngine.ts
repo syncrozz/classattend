@@ -2650,6 +2650,147 @@ class AttendanceEngine {
     }
   }
 
+  /**
+   * Remove a specific section/class from a subject's configured sections
+   */
+  public removeSectionFromSubject(subjectId: string, className: string, fallbackSectionsIfEmpty?: string[]) {
+    const norm = className.trim().toUpperCase();
+    this.subjects = this.subjects.map((sub) => {
+      if (sub.id === subjectId || sub.code.toUpperCase() === subjectId.toUpperCase()) {
+        const baseSections = (sub.sections && sub.sections.length > 0)
+          ? sub.sections
+          : (fallbackSectionsIfEmpty && fallbackSectionsIfEmpty.length > 0 ? fallbackSectionsIfEmpty : ['DIA_4A', 'DIA_4B', 'DIA_4C', 'DIA_4D']);
+        const updated = {
+          ...sub,
+          sections: baseSections.filter((s) => s.trim().toUpperCase() !== norm)
+        };
+        if (db) {
+          setDoc(doc(db, 'subjects', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(console.warn);
+        }
+        return updated;
+      }
+      return sub;
+    });
+    this.saveSubjectsLocally();
+    this.notifySubjectListeners();
+    this.broadcastChange();
+  }
+
+  /**
+   * Delete an accidental or unwanted class entirely from the system:
+   * - Removes class from all subjects' sections
+   * - Removes class from all lecturers' assignedClasses & assignedSections
+   * - Removes related teaching assignments
+   * - Clears/removes students under this class
+   * - Syncs to Firestore & localStorage
+   */
+  public deleteClass(className: string, options?: { deleteStudents?: boolean }) {
+    const norm = className.trim().toUpperCase();
+
+    // 1. Remove from all subjects
+    this.subjects = this.subjects.map((sub) => {
+      const existing = sub.sections || [];
+      if (existing.some((s) => s.trim().toUpperCase() === norm)) {
+        const updated = {
+          ...sub,
+          sections: existing.filter((s) => s.trim().toUpperCase() !== norm)
+        };
+        if (db) {
+          setDoc(doc(db, 'subjects', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(console.warn);
+        }
+        return updated;
+      }
+      return sub;
+    });
+    this.saveSubjectsLocally();
+
+    // 2. Remove from lecturers
+    this.lecturers = this.lecturers.map((lec) => {
+      const secList = [...(lec.assignedClasses || []), ...(lec.assignedSections || [])];
+      if (secList.some((c) => c.trim().toUpperCase() === norm)) {
+        const updated = {
+          ...lec,
+          assignedClasses: (lec.assignedClasses || []).filter((c) => c.trim().toUpperCase() !== norm),
+          assignedSections: (lec.assignedSections || []).filter((c) => c.trim().toUpperCase() !== norm)
+        };
+        if (db) {
+          setDoc(doc(db, 'lecturers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(console.warn);
+        }
+        return updated;
+      }
+      return lec;
+    });
+    this.saveLecturersLocally();
+
+    // 3. Remove from teaching assignments
+    const toRemoveAssignments = this.teachingAssignments.filter(
+      (ta) => ta.className && ta.className.trim().toUpperCase() === norm
+    );
+    this.teachingAssignments = this.teachingAssignments.filter(
+      (ta) => !ta.className || ta.className.trim().toUpperCase() !== norm
+    );
+    this.saveTeachingAssignmentsLocally();
+    if (db) {
+      toRemoveAssignments.forEach((ta) => {
+        if (ta.id) deleteDoc(doc(db, 'teaching_assignments', ta.id)).catch(console.warn);
+      });
+    }
+
+    // 4. Enrollments
+    this.enrollments = this.enrollments.filter(
+      (enr) => !enr.className || enr.className.trim().toUpperCase() !== norm
+    );
+    this.saveEnrollmentsLocally();
+
+    // 5. Students
+    if (options?.deleteStudents) {
+      const studentsToDelete = this.students.filter(
+        (s) =>
+          (s.className && s.className.trim().toUpperCase() === norm) ||
+          (s.classId && s.classId.trim().toUpperCase() === norm)
+      );
+      this.students = this.students.filter(
+        (s) =>
+          (!s.className || s.className.trim().toUpperCase() !== norm) &&
+          (!s.classId || s.classId.trim().toUpperCase() !== norm)
+      );
+      this.saveStudentsLocally();
+      if (db) {
+        studentsToDelete.forEach((s) => {
+          deleteDoc(doc(db, 'students', s.id)).catch(console.warn);
+        });
+      }
+    } else {
+      // Clear their className & classId so the accidental class doesn't keep appearing
+      this.students = this.students.map((s) => {
+        const matchClass =
+          (s.className && s.className.trim().toUpperCase() === norm) ||
+          (s.classId && s.classId.trim().toUpperCase() === norm);
+        if (matchClass) {
+          const updated = {
+            ...s,
+            className: s.className?.trim().toUpperCase() === norm ? '' : s.className,
+            classId: s.classId?.trim().toUpperCase() === norm ? '' : s.classId
+          };
+          if (db) {
+            setDoc(doc(db, 'students', s.id), sanitizeForFirestore(updated), { merge: true }).catch(console.warn);
+          }
+          return updated;
+        }
+        return s;
+      });
+      this.saveStudentsLocally();
+    }
+
+    // 6. Notify all listeners
+    this.notifySubjectListeners();
+    this.notifyLecturerListeners();
+    this.notifyTeachingAssignmentListeners();
+    this.notifyStudentListeners();
+    this.notifyEnrollmentListeners();
+    this.broadcastChange();
+  }
+
   public saveSubjects(subjects: Subject[]) {
     this.subjects = subjects;
     this.saveSubjectsLocally();
@@ -2708,6 +2849,46 @@ class AttendanceEngine {
 
     this.sessions = updated;
     this.saveSessionsLocally();
+
+    if (db) {
+      sessionsToUpdate.forEach((s) => {
+        setDoc(doc(db, 'sessions', s.id), sanitizeForFirestore(s), { merge: true }).catch(console.warn);
+      });
+    }
+
+    return updated;
+  }
+
+  public addMultipleSessions(newSessions: AttendanceSession[]): AttendanceSession[] {
+    if (!newSessions || newSessions.length === 0) return this.sessions;
+    let updated = [...this.sessions];
+    const sessionsToUpdate: AttendanceSession[] = [...newSessions];
+
+    const hasOpen = newSessions.some((s) => s.status === 'OPEN');
+    if (hasOpen) {
+      const openId = newSessions.find((s) => s.status === 'OPEN')?.id;
+      updated = updated.map((s) => {
+        if (s.id !== openId && s.status === 'OPEN') {
+          const closed = { ...s, status: 'CLOSED' as EventStatus };
+          sessionsToUpdate.push(closed);
+          return closed;
+        }
+        return s;
+      });
+    }
+
+    for (const s of newSessions) {
+      const index = updated.findIndex((item) => item.id === s.id);
+      if (index >= 0) {
+        updated[index] = s;
+      } else {
+        updated = [s, ...updated];
+      }
+    }
+
+    this.sessions = updated;
+    this.saveSessionsLocally();
+    this.notifySessionListeners();
 
     if (db) {
       sessionsToUpdate.forEach((s) => {

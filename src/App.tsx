@@ -395,6 +395,26 @@ export default function App() {
     });
   };
 
+  // Create Multiple Sessions (e.g. Meeting 1st 'a' & 2nd 'b' for each class automatically)
+  const handleCreateMultipleSessions = (newSessions: AttendanceSession[]) => {
+    if (!newSessions || newSessions.length === 0) return;
+    if (newSessions.length === 1) {
+      handleCreateSession(newSessions[0]);
+      return;
+    }
+    const updated = attendanceEngine.addMultipleSessions(newSessions);
+    setSessions(updated);
+    soundService.playSuccess();
+    auditLogger.log({
+      category: 'SESSION_MGMT',
+      action: 'Penjadualan Sesi Kuliah Berkelompok',
+      details: `${newSessions.length} sesi kuliah (${newSessions.map(s => `${s.sessionName} [${s.className}]`).join(', ')}) berjaya dijadualkan.`,
+      performedBy: activeLecturer?.name || 'Pensyarah KPM',
+      target: `${newSessions.length} Sesi Kuliah`,
+      severity: 'SUCCESS'
+    });
+  };
+
   // Update Session (e.g. rename session title / remark like "Kuliah Minggu 6" -> "Kuliah Minggu 6a")
   const handleUpdateSession = (updatedSession: AttendanceSession) => {
     const updated = attendanceEngine.updateSession(updatedSession);
@@ -813,7 +833,7 @@ export default function App() {
                 teachingAssignments={teachingAssignments}
                 activeSession={activeSession}
                 onOpenScanner={() => handleTabChange('scanner')}
-                onGoToActivities={() => handleTabChange('activities')}
+                onGoToActivities={() => handleTabChange('dashboard')}
                 onGoToStudents={() => handleTabChange('students')}
                 onGoToReports={() => handleTabChange('reports')}
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
@@ -823,24 +843,35 @@ export default function App() {
                 onOpenLecturerRegistration={() => setIsLecturerSelfRegOpen(true)}
               />
             ) : currentRole === 'LECTURER' && activeLecturer ? (
-              <LecturerWorkspaceView
-                activeLecturer={activeLecturer}
-                isAdmin={isAdmin}
+              <EventManagementView
                 subjects={subjects}
                 sessions={sessions}
-                students={students}
                 attendanceRecords={attendanceRecords}
+                students={students}
+                lecturers={lecturers}
+                enrollments={enrollments}
                 teachingAssignments={teachingAssignments}
-                onOpenScanner={() => handleTabChange('scanner')}
-                onGoToActivities={() => handleTabChange('activities')}
-                onGoToStudents={() => handleTabChange('students')}
-                onGoToReports={() => handleTabChange('reports')}
-                onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
-                onQuickSimulateScan={handleQuickSimulateScan}
+                activeLecturer={activeLecturer}
+                isAdmin={isAdmin}
+                onSetSessionStatus={handleSetSessionStatus}
+                onCreateSubject={handleCreateSubject}
                 onCreateSession={handleCreateSession}
+                onCreateMultipleSessions={handleCreateMultipleSessions}
                 onUpdateSession={handleUpdateSession}
-                onStartSessionForClass={handleStartSessionForClass}
-                onSwitchToAdminMode={handleToggleAdminMode}
+                onDeleteSession={handleDeleteSession}
+                onDeleteSubject={handleDeleteSubject}
+                onOpenScannerForSession={(sessionId) => {
+                  handleSetSessionStatus(sessionId, 'OPEN');
+                  handleTabChange('scanner');
+                }}
+                onOpenScanner={() => handleTabChange('scanner')}
+                onRequestAdminAccess={handleRequestAdminAccess}
+                onOpenCSVImport={() => setIsCSVModalOpen(true)}
+                onNavigateToStudents={() => handleTabChange('students')}
+                onOpenSelfRegistrationTest={(ctx) => {
+                  setSelfRegistrationContext(ctx);
+                  setIsSelfRegistrationOpen(true);
+                }}
               />
             ) : (
               <DashboardView
@@ -852,7 +883,7 @@ export default function App() {
                 lecturers={lecturers}
                 activeLecturer={activeLecturer}
                 onOpenScanner={() => handleTabChange('scanner')}
-                onGoToActivities={() => handleTabChange('activities')}
+                onGoToActivities={() => handleTabChange('dashboard')}
                 onGoToStudents={() => handleTabChange('students')}
                 onGoToReports={() => handleTabChange('reports')}
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
@@ -870,7 +901,7 @@ export default function App() {
               isAdmin={isAdmin}
               onRequestAdminAccess={handleRequestAdminAccess}
               onProcessScan={handleProcessScan}
-              onGoToActivities={() => handleTabChange('activities')}
+              onGoToActivities={() => handleTabChange('dashboard')}
               onCloseSession={(sessionId) => handleSetSessionStatus(sessionId, 'CLOSED')}
               onGoToLecturerWorkspace={() => handleTabChange('dashboard')}
               onGoToReports={() => handleTabChange('reports')}
@@ -893,6 +924,7 @@ export default function App() {
               onSetSessionStatus={handleSetSessionStatus}
               onCreateSubject={handleCreateSubject}
               onCreateSession={handleCreateSession}
+              onCreateMultipleSessions={handleCreateMultipleSessions}
               onUpdateSession={handleUpdateSession}
               onDeleteSession={handleDeleteSession}
               onDeleteSubject={handleDeleteSubject}

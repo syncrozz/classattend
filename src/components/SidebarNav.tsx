@@ -49,12 +49,6 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
     },
     {
-      id: 'activities' as ActiveTab,
-      label: currentRole === 'ADMIN' || currentRole === 'LECTURER' ? 'Urus Kelas & Sesi' : 'Jadual Sesi & Kelas',
-      icon: BookMarked,
-      badge: undefined
-    },
-    {
       id: 'my-attendance' as ActiveTab,
       label: 'Kehadiran Pelajar',
       icon: UserSquare2,
