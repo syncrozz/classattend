@@ -24,14 +24,10 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
-  ShieldCheck,
-  PlusCircle,
-  FolderPlus
+  ShieldCheck
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import {
-  validateClassCode,
-  STANDARD_CLASS_CATALOGUE,
   normalizeClassCode
 } from '../utils/classHelper';
 import {
@@ -69,7 +65,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   students,
   attendanceRecords,
   teachingAssignments,
-  enrollments: _enrollments,
+  enrollments,
   activeSession: propActiveSession,
   onOpenScanner,
   onOpenScannerForSession,
@@ -79,40 +75,34 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onGoToStudents: _onGoToStudents,
   onGoToReports: _onGoToReports
 }) => {
-  // 1. Build Official Class Catalogue from database & standard fallback
-  const officialCatalogue = useMemo(() => {
-    const set = new Set<string>(STANDARD_CLASS_CATALOGUE);
-    teachingAssignments.forEach((ta) => {
-      if (ta.className) set.add(ta.className.trim().toUpperCase());
-    });
-    subjects.forEach((sub) => {
-      (sub.sections || []).forEach((sec) => set.add(sec.trim().toUpperCase()));
-    });
-    students.forEach((st) => {
-      if (st.className) set.add(st.className.trim().toUpperCase());
-    });
-    return Array.from(set).sort();
-  }, [teachingAssignments, subjects, students]);
-
-  // 2. Identify Lecturer's assigned subjects & classes
+  // 1. Identify Lecturer's ACTIVE teaching assignments (SES v4.5 Authoritative Source)
   const myAssignments = useMemo(() => {
     return teachingAssignments.filter((ta) => {
+      const isActive = ta.status === 'ACTIVE';
       const matchId = ta.lecturerId === activeLecturer.id;
-      const matchEmail = ta.lecturerEmail && activeLecturer.email && ta.lecturerEmail.toLowerCase() === activeLecturer.email.toLowerCase();
-      const matchName = ta.lecturerName && activeLecturer.name && ta.lecturerName.toLowerCase() === activeLecturer.name.toLowerCase();
-      return matchId || matchEmail || matchName;
+      const matchEmail = Boolean(
+        ta.lecturerEmail &&
+        activeLecturer.email &&
+        ta.lecturerEmail.trim().toLowerCase() === activeLecturer.email.trim().toLowerCase()
+      );
+      const matchName = Boolean(
+        ta.lecturerName &&
+        activeLecturer.name &&
+        ta.lecturerName.trim().toLowerCase() === activeLecturer.name.trim().toLowerCase()
+      );
+      return isActive && (matchId || matchEmail || matchName);
     });
   }, [teachingAssignments, activeLecturer]);
 
-  // Assigned subject codes
+  // Assigned subject codes derived strictly from ACTIVE assignments
   const myAssignedSubjectCodes = useMemo(() => {
     const codes = new Set<string>();
     myAssignments.forEach((ta) => {
-      if (ta.subjectCode) codes.add(ta.subjectCode.toUpperCase());
+      if (ta.subjectCode) codes.add(ta.subjectCode.trim().toUpperCase());
     });
     // Fallback: If no explicit assignment, give access to college subjects
     if (codes.size === 0) {
-      subjects.forEach((s) => codes.add(s.code.toUpperCase()));
+      subjects.forEach((s) => codes.add(s.code.trim().toUpperCase()));
     }
     return codes;
   }, [myAssignments, subjects]);
@@ -132,62 +122,74 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     return availableSubjects.find((s) => s.code.toUpperCase() === selectedSubjectCode.toUpperCase()) || availableSubjects[0];
   }, [availableSubjects, selectedSubjectCode]);
 
-  // Classes for the selected subject: Admin-assigned classes appear FIRST
+  // Authorized Classes for the selected subject: Strictly derived from ACTIVE teaching assignments (SES v4.5 Phase 4B.2-C)
   const availableClassesForSubject = useMemo(() => {
     if (!selectedSubject) return [];
 
-    const assignedSet = new Set<string>();
+    const normSubjCode = selectedSubject.code.trim().toUpperCase();
+    const authorizedClasses = new Set<string>();
+
     myAssignments
-      .filter((ta) => ta.subjectCode.toUpperCase() === selectedSubject.code.toUpperCase())
+      .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode && ta.subjectCode.trim().toUpperCase() === normSubjCode)
       .forEach((ta) => {
-        if (ta.className) assignedSet.add(ta.className.trim().toUpperCase());
+        if (ta.className && ta.className.trim()) {
+          authorizedClasses.add(ta.className.trim());
+        }
       });
 
-    // Subject sections from subject entity
-    const subjectSections = new Set<string>(
-      (selectedSubject.sections || []).map((s) => s.trim().toUpperCase())
-    );
-
-    // List admin-assigned first
-    const assignedList = Array.from(assignedSet);
-    const otherSections = Array.from(subjectSections).filter((s) => !assignedSet.has(s));
-
-    // Combine: Assigned first, then other sections
-    const combined = [...assignedList, ...otherSections];
-
-    // If still empty, provide standard college accounting classes
-    if (combined.length === 0) {
-      return ['DIA3A', 'DIA3B', 'DIA3C', 'DLM4A'];
-    }
-
-    return combined;
+    return Array.from(authorizedClasses);
   }, [selectedSubject, myAssignments]);
 
   const [selectedClass, setSelectedClass] = useState<string>(() => {
-    return availableClassesForSubject[0] || 'DIA3A';
+    return availableClassesForSubject[0] || '';
   });
 
-  // Keep selectedClass synchronized if available classes change
+  // Keep selectedClass synchronized if available classes change or subject switches
   React.useEffect(() => {
-    if (availableClassesForSubject.length > 0 && !availableClassesForSubject.includes(selectedClass)) {
+    if (availableClassesForSubject.length === 0) {
+      if (selectedClass !== '') {
+        setSelectedClass('');
+      }
+    } else if (!availableClassesForSubject.includes(selectedClass)) {
       setSelectedClass(availableClassesForSubject[0]);
     }
   }, [availableClassesForSubject, selectedClass]);
 
-  // State: Add other class picker
-  const [isAddClassOpen, setIsAddClassOpen] = useState(false);
-  const [customClassInput, setCustomClassInput] = useState('');
-  const [customClassValidation, setCustomClassValidation] = useState<{
-    isValid: boolean;
-    suggestions: string[];
-    message?: string;
-  } | null>(null);
+  // Subject selection handler: recalculates authorized classes and clears/updates selected class
+  const handleSelectSubject = (code: string) => {
+    setSelectedSubjectCode(code);
+    const normCode = code.trim().toUpperCase();
+    const authorizedForNewSubject = Array.from(
+      new Set(
+        myAssignments
+          .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode && ta.subjectCode.trim().toUpperCase() === normCode)
+          .map((ta) => ta.className?.trim())
+          .filter((cls): cls is string => Boolean(cls))
+      )
+    );
 
-  // Active Session Detection (Check if ANY session is OPEN)
+    if (authorizedForNewSubject.includes(selectedClass)) {
+      // Retain selection if authorized for the new subject
+    } else if (authorizedForNewSubject.length > 0) {
+      setSelectedClass(authorizedForNewSubject[0]);
+    } else {
+      setSelectedClass('');
+    }
+  };
+
+  // Active Session Detection (Check if ANY session is OPEN for this lecturer)
   const currentOpenSession = useMemo(() => {
-    if (propActiveSession && propActiveSession.status === 'OPEN') return propActiveSession;
-    return sessions.find((s) => s.status === 'OPEN') || null;
-  }, [propActiveSession, sessions]);
+    if (
+      propActiveSession &&
+      propActiveSession.status === 'OPEN' &&
+      isLecturerAuthorizedForSession(propActiveSession, activeLecturer, isAdmin, teachingAssignments)
+    ) {
+      return propActiveSession;
+    }
+    const openSessions = sessions.filter((s) => s.status === 'OPEN');
+    const authorizedOpen = filterAuthorizedSessions(openSessions, activeLecturer, isAdmin, teachingAssignments);
+    return authorizedOpen[0] || null;
+  }, [propActiveSession, sessions, activeLecturer, isAdmin, teachingAssignments]);
 
   // Does selected subject and class match an active session?
   const isSelectedActive = useMemo(() => {
@@ -277,18 +279,24 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     return attendanceRecords.filter((r) => r.sessionId === currentOpenSession.id && r.status === 'PRESENT');
   }, [currentOpenSession, attendanceRecords]);
 
-  const activeTargetStudents = useMemo(() => {
-    if (!currentOpenSession) return [];
-    const norm = normalizeClassCode(currentOpenSession.className);
-    return students.filter((s) => normalizeClassCode(s.className) === norm);
-  }, [currentOpenSession, students]);
-
-  const activeTargetCount = currentOpenSession?.targetCount || (activeTargetStudents.length > 0 ? activeTargetStudents.length : 30);
-  const activePercent = Math.min(100, Math.round((activeSessionRecords.length / Math.max(1, activeTargetCount)) * 100));
+  // Active session statistics:
+  // SES v4.5 Authoritative Denominator: Uses session.targetCount snapshot, or dynamically resolves
+  // from authoritative ACTIVE enrollments for (subjectCode, className). Never uses class capacity or 30 fallback.
+  const { targetCount: activeTargetCount, attendancePercent: activePercent } = useMemo(() => {
+    if (!currentOpenSession) return { targetCount: 0, attendancePercent: 0 };
+    return calculateAttendanceMetrics(
+      activeSessionRecords.length,
+      currentOpenSession.targetCount,
+      enrollments,
+      currentOpenSession
+    );
+  }, [currentOpenSession, activeSessionRecords.length, enrollments]);
 
   // Attendance History: sorted descending newest first, strictly respecting lecturer identity & authorized teaching assignments
+  // SES v4.5 Separation: History contains completed/closed historical sessions (status !== 'OPEN')
   const historySessions = useMemo(() => {
-    return filterAuthorizedSessions(sessions, activeLecturer, isAdmin, teachingAssignments);
+    const historicalOnly = sessions.filter((s) => s.status !== 'OPEN');
+    return filterAuthorizedSessions(historicalOnly, activeLecturer, isAdmin, teachingAssignments);
   }, [sessions, activeLecturer, isAdmin, teachingAssignments]);
 
   const selectedSessionForDetail = useMemo(() => {
@@ -303,41 +311,26 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
 
   const recentSessions = historySessions;
 
-  // Validation handler for custom class input
-  const handleCustomClassInputChange = (val: string) => {
-    setCustomClassInput(val);
-    if (!val.trim()) {
-      setCustomClassValidation(null);
-      return;
-    }
-    const result = validateClassCode(val, officialCatalogue);
-    setCustomClassValidation(result);
-  };
-
-  const handleSelectSuggestedClass = (className: string) => {
-    setSelectedClass(className);
-    setCustomClassInput('');
-    setCustomClassValidation(null);
-    setIsAddClassOpen(false);
-  };
-
-  const handleConfirmCustomClass = () => {
-    if (!customClassInput.trim()) return;
-    const result = validateClassCode(customClassInput, officialCatalogue);
-    if (result.isValid && result.exactMatch) {
-      setSelectedClass(result.exactMatch);
-      setCustomClassInput('');
-      setCustomClassValidation(null);
-      setIsAddClassOpen(false);
-    } else {
-      setCustomClassValidation(result);
-    }
-  };
-
-  // 1-Tap Activation Handler
+  // 1-Tap Activation Handler (SES v4.5 Authoritative Invariant Enforcement)
   const handleActivateSession = () => {
     if (!selectedSubject || !selectedClass) {
       setActionNotice({ type: 'error', message: 'Sila pilih subjek dan kelas terlebih dahulu.' });
+      return;
+    }
+
+    // Authoritative verification: Must correspond to an ACTIVE teaching assignment
+    const matchingAssignment = myAssignments.find((ta) => {
+      const isActive = ta.status === 'ACTIVE';
+      const isSubjMatch = ta.subjectCode && ta.subjectCode.trim().toUpperCase() === selectedSubject.code.trim().toUpperCase();
+      const isClassMatch = normalizeClassCode(ta.className) === normalizeClassCode(selectedClass);
+      return isActive && isSubjMatch && isClassMatch;
+    });
+
+    if (!matchingAssignment && !isAdmin) {
+      setActionNotice({
+        type: 'error',
+        message: `Kombinasi ${selectedSubject.code} dan ${selectedClass} tidak dibenarkan kerana tiada penetapan pengajaran aktif.`
+      });
       return;
     }
 
@@ -359,7 +352,12 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
 
     // 3. Activate session via authoritative engine
     try {
-      const res = attendanceEngine.activateClassSession(selectedSubject, selectedClass, activeLecturer);
+      const res = attendanceEngine.activateClassSession(
+        selectedSubject,
+        selectedClass,
+        activeLecturer,
+        matchingAssignment?.id
+      );
       setActionNotice({
         type: 'success',
         message: `Sesi kehadiran untuk ${selectedSubject.code} (${selectedClass}) berjaya diaktifkan!`
@@ -399,6 +397,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         students={students}
         teachingAssignments={teachingAssignments}
         myAssignedSubjectCodes={myAssignedSubjectCodes}
+        enrollments={enrollments}
         onBack={handleCloseSessionDetail}
         onOpenScannerForSession={onOpenScannerForSession}
       />
@@ -640,7 +639,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   <button
                     key={sub.id || sub.code}
                     type="button"
-                    onClick={() => setSelectedSubjectCode(sub.code)}
+                    onClick={() => handleSelectSubject(sub.code)}
                     className={`text-left p-3.5 rounded-xl transition-all min-h-[56px] border flex flex-col justify-between ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-950/40 text-white shadow-md shadow-indigo-500/10 ring-1 ring-indigo-500'
@@ -672,114 +671,40 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
               <span>Langkah 2: Pilih Kelas</span>
             </label>
-            <button
-              type="button"
-              onClick={() => setIsAddClassOpen(!isAddClassOpen)}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>{isAddClassOpen ? 'Tutup Pilihan' : '+ Tambah Kelas Lain'}</span>
-            </button>
           </div>
 
           {/* Class Badges / Chips */}
-          <div className="flex flex-wrap gap-2.5">
-            {availableClassesForSubject.map((cls) => {
-              const isSelected = normalizeClassCode(selectedClass) === normalizeClassCode(cls);
-              const isAssigned = myAssignments.some(
-                (ta) =>
-                  ta.subjectCode.toUpperCase() === selectedSubject?.code.toUpperCase() &&
-                  normalizeClassCode(ta.className) === normalizeClassCode(cls)
-              );
+          {availableClassesForSubject.length === 0 ? (
+            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-xs flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>Tiada kelas aktif yang ditugaskan untuk subjek ini. Sila hubungi pentadbir untuk penetapan pengajaran.</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2.5">
+              {availableClassesForSubject.map((cls) => {
+                const isSelected = normalizeClassCode(selectedClass) === normalizeClassCode(cls);
 
-              return (
-                <button
-                  key={cls}
-                  type="button"
-                  onClick={() => setSelectedClass(cls)}
-                  className={`px-4 py-2.5 min-h-[48px] rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
-                      : 'bg-slate-950/80 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white'
-                  }`}
-                >
-                  <span>{cls}</span>
-                  {isAssigned && (
+                return (
+                  <button
+                    key={cls}
+                    type="button"
+                    onClick={() => setSelectedClass(cls)}
+                    className={`px-4 py-2.5 min-h-[48px] rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
+                        : 'bg-slate-950/80 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span>{cls}</span>
                     <span
                       title="Kelas Ditugaskan oleh Pentadbir"
                       className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 font-semibold"
                     >
                       ⭐ Ditugaskan
                     </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Add Other Class with Official Catalogue Validation */}
-          {isAddClassOpen && (
-            <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-3 animate-fadeIn">
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="font-semibold">Pilih atau taip kod kelas daripada katalog kolej:</span>
-                <span className="text-slate-400">Contoh: DIA3A, DIA3B, DLM4A</span>
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customClassInput}
-                  onChange={(e) => handleCustomClassInputChange(e.target.value)}
-                  placeholder="Taip kod kelas (cth: DIA3A)..."
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 min-h-[48px]"
-                />
-                <button
-                  type="button"
-                  onClick={handleConfirmCustomClass}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold min-h-[48px]"
-                >
-                  Gunakan Kelas
-                </button>
-              </div>
-
-              {/* Validation & Suggestion Output */}
-              {customClassValidation && !customClassValidation.isValid && (
-                <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs space-y-2">
-                  <p>{customClassValidation.message}</p>
-                  {customClassValidation.suggestions.length > 0 && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-slate-300">Pilihan sah:</span>
-                      {customClassValidation.suggestions.map((sug) => (
-                        <button
-                          key={sug}
-                          type="button"
-                          onClick={() => handleSelectSuggestedClass(sug)}
-                          className="px-2.5 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
-                        >
-                          {sug}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Quick Catalogue Picker */}
-              <div className="space-y-1">
-                <span className="text-[11px] text-slate-400">Katalog Kelas Kolej:</span>
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-                  {officialCatalogue.map((catClass) => (
-                    <button
-                      key={catClass}
-                      type="button"
-                      onClick={() => handleSelectSuggestedClass(catClass)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
-                    >
-                      {catClass}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -811,7 +736,10 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-indigo-200" />
-                <span>Aktifkan Sesi Kehadiran: {selectedSubject?.code} — {selectedClass}</span>
+                <span>
+                  Aktifkan Sesi Kehadiran:{' '}
+                  {selectedSubject ? `${selectedSubject.code} — ${selectedClass || 'Tiada Kelas Dipilih'}` : 'Sila Pilih Subjek'}
+                </span>
               </div>
               <span className="text-xs text-indigo-100 font-normal opacity-85">
                 (Buka Imbasan QR Langsung)
@@ -866,7 +794,12 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                 <tbody className="divide-y divide-slate-800/60">
                   {historySessions.map((s) => {
                     const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
-                    const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(records.length, s.targetCount);
+                    const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(
+                      records.length,
+                      s.targetCount,
+                      enrollments,
+                      s
+                    );
                     const isOpen = s.status === 'OPEN';
                     const safeEndTime = formatSafeEndTime(s.endTime, s.status);
 
@@ -938,7 +871,12 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             <div className="md:hidden space-y-3">
               {historySessions.map((s) => {
                 const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
-                const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(records.length, s.targetCount);
+                const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(
+                  records.length,
+                  s.targetCount,
+                  enrollments,
+                  s
+                );
                 const isOpen = s.status === 'OPEN';
                 const safeEndTime = formatSafeEndTime(s.endTime, s.status);
 

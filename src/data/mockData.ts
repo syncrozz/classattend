@@ -11,8 +11,8 @@ export const INITIAL_LECTURERS: Lecturer[] = [
     department: 'Jabatan Pengajian Am',
     role: 'LECTURER',
     status: 'ACTIVE',
-    assignedClasses: ['DIA_4A', 'DIA_4B'],
-    assignedSections: ['DIA_4A', 'DIA_4B'],
+    assignedClasses: ['DIA3A', 'DIA4A'],
+    assignedSections: ['DIA3A', 'DIA4A'],
     assignedSubjects: [
       'MPU2162 - PENGAJIAN MALAYSIA 2',
       'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'
@@ -34,10 +34,10 @@ export const INITIAL_SUBJECTS: Subject[] = [
   { id: 'SUB-FLG1212', code: 'FLG1212', name: 'MANDARIN 2', department: 'Jabatan Pengajian Am', sections: [] },
   { id: 'SUB-ISL1092', code: 'ISL1092', name: 'PENDIDIKAN ISLAM 1', department: 'Jabatan Pengajian Am', sections: [] },
   { id: 'SUB-ISL1102', code: 'ISL1102', name: 'PENDIDIKAN ISLAM 2', department: 'Jabatan Pengajian Am', sections: [] },
-  { id: 'SUB-MPU2162', code: 'MPU2162', name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am', sections: ['DIA_4A', 'DIA_4B'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
+  { id: 'SUB-MPU2162', code: 'MPU2162', name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am', sections: ['DIA3A'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
   { id: 'SUB-MPU2232', code: 'MPU2232', name: 'PUBLIC SPEAKING AND COMMUNICATION', department: 'Jabatan Pengajian Am', sections: [] },
   { id: 'SUB-MPU2372', code: 'MPU2372', name: 'DINAMIKA ISLAM DI MALAYSIA', department: 'Jabatan Pengajian Am', sections: [] },
-  { id: 'SUB-MPU2412', code: 'MPU2412', name: 'KURSUS INTEGRITI DAN ANTI RASUAH', department: 'Jabatan Pengajian Am', sections: ['DIA_4A', 'DIA_4B'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
+  { id: 'SUB-MPU2412', code: 'MPU2412', name: 'KURSUS INTEGRITI DAN ANTI RASUAH', department: 'Jabatan Pengajian Am', sections: ['DIA4A'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
   { id: 'SUB-MPU2482', code: 'MPU2482', name: 'KEMAHIRAN & TANGGUNGJAWAB SOSIAL KORPORAT', department: 'Jabatan Pengajian Am', sections: [] },
 
   // Jabatan Perakaunan & Kewangan (18 kursus)
@@ -199,26 +199,14 @@ export const INITIAL_STUDENTS: Student[] = [
 
 export const INITIAL_TEACHING_ASSIGNMENTS: TeachingAssignment[] = [
   {
-    id: 'TA-KHAIRI-MPU2162-DIA4A',
+    id: 'TA-KHAIRI-MPU2162-DIA3A',
     lecturerId: 'LEC-KHAIRI',
     lecturerName: 'AHMAD KHAIRI BIN MOHD',
     lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
     subjectId: 'SUB-MPU2162',
     subjectCode: 'MPU2162',
     subjectName: 'PENGAJIAN MALAYSIA 2',
-    className: 'DIA_4A',
-    status: 'ACTIVE',
-    createdAt: '2025-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'TA-KHAIRI-MPU2162-DIA4B',
-    lecturerId: 'LEC-KHAIRI',
-    lecturerName: 'AHMAD KHAIRI BIN MOHD',
-    lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
-    subjectId: 'SUB-MPU2162',
-    subjectCode: 'MPU2162',
-    subjectName: 'PENGAJIAN MALAYSIA 2',
-    className: 'DIA_4B',
+    className: 'DIA3A',
     status: 'ACTIVE',
     createdAt: '2025-01-10T08:00:00.000Z'
   },
@@ -230,19 +218,7 @@ export const INITIAL_TEACHING_ASSIGNMENTS: TeachingAssignment[] = [
     subjectId: 'SUB-MPU2412',
     subjectCode: 'MPU2412',
     subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
-    className: 'DIA_4A',
-    status: 'ACTIVE',
-    createdAt: '2025-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'TA-KHAIRI-MPU2412-DIA4B',
-    lecturerId: 'LEC-KHAIRI',
-    lecturerName: 'AHMAD KHAIRI BIN MOHD',
-    lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
-    subjectId: 'SUB-MPU2412',
-    subjectCode: 'MPU2412',
-    subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
-    className: 'DIA_4B',
+    className: 'DIA4A',
     status: 'ACTIVE',
     createdAt: '2025-01-10T08:00:00.000Z'
   }
@@ -255,7 +231,9 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
     subjectId: 'SUB-MPU2162',
     subjectCode: 'MPU2162',
     subjectName: 'PENGAJIAN MALAYSIA 2',
-    className: 'DIA_4A',
+    className: 'DIA3A',
+    teachingAssignmentId: 'TA-KHAIRI-MPU2162-DIA3A',
+    lecturerId: 'LEC-KHAIRI',
     lecturerName: 'AHMAD KHAIRI BIN MOHD',
     lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
     date: new Date().toISOString().split('T')[0],

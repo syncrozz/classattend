@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ActiveTab,
   Student,
@@ -15,6 +15,7 @@ import {
   EnrollmentContext,
   TeachingAssignment
 } from './types';
+import { isLecturerAuthorizedForSession } from './utils/sessionAuth';
 import { attendanceEngine } from './services/attendanceEngine';
 import { soundService } from './services/soundService';
 
@@ -235,7 +236,39 @@ export default function App() {
   }, []);
 
   const [selectedScannerSessionId, setSelectedScannerSessionId] = useState<string | null>(null);
-  const activeSession = (selectedScannerSessionId ? sessions.find((s) => s.id === selectedScannerSessionId && s.status === 'OPEN') : null) || sessions.find((s) => s.status === 'OPEN') || null;
+
+  // Clear selectedScannerSessionId if the selected session is no longer OPEN
+  useEffect(() => {
+    if (selectedScannerSessionId) {
+      const ses = sessions.find((s) => s.id === selectedScannerSessionId);
+      if (!ses || ses.status !== 'OPEN') {
+        setSelectedScannerSessionId(null);
+      }
+    }
+  }, [sessions, selectedScannerSessionId]);
+
+  // Scoped active session calculation:
+  // If user is LECTURER, strictly scope active session to authorized assignments / identity
+  // If user is ADMIN or general, open sessions across institution are visible
+  const activeSession = useMemo(() => {
+    if (currentRole === 'LECTURER' && activeLecturer) {
+      if (selectedScannerSessionId) {
+        const found = sessions.find(
+          (s) => s.id === selectedScannerSessionId && s.status === 'OPEN' && isLecturerAuthorizedForSession(s, activeLecturer, isAdmin, teachingAssignments)
+        );
+        if (found) return found;
+      }
+      return sessions.find(
+        (s) => s.status === 'OPEN' && isLecturerAuthorizedForSession(s, activeLecturer, isAdmin, teachingAssignments)
+      ) || null;
+    }
+
+    if (selectedScannerSessionId) {
+      const found = sessions.find((s) => s.id === selectedScannerSessionId && s.status === 'OPEN');
+      if (found) return found;
+    }
+    return sessions.find((s) => s.status === 'OPEN') || null;
+  }, [sessions, selectedScannerSessionId, currentRole, activeLecturer, isAdmin, teachingAssignments]);
 
   // Toggle Admin / Lecturer Auth Mode
   const handleToggleAdminMode = () => {
@@ -893,6 +926,8 @@ export default function App() {
               students={students}
               attendanceRecords={attendanceRecords}
               isAdmin={isAdmin}
+              activeLecturer={activeLecturer}
+              teachingAssignments={teachingAssignments}
               onRequestAdminAccess={handleRequestAdminAccess}
               onProcessScan={handleProcessScan}
               onGoToActivities={() => handleTabChange('dashboard')}

@@ -206,8 +206,8 @@ class AttendanceEngine {
               'MPU2162 - PENGAJIAN MALAYSIA 2',
               'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'
             ];
-            khairiInList.assignedClasses = ['DIA_4A', 'DIA_4B'];
-            khairiInList.assignedSections = ['DIA_4A', 'DIA_4B'];
+            khairiInList.assignedClasses = ['DIA3A', 'DIA4A'];
+            khairiInList.assignedSections = ['DIA3A', 'DIA4A'];
             this.saveLecturersLocally();
           }
         }
@@ -244,12 +244,26 @@ class AttendanceEngine {
           this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
           this.saveTeachingAssignmentsLocally();
         } else {
-          const hasKhairiTa = this.teachingAssignments.some(
-            (ta) => ta.lecturerId === 'LEC-KHAIRI' || ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI')
+          const khairiHasOutdatedTa = this.teachingAssignments.some(
+            (ta) =>
+              (ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI'))) &&
+              ta.subjectCode === 'MPU2162' &&
+              (ta.className === 'DIA_4A' || ta.className === 'DIA_4B')
           );
-          if (!hasKhairiTa && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+          if (khairiHasOutdatedTa) {
+            this.teachingAssignments = this.teachingAssignments.filter(
+              (ta) => !(ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI')))
+            );
             this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
             this.saveTeachingAssignmentsLocally();
+          } else {
+            const hasKhairiTa = this.teachingAssignments.some(
+              (ta) => ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI'))
+            );
+            if (!hasKhairiTa && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+              this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
+              this.saveTeachingAssignmentsLocally();
+            }
           }
         }
 
@@ -2178,12 +2192,13 @@ class AttendanceEngine {
   }
 
   public getEnrollmentsForSubjectClass(subjectCode: string, className?: string): Enrollment[] {
-    const cleanSub = subjectCode.trim().toUpperCase();
-    const cleanClass = className ? className.trim().toUpperCase() : null;
+    const cleanSub = (subjectCode || '').trim().toUpperCase();
+    const normClass = className && className !== 'ALL' && className !== 'SEMUA' ? normalizeClassCode(className) : null;
     return this.enrollments.filter((e) => {
-      const matchSub = e.subjectCode.toUpperCase() === cleanSub;
-      const matchClass = !cleanClass || cleanClass === 'ALL' || e.className.toUpperCase() === cleanClass;
-      return matchSub && matchClass && e.status !== 'DROPPED';
+      const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
+      const matchClass = !normClass || normalizeClassCode(e.className) === normClass;
+      const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
+      return matchSub && matchClass && isActive;
     });
   }
 
@@ -2198,17 +2213,14 @@ class AttendanceEngine {
 
   public getStudentsForSubjectClass(subjectCode: string, className?: string): Student[] {
     const enrollments = this.getEnrollmentsForSubjectClass(subjectCode, className);
-    const studentIds = new Set(enrollments.map((e) => e.studentId.toUpperCase()));
+    const studentIds = new Set(enrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
     
-    // Also include students who belong to this class in master data
+    // Authoritative SES v4.5: Return ONLY students with verified ACTIVE subject enrollments.
+    // Do NOT include non-enrolled students simply because their className matches in master /students.
     return this.students.filter((s) => {
-      if (studentIds.has(s.studentId.toUpperCase()) || studentIds.has(s.id.toUpperCase())) {
-        return true;
-      }
-      if (className && className !== 'ALL') {
-        return s.className.trim().toUpperCase() === className.trim().toUpperCase();
-      }
-      return false;
+      const sId = (s.studentId || '').trim().toUpperCase();
+      const id = (s.id || '').trim().toUpperCase();
+      return studentIds.has(sId) || studentIds.has(id);
     });
   }
 
@@ -2937,7 +2949,8 @@ class AttendanceEngine {
   public activateClassSession(
     subject: Subject,
     className: string,
-    lecturer: Lecturer
+    lecturer: Lecturer,
+    teachingAssignmentId?: string
   ): { session: AttendanceSession; isExisting: boolean; conflictingSession?: AttendanceSession } {
     // 1. Check for existing OPEN session for the exact same subject and class (Duplicate Protection)
     const existing = this.findActiveSession(subject.code, className, lecturer.id);
@@ -2948,16 +2961,29 @@ class AttendanceEngine {
     // 2. Check for other OPEN sessions by this lecturer or college (Information only - DO NOT AUTO CLOSE)
     const conflicting = this.sessions.find((s) => s.status === 'OPEN' && (s.lecturerId === lecturer.id || s.subjectCode === subject.code));
 
-    // 3. Determine target student count
-    const targetStudents = this.getStudentsForSubjectClass(subject.code, className);
-    const targetCount = targetStudents.length > 0 ? targetStudents.length : 30;
+    // 3. Resolve active teachingAssignmentId
+    const resolvedTeachingAssignmentId =
+      teachingAssignmentId ||
+      this.teachingAssignments.find(
+        (ta) =>
+          ta.status === 'ACTIVE' &&
+          (ta.lecturerId === lecturer.id || (ta.lecturerEmail && lecturer.email && ta.lecturerEmail.toLowerCase() === lecturer.email.toLowerCase())) &&
+          ta.subjectCode.trim().toUpperCase() === subject.code.trim().toUpperCase() &&
+          normalizeClassCode(ta.className) === normalizeClassCode(className)
+      )?.id;
 
-    // 4. Current timestamp
+    // 4. Determine authoritative target student count from ACTIVE enrollments
+    // SES v4.5: Target count is strictly the count of verified ACTIVE enrollments for this subject and class.
+    // Never fallback to 30 or generic class capacity.
+    const activeEnrollments = this.getEnrollmentsForSubjectClass(subject.code, className);
+    const targetCount = activeEnrollments.length;
+
+    // 5. Current timestamp
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    // 5. Synthesize authoritative session payload (SES v4.5 Simple by Default)
+    // 6. Synthesize authoritative session payload (SES v4.5 Simple by Default)
     // Preserves exact className without silent destructive rewriting
     const newSession: AttendanceSession = {
       id: `SES-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
@@ -2965,6 +2991,7 @@ class AttendanceEngine {
       subjectCode: subject.code,
       subjectName: subject.name,
       className: className,
+      teachingAssignmentId: resolvedTeachingAssignmentId,
       lecturerId: lecturer.id,
       lecturerName: lecturer.name,
       lecturerEmail: lecturer.email,
@@ -3017,12 +3044,12 @@ class AttendanceEngine {
     // 1. Identify Target Class Session
     let activeSession: AttendanceSession | null = null;
     if (targetSessionId) {
-      activeSession = this.sessions.find((s) => s.id === targetSessionId) || null;
+      activeSession = this.sessions.find((s) => s.id === targetSessionId && s.status === 'OPEN') || null;
     } else {
       activeSession = this.getActiveSession();
     }
 
-    if (!activeSession) {
+    if (!activeSession || activeSession.status !== 'OPEN') {
       return {
         success: false,
         code: 'NO_ACTIVE_EVENT',
@@ -3172,16 +3199,16 @@ class AttendanceEngine {
     if (!session) return null;
 
     const sessionRecords = this.attendanceRecords.filter((r) => r.sessionId === sessionId);
-    const presentStudentIds = new Set(sessionRecords.filter((r) => r.status === 'PRESENT').map((r) => r.studentId));
+    const presentRecords = sessionRecords.filter((r) => r.status === 'PRESENT');
 
-    let targetStudents = this.students;
-    if (session.className && session.className !== 'ALL' && session.className !== 'SEMUA') {
-      const allowedClasses = session.className.split(',').map((c) => c.trim().toUpperCase());
-      targetStudents = this.students.filter((s) => allowedClasses.includes(s.className.trim().toUpperCase()));
+    // Use session targetCount snapshot if available, otherwise resolve from authoritative active enrollments
+    let totalStudents = typeof session.targetCount === 'number' && session.targetCount >= 0 ? session.targetCount : 0;
+    if (totalStudents === 0 && session.subjectCode && session.className) {
+      const activeEnrollments = this.getEnrollmentsForSubjectClass(session.subjectCode, session.className);
+      totalStudents = activeEnrollments.length;
     }
 
-    const totalStudents = targetStudents.length;
-    const presentCount = targetStudents.filter((s) => presentStudentIds.has(s.id)).length;
+    const presentCount = presentRecords.length;
     const absentCount = Math.max(0, totalStudents - presentCount);
     const percentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
 

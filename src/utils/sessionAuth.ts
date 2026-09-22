@@ -1,5 +1,13 @@
-import { AttendanceSession, AttendanceRecord, Lecturer, TeachingAssignment } from '../types';
-import { areClassesMatching } from './classHelper';
+import { AttendanceSession, AttendanceRecord, Lecturer, TeachingAssignment, Enrollment } from '../types';
+import { areClassesMatching, normalizeClassCode } from './classHelper';
+
+export type RosterCountSource = 'SNAPSHOT' | 'LEGACY_DYNAMIC' | 'EMPTY';
+
+export interface AttendanceMetrics {
+  targetCount: number;
+  attendancePercent: number;
+  source: RosterCountSource;
+}
 
 /**
  * Validates whether a lecturer or administrator is authorized to access a session.
@@ -126,26 +134,100 @@ export function filterAuthorizedAttendanceRecords(
 }
 
 /**
+ * Resolves the authoritative attendance denominator (targetCount) for a session.
+ * 
+ * Rules:
+ * 1. Stored Snapshot: If session.targetCount is explicitly defined (number >= 0),
+ *    preserve and return that snapshot value without mutation. (source: 'SNAPSHOT')
+ * 2. Legacy Fallback: If session.targetCount is missing (undefined/null),
+ *    resolve from the count of ACTIVE enrollments matching session's subjectCode and className.
+ *    (source: 'LEGACY_DYNAMIC')
+ * 3. Safe zero: If no targetCount exists and no enrollments match, return 0 (source: 'EMPTY').
+ *    NEVER fallback to 30 or assume generic class capacity.
+ */
+export function resolveSessionRosterCount(
+  session: AttendanceSession | { subjectCode?: string; className?: string; targetCount?: number | null },
+  enrollments?: Enrollment[]
+): { targetCount: number; source: RosterCountSource } {
+  // 1. Snapshot check: preserves historical session semantics
+  if (typeof session.targetCount === 'number' && !Number.isNaN(session.targetCount) && session.targetCount >= 0) {
+    return {
+      targetCount: session.targetCount,
+      source: 'SNAPSHOT'
+    };
+  }
+
+  // 2. Legacy Dynamic Fallback: resolve from authoritative ACTIVE enrollments
+  if (enrollments && enrollments.length > 0 && session.subjectCode && session.className) {
+    const cleanSub = session.subjectCode.trim().toUpperCase();
+    const normClass = normalizeClassCode(session.className);
+
+    const activeEnrollments = enrollments.filter((e) => {
+      const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
+      const matchClass = normalizeClassCode(e.className) === normClass;
+      const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
+      return matchSub && matchClass && isActive;
+    });
+
+    return {
+      targetCount: activeEnrollments.length,
+      source: 'LEGACY_DYNAMIC'
+    };
+  }
+
+  return {
+    targetCount: 0,
+    source: 'EMPTY'
+  };
+}
+
+/**
  * Calculates attendance metrics with complete division-by-zero protection.
  * Ensures targetCount = 0 NEVER produces NaN or Infinity.
+ * Standardizes attendance percentage calculation across views.
+ * 
+ * @param presentCount Number of unique verified PRESENT attendance records for the session
+ * @param rawTargetCount Stored session targetCount snapshot (if any)
+ * @param fallbackEnrollments Optional enrollments list to resolve legacy sessions missing targetCount
+ * @param session Optional session context (subjectCode, className)
  */
 export function calculateAttendanceMetrics(
   presentCount: number,
-  rawTargetCount: number | undefined | null
-): { targetCount: number; attendancePercent: number } {
+  rawTargetCount?: number | null,
+  fallbackEnrollments?: Enrollment[],
+  session?: AttendanceSession | { subjectCode?: string; className?: string }
+): AttendanceMetrics {
   const safePresent = Math.max(0, presentCount || 0);
 
-  // Parse targetCount: If explicitly specified as 0 or a positive number, use it; otherwise fallback to 30
-  let targetCount = 30;
+  let targetCount = 0;
+  let source: RosterCountSource = 'EMPTY';
+
+  // 1. Explicit snapshot targetCount provided
   if (typeof rawTargetCount === 'number' && !Number.isNaN(rawTargetCount) && rawTargetCount >= 0) {
     targetCount = rawTargetCount;
+    source = 'SNAPSHOT';
+  } else if (fallbackEnrollments && fallbackEnrollments.length > 0 && session?.subjectCode && session?.className) {
+    // 2. Legacy Dynamic Fallback from authoritative ACTIVE enrollments
+    const cleanSub = session.subjectCode.trim().toUpperCase();
+    const normClass = normalizeClassCode(session.className);
+
+    const activeEnrollments = fallbackEnrollments.filter((e) => {
+      const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
+      const matchClass = normalizeClassCode(e.className) === normClass;
+      const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
+      return matchSub && matchClass && isActive;
+    });
+
+    targetCount = activeEnrollments.length;
+    source = 'LEGACY_DYNAMIC';
   }
 
-  // Edge case: targetCount = 0
+  // Edge case: targetCount = 0 (Safe Zero Protection)
   if (targetCount <= 0) {
     return {
       targetCount: 0,
-      attendancePercent: safePresent > 0 ? 100 : 0
+      attendancePercent: safePresent > 0 ? 100 : 0,
+      source
     };
   }
 
@@ -153,7 +235,8 @@ export function calculateAttendanceMetrics(
 
   return {
     targetCount,
-    attendancePercent: Number.isFinite(attendancePercent) ? attendancePercent : 0
+    attendancePercent: Number.isFinite(attendancePercent) ? attendancePercent : 0,
+    source
   };
 }
 

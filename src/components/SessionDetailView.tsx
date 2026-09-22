@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { AttendanceSession, AttendanceRecord, Student, Lecturer, TeachingAssignment } from '../types';
+import { AttendanceSession, AttendanceRecord, Student, Lecturer, TeachingAssignment, Enrollment } from '../types';
 import {
   ArrowLeft,
   Search,
@@ -29,6 +29,7 @@ interface SessionDetailViewProps {
   students: Student[];
   teachingAssignments?: TeachingAssignment[];
   myAssignedSubjectCodes?: Set<string>;
+  enrollments?: Enrollment[];
   onBack: () => void;
   onOpenScannerForSession?: (sessionId: string) => void;
 }
@@ -40,6 +41,7 @@ export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
   attendanceRecords,
   students,
   teachingAssignments = [],
+  enrollments = [],
   onBack,
   onOpenScannerForSession
 }) => {
@@ -65,9 +67,10 @@ export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
   }, [attendanceRecords, session.id, isAuthorized]);
 
   // 4. Target count & Attendance Percentage calculation with zero-division protection
+  // Authoritative: respects session targetCount snapshot, or dynamically resolves from active enrollments
   const { targetCount, attendancePercent } = useMemo(() => {
-    return calculateAttendanceMetrics(sessionRecords.length, session.targetCount);
-  }, [sessionRecords.length, session.targetCount]);
+    return calculateAttendanceMetrics(sessionRecords.length, session.targetCount, enrollments, session);
+  }, [sessionRecords.length, session.targetCount, enrollments, session]);
 
   // 5. Search Filter (Student Name or Student ID)
   const filteredRecords = useMemo(() => {

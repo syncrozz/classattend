@@ -4,8 +4,10 @@ import {
   AttendanceSession,
   Subject,
   AttendanceRecord,
-  Lecturer
+  Lecturer,
+  Enrollment
 } from '../types';
+import { normalizeClassCode } from '../utils/classHelper';
 import {
   getClassBadgeColor,
   getInitials,
@@ -56,6 +58,7 @@ interface ReportsViewProps {
   sessions: AttendanceSession[];
   subjects?: Subject[];
   attendanceRecords: AttendanceRecord[];
+  enrollments?: Enrollment[];
   isAdmin?: boolean;
   activeLecturer?: Lecturer | null;
   onRequestAdminAccess?: (actionName?: string) => void;
@@ -66,6 +69,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   sessions,
   subjects = [],
   attendanceRecords,
+  enrollments = [],
   isAdmin = false,
   activeLecturer = null,
   onRequestAdminAccess
@@ -97,9 +101,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const recordMap = new Map<string, AttendanceRecord>();
   sessionRecords.forEach((r) => recordMap.set(r.studentId, r));
 
-  // Determine target students for current session
+  // Determine target students for current session:
+  // SES v4.5 Authoritative subject enrollment: Active students in (subjectCode, className)
   let targetStudents = students;
-  if (currentSession?.className) {
+  if (currentSession?.subjectCode && enrollments && enrollments.length > 0) {
+    const cleanSub = currentSession.subjectCode.trim().toUpperCase();
+    const normClass = normalizeClassCode(currentSession.className);
+
+    const activeEnrollments = enrollments.filter((e) => {
+      const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
+      const matchClass = !normClass || normClass === 'ALL' || normClass === 'SEMUA' || normalizeClassCode(e.className) === normClass;
+      const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
+      return matchSub && matchClass && isActive;
+    });
+
+    const enrolledIds = new Set(activeEnrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
+    targetStudents = students.filter((s) => {
+      const sId = (s.studentId || '').trim().toUpperCase();
+      const id = (s.id || '').trim().toUpperCase();
+      return enrolledIds.has(sId) || enrolledIds.has(id);
+    });
+  } else if (currentSession?.className) {
     targetStudents = students.filter((s) => s.className === currentSession.className);
   }
 
@@ -120,7 +142,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return matchesSet && matchesStatus && matchesSearch;
   });
 
-  const totalTargetCount = targetStudents.length;
+  const totalTargetCount = typeof currentSession?.targetCount === 'number' && currentSession.targetCount >= 0
+    ? currentSession.targetCount
+    : targetStudents.length;
   const presentCount = targetStudents.filter((s) => recordMap.has(s.id) && recordMap.get(s.id)?.status === 'PRESENT').length;
   const absentCount = Math.max(0, totalTargetCount - presentCount);
   const sessionPercent = totalTargetCount > 0 ? Math.round((presentCount / totalTargetCount) * 100) : 0;

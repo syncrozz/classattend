@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Student,
   Subject,
   AttendanceSession,
   AttendanceRecord,
   ScanResult,
-  Lecturer
+  Lecturer,
+  Enrollment
 } from '../types';
+import { normalizeClassCode } from '../utils/classHelper';
 import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
 import {
   Users,

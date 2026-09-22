@@ -7,8 +7,12 @@ import {
   AttendanceSession,
   AttendanceRecord,
   ScanResult,
-  AttendanceMethod
+  AttendanceMethod,
+  Lecturer,
+  TeachingAssignment,
+  Enrollment
 } from '../types';
+import { normalizeClassCode } from '../utils/classHelper';
 import { soundService } from '../services/soundService';
 import {
   getClassBadgeColor,
@@ -16,6 +20,7 @@ import {
   getStudentColor,
   sortSessionsLatestFirst
 } from '../utils/studentUtils';
+import { filterAuthorizedSessions } from '../utils/sessionAuth';
 import {
   exportScannedAttendeesOnlyToCSV,
   exportSessionAttendanceToCSV,
@@ -121,6 +126,9 @@ interface ScannerViewProps {
   students: Student[];
   attendanceRecords: AttendanceRecord[];
   isAdmin: boolean;
+  activeLecturer?: Lecturer | null;
+  teachingAssignments?: TeachingAssignment[];
+  enrollments?: Enrollment[];
   onRequestAdminAccess: (actionName?: string) => void;
   onProcessScan: (qrString: string, method: AttendanceMethod, targetSessionId?: string) => ScanResult;
   onGoToActivities: () => void;
@@ -138,6 +146,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   students,
   attendanceRecords,
   isAdmin,
+  activeLecturer,
+  teachingAssignments,
+  enrollments = [],
   onRequestAdminAccess,
   onProcessScan,
   onGoToActivities,
@@ -147,10 +158,31 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   soundEnabled,
   onToggleSound
 }) => {
-  const sortedSessions = sortSessionsLatestFirst(allSessions);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(
-    initialSessionId || activeSession?.id || sortedSessions[0]?.id || ''
-  );
+  // AUTHORITATIVE ACTIVE SESSIONS QUERY (SES v4.5 PHASE 4B.2-C)
+  // Authoritative criterion: status === 'OPEN'.
+  // Scoped strictly to authenticated lecturer (or all institutional open sessions for Admin).
+  // Historical sessions (CLOSED / ARCHIVED) are strictly excluded from the active switcher.
+  const activeOpenSessions = useMemo(() => {
+    const openOnly = allSessions.filter((s) => s.status === 'OPEN');
+    if (isAdmin) {
+      return sortSessionsLatestFirst(openOnly);
+    }
+    if (activeLecturer) {
+      return filterAuthorizedSessions(openOnly, activeLecturer, isAdmin, teachingAssignments || []);
+    }
+    return sortSessionsLatestFirst(openOnly);
+  }, [allSessions, isAdmin, activeLecturer, teachingAssignments]);
+
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
+    if (initialSessionId) {
+      const match = allSessions.find((s) => s.id === initialSessionId);
+      if (match && match.status === 'OPEN') return match.id;
+    }
+    if (activeSession && activeSession.status === 'OPEN') {
+      return activeSession.id;
+    }
+    return activeOpenSessions[0]?.id || '';
+  });
   
   // Tabs: 'CAMERA' | 'PROJECTOR_QR' | 'MANUAL'
   const [scannerMode, setScannerMode] = useState<'CAMERA' | 'PROJECTOR_QR' | 'MANUAL'>('CAMERA');
@@ -235,16 +267,35 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
 
-  // Ensure selectedSessionId defaults to initialSessionId or activeSession when changed
+  // Ensure selectedSessionId defaults to initialSessionId or activeSession, and stays bound to OPEN sessions
   useEffect(() => {
     if (initialSessionId) {
-      setSelectedSessionId(initialSessionId);
-    } else if (activeSession) {
-      setSelectedSessionId(activeSession.id);
+      const match = allSessions.find((s) => s.id === initialSessionId);
+      if (match && match.status === 'OPEN') {
+        setSelectedSessionId(initialSessionId);
+        return;
+      }
     }
-  }, [initialSessionId, activeSession]);
+    if (activeSession && activeSession.status === 'OPEN') {
+      setSelectedSessionId(activeSession.id);
+      return;
+    }
 
-  const currentSession = allSessions.find((s) => s.id === selectedSessionId) || activeSession || sortedSessions[0];
+    // If current selectedSessionId is no longer OPEN or missing from activeOpenSessions
+    const isCurrentValid = activeOpenSessions.some((s) => s.id === selectedSessionId);
+    if (!isCurrentValid) {
+      setSelectedSessionId(activeOpenSessions[0]?.id || '');
+    }
+  }, [initialSessionId, activeSession, activeOpenSessions, selectedSessionId, allSessions]);
+
+  // Current active session: strictly an OPEN session from authoritative activeOpenSessions
+  const currentSession = useMemo(() => {
+    if (selectedSessionId) {
+      const found = activeOpenSessions.find((s) => s.id === selectedSessionId);
+      if (found) return found;
+    }
+    return activeOpenSessions[0] || null;
+  }, [selectedSessionId, activeOpenSessions]);
 
   // Session attendance stats
   const sessionRecords = currentSession
@@ -259,31 +310,74 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     return currentSession.className.split(',').map((c) => c.trim().toUpperCase());
   }, [currentSession?.className]);
 
-  const targetStudents = currentSession
-    ? sessionAllowedClasses
-      ? students.filter((s) => sessionAllowedClasses.includes(s.className.toUpperCase()))
-      : selectedClassFilter !== 'ALL'
-      ? students.filter((s) => s.className.toUpperCase() === selectedClassFilter.toUpperCase())
-      : students
-    : [];
+  const targetStudents = useMemo(() => {
+    if (!currentSession) return [];
 
-  // Present records strictly matching the target class (if class session)
-  const matchingPresentRecords = sessionAllowedClasses
-    ? sessionRecords.filter((r) => {
+    // SES v4.5 Authoritative subject enrollment:
+    // If enrollments and subjectCode are available, target students are strictly those with ACTIVE enrollments.
+    if (enrollments && enrollments.length > 0 && currentSession.subjectCode) {
+      const cleanSub = currentSession.subjectCode.trim().toUpperCase();
+      const normClass = normalizeClassCode(currentSession.className);
+
+      const activeEnrollments = enrollments.filter((e) => {
+        const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
+        const matchClass = !normClass || normClass === 'ALL' || normClass === 'SEMUA' || normalizeClassCode(e.className) === normClass;
+        const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
+        return matchSub && matchClass && isActive;
+      });
+
+      const enrolledStudentIds = new Set(activeEnrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
+      return students.filter((s) => {
+        const sId = (s.studentId || '').trim().toUpperCase();
+        const id = (s.id || '').trim().toUpperCase();
+        return enrolledStudentIds.has(sId) || enrolledStudentIds.has(id);
+      });
+    }
+
+    if (sessionAllowedClasses) {
+      return students.filter((s) => sessionAllowedClasses.includes(s.className.toUpperCase()));
+    }
+    if (selectedClassFilter !== 'ALL') {
+      return students.filter((s) => s.className.toUpperCase() === selectedClassFilter.toUpperCase());
+    }
+    return students;
+  }, [currentSession, sessionAllowedClasses, selectedClassFilter, students, enrollments]);
+
+  // Present records strictly matching the target class / enrolled students (if class session)
+  const matchingPresentRecords = useMemo(() => {
+    if (enrollments && enrollments.length > 0 && currentSession?.subjectCode) {
+      const targetIds = new Set(targetStudents.map((s) => s.id));
+      const targetCodes = new Set(targetStudents.map((s) => (s.studentId || '').trim().toUpperCase()));
+      return sessionRecords.filter((r) => {
+        const c = (r.studentId || '').trim().toUpperCase();
+        return targetIds.has(r.studentId) || targetCodes.has(c);
+      });
+    }
+
+    if (sessionAllowedClasses) {
+      return sessionRecords.filter((r) => {
         const student = students.find((s) => s.id === r.studentId);
         return student && sessionAllowedClasses.includes(student.className.toUpperCase());
-      })
-    : selectedClassFilter !== 'ALL'
-    ? sessionRecords.filter((r) => {
+      });
+    }
+    if (selectedClassFilter !== 'ALL') {
+      return sessionRecords.filter((r) => {
         const student = students.find((s) => s.id === r.studentId);
         return student?.className.toUpperCase() === selectedClassFilter.toUpperCase();
-      })
-    : sessionRecords;
+      });
+    }
+    return sessionRecords;
+  }, [enrollments, currentSession?.subjectCode, targetStudents, sessionRecords, sessionAllowedClasses, selectedClassFilter, students]);
+
+  // Total target count: prioritize stored snapshot session.targetCount, otherwise fallback to targetStudents.length
+  const totalTargetCount = typeof currentSession?.targetCount === 'number' && currentSession.targetCount >= 0
+    ? currentSession.targetCount
+    : targetStudents.length;
 
   const percentage =
-    targetStudents.length > 0 ? Math.round((matchingPresentRecords.length / targetStudents.length) * 100) : 0;
+    totalTargetCount > 0 ? Math.round((matchingPresentRecords.length / totalTargetCount) * 100) : 0;
   
-  const isAllPresent = targetStudents.length > 0 && matchingPresentRecords.length >= targetStudents.length;
+  const isAllPresent = totalTargetCount > 0 && matchingPresentRecords.length >= totalTargetCount;
 
   // Filtered session records based on class filter (Sorted latest-first)
   const filteredSessionRecords = sessionRecords.filter((record) => {
@@ -724,15 +818,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               id="select-active-session-switch"
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+              disabled={activeOpenSessions.length === 0}
+              className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {sortedSessions.map((ses) => (
-                <option key={ses.id} value={ses.id}>
-                  {ses.status === 'OPEN' ? '🟢 [AKTIF] ' : '⚪ '}
-                  {ses.subjectCode ? `${ses.subjectCode} - ` : ''}
-                  {ses.sessionName} ({ses.className || 'Semua'}) • {ses.date}
+              {activeOpenSessions.length === 0 ? (
+                <option value="" disabled>
+                  Tiada sesi kehadiran aktif
                 </option>
-              ))}
+              ) : (
+                activeOpenSessions.map((ses) => (
+                  <option key={ses.id} value={ses.id}>
+                    [AKTIF] {ses.subjectCode ? `${ses.subjectCode} - ` : ''}
+                    {ses.sessionName} ({ses.className || 'Semua'}) • {ses.date}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -843,6 +943,25 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Informational banner when no session is active */}
+              {!currentSession && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Tiada sesi kelas yang aktif. Buka sesi di Workspace Pensyarah untuk merakam kehadiran.</span>
+                  </div>
+                  {onGoToLecturerWorkspace && (
+                    <button
+                      type="button"
+                      onClick={onGoToLecturerWorkspace}
+                      className="px-3 py-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs whitespace-nowrap cursor-pointer"
+                    >
+                      Workspace Pensyarah
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Video Viewport Container */}
               <div
@@ -1060,6 +1179,27 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </div>
             );
           })()}
+
+          {/* Fallback for Projector QR when no session is active */}
+          {scannerMode === 'PROJECTOR_QR' && !currentSession && (
+            <div className="rounded-3xl bg-slate-900 border border-slate-800 p-8 space-y-4 text-center shadow-xl">
+              <Tv className="w-12 h-12 text-slate-600 mx-auto" />
+              <h3 className="text-base font-bold text-white">Tiada Sesi Kehadiran Aktif</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Sila buka atau aktifkan sesi kelas baharu melalui Workspace Pensyarah untuk memaparkan kod QR projektor kepada pelajar.
+              </p>
+              {onGoToLecturerWorkspace && (
+                <button
+                  type="button"
+                  onClick={onGoToLecturerWorkspace}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2"
+                >
+                  <span>Buka Workspace Pensyarah</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* TAB 3: FULL MANUAL ENTRY & STUDENT DIRECTORY CHECK-IN */}
           {scannerMode === 'MANUAL' && (

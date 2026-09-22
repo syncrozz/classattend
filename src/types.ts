@@ -131,6 +131,7 @@ export interface AttendanceSession {
   subjectName: string; // e.g. "Pengajian Malaysia 2"
   className: string; // e.g. "DIA_4A" or "DIA_4B" or "ALL"
   section?: string;
+  teachingAssignmentId?: string; // Authoritative teaching assignment ID binding (SES v4.5)
   lecturerName: string; // e.g. "Khairi bin Abdul Rahman"
   lecturerEmail?: string; // e.g. "khairi@bpenawar.kpm.edu.my"
   lecturerId?: string;
