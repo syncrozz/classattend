@@ -30,6 +30,7 @@ interface HeaderProps {
   onToggleAdminMode: () => void;
   onLogoutLecturer: () => void;
   onCloseActiveSession?: (sessionId: string) => void;
+  isLecturerWorkspaceActive?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,7 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenScanner,
   onToggleAdminMode,
   onLogoutLecturer,
-  onCloseActiveSession
+  onCloseActiveSession,
+  isLecturerWorkspaceActive = false
 }) => {
   const isPrivileged = Boolean(activeLecturer || isAdmin);
 
@@ -212,15 +214,17 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Quick Scanner Action Button */}
-          <button
-            id="header-btn-quick-scanner"
-            onClick={onOpenScanner}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer"
-          >
-            <QrCode className="w-4 h-4" />
-            <span className="hidden sm:inline">Imbas QR</span>
-          </button>
+          {/* Quick Scanner Action Button - Contextually hidden when Lecturer Workspace is active */}
+          {!isLecturerWorkspaceActive && (
+            <button
+              id="header-btn-quick-scanner"
+              onClick={onOpenScanner}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer"
+            >
+              <QrCode className="w-4 h-4" />
+              <span className="hidden sm:inline">Imbas QR</span>
+            </button>
+          )}
 
           {/* Sound Toggle */}
           <button

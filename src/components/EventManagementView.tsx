@@ -176,30 +176,15 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
   const [newSessionClasses, setNewSessionClasses] = useState<string[]>([]);
-  // Meeting remark toggles: Meeting 1st 'a' & Meeting 2nd 'b' (Default: true)
-  const [includeMeetingA, setIncludeMeetingA] = useState<boolean>(true);
-  const [includeMeetingB, setIncludeMeetingB] = useState<boolean>(true);
   // Separate session per class (Default: true - generates distinct session for each individual class)
   const [generatePerClass, setGeneratePerClass] = useState<boolean>(true);
 
-  // Clean base session name (stripping trailing 'a' or 'b' if user already typed it)
+  // Clean base session name
   const cleanBaseSessionName = useMemo(() => {
     const raw = newSessionName.trim();
     if (!raw) return 'Kuliah Minggu';
-    if (includeMeetingA || includeMeetingB) {
-      return raw.replace(/\s*([ab])$/i, '').trim();
-    }
     return raw;
-  }, [newSessionName, includeMeetingA, includeMeetingB]);
-
-  // Selected meeting suffixes
-  const meetingSuffixes = useMemo(() => {
-    const arr: string[] = [];
-    if (includeMeetingA) arr.push('a');
-    if (includeMeetingB) arr.push('b');
-    if (arr.length === 0) arr.push('');
-    return arr;
-  }, [includeMeetingA, includeMeetingB]);
+  }, [newSessionName]);
 
   // Available classes for selected subject in session modal
   const targetClassesForModal = useMemo(() => {
@@ -218,25 +203,21 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     const results: { sessionName: string; className: string }[] = [];
     if (generatePerClass) {
       newSessionClasses.forEach((cls) => {
-        meetingSuffixes.forEach((suffix) => {
-          results.push({
-            sessionName: suffix ? `${cleanBaseSessionName}${suffix}` : cleanBaseSessionName,
-            className: cls
-          });
+        results.push({
+          sessionName: cleanBaseSessionName,
+          className: cls
         });
       });
     } else {
       const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
       const finalCls = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
-      meetingSuffixes.forEach((suffix) => {
-        results.push({
-          sessionName: suffix ? `${cleanBaseSessionName}${suffix}` : cleanBaseSessionName,
-          className: finalCls
-        });
+      results.push({
+        sessionName: cleanBaseSessionName,
+        className: finalCls
       });
     }
     return results;
-  }, [newSessionClasses, generatePerClass, meetingSuffixes, cleanBaseSessionName, targetClassesForModal.length]);
+  }, [newSessionClasses, generatePerClass, cleanBaseSessionName, targetClassesForModal.length]);
 
   // In-app prompt state for removing/deleting class (100% iframe compatible, no window.confirm)
   const [classToDeletePrompt, setClassToDeletePrompt] = useState<{
@@ -410,11 +391,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           if (w > maxWeek) maxWeek = w;
         }
       });
-      const nextWeekNum = maxWeek > 0 ? maxWeek + 1 : (existingSubSessions.length > 0 ? Math.max(1, Math.floor(existingSubSessions.length / 2) + 1) : 1);
+      const nextWeekNum = maxWeek > 0 ? maxWeek + 1 : (existingSubSessions.length > 0 ? existingSubSessions.length + 1 : 1);
       setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
-      // Default: Every class has Meeting 1st 'a' and Meeting 2nd 'b' ticked
-      setIncludeMeetingA(true);
-      setIncludeMeetingB(true);
       setGeneratePerClass(true);
 
       // Default: Tick all sections registered for this subject, or fallback to classes with data
@@ -430,7 +408,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setIsCreateSessionOpen(true);
   };
 
-  // Handle Submit New Session (Supports automatic generation of Meeting 1st 'a' & 2nd 'b' per class)
+  // Handle Submit New Session
   const handleSubmitSession = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSessionName.trim() || !selectedSubjectId) return;
@@ -441,15 +419,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     }
 
     const parentSub = subjects.find((s) => s.id === selectedSubjectId);
-    const meetings: string[] = [];
-    if (includeMeetingA) meetings.push('a');
-    if (includeMeetingB) meetings.push('b');
-    if (meetings.length === 0) meetings.push('');
-
-    const rawBase = newSessionName.trim();
-    const cleanBase = (includeMeetingA || includeMeetingB)
-      ? rawBase.replace(/\s*([ab])$/i, '').trim()
-      : rawBase;
+    const sName = newSessionName.trim();
 
     const newSessionsToCreate: AttendanceSession[] = [];
     const now = Date.now();
@@ -458,39 +428,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     if (generatePerClass) {
       // 1 separate session for each individual class
       newSessionClasses.forEach((cls, clsIdx) => {
-        meetings.forEach((meetSuffix, meetIdx) => {
-          const sName = meetSuffix ? `${cleanBase}${meetSuffix}` : cleanBase;
-          const uniqueId = `SES-${now.toString(36).toUpperCase()}-${clsIdx}${meetIdx}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-          newSessionsToCreate.push({
-            id: uniqueId,
-            activityId: selectedSubjectId,
-            activityName: parentSub ? `[${parentSub.code}] ${parentSub.name}` : 'Kelas',
-            subjectId: selectedSubjectId,
-            subjectCode: parentSub?.code || '',
-            subjectName: parentSub?.name || '',
-            category: 'CLASS',
-            sessionName: sName,
-            date: dateStr,
-            startTime: '',
-            endTime: '',
-            status: 'CLOSED', // Sedia untuk diimbas semasa kuliah bermula
-            attendanceMethod: 'QR',
-            organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-            lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-            className: cls,
-            createdAt: new Date(now + (clsIdx * 10 + meetIdx) * 1000).toISOString()
-          });
-        });
-      });
-    } else {
-      // Combined session for all checked classes
-      const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
-      const finalClassName = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
-
-      meetings.forEach((meetSuffix, meetIdx) => {
-        const sName = meetSuffix ? `${cleanBase}${meetSuffix}` : cleanBase;
-        const uniqueId = `SES-${now.toString(36).toUpperCase()}-${meetIdx}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const uniqueId = `SES-${now.toString(36).toUpperCase()}-${clsIdx}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
         newSessionsToCreate.push({
           id: uniqueId,
@@ -504,13 +442,38 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
           date: dateStr,
           startTime: '',
           endTime: '',
-          status: 'CLOSED',
+          status: 'CLOSED', // Sedia untuk diimbas semasa kuliah bermula
           attendanceMethod: 'QR',
           organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
           lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
-          className: finalClassName,
-          createdAt: new Date(now + meetIdx * 1000).toISOString()
+          className: cls,
+          createdAt: new Date(now + clsIdx * 1000).toISOString()
         });
+      });
+    } else {
+      // Combined session for all checked classes
+      const isAllSelected = targetClassesForModal.length > 1 && newSessionClasses.length === targetClassesForModal.length;
+      const finalClassName = isAllSelected ? 'ALL' : newSessionClasses.join(', ');
+      const uniqueId = `SES-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+      newSessionsToCreate.push({
+        id: uniqueId,
+        activityId: selectedSubjectId,
+        activityName: parentSub ? `[${parentSub.code}] ${parentSub.name}` : 'Kelas',
+        subjectId: selectedSubjectId,
+        subjectCode: parentSub?.code || '',
+        subjectName: parentSub?.name || '',
+        category: 'CLASS',
+        sessionName: sName,
+        date: dateStr,
+        startTime: '',
+        endTime: '',
+        status: 'CLOSED',
+        attendanceMethod: 'QR',
+        organizer: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+        lecturerName: parentSub?.lecturerName || activeLecturer?.name || 'Pensyarah',
+        className: finalClassName,
+        createdAt: new Date(now).toISOString()
       });
     }
 
@@ -1499,116 +1462,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 </div>
               </div>
 
-              {/* 2. Meeting 1st ('a') & Meeting 2nd ('b') Harmonization */}
-              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-indigo-400" />
-                    <span className="text-xs font-bold text-white">
-                      Pertemuan Kuliah Mingguan (Meeting 1st & 2nd)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => { setIncludeMeetingA(true); setIncludeMeetingB(true); }}
-                      className="text-indigo-400 hover:text-indigo-300 hover:underline px-1 cursor-pointer font-medium"
-                    >
-                      Kedua-dua (a & b)
-                    </button>
-                    <span className="text-slate-600">|</span>
-                    <button
-                      type="button"
-                      onClick={() => { setIncludeMeetingA(true); setIncludeMeetingB(false); }}
-                      className="text-slate-400 hover:text-slate-300 hover:underline px-1 cursor-pointer font-medium"
-                    >
-                      Meeting 1st (a) Sahaja
-                    </button>
-                    <span className="text-slate-600">|</span>
-                    <button
-                      type="button"
-                      onClick={() => { setIncludeMeetingA(false); setIncludeMeetingB(true); }}
-                      className="text-slate-400 hover:text-slate-300 hover:underline px-1 cursor-pointer font-medium"
-                    >
-                      Meeting 2nd (b) Sahaja
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Setiap kelas mempunyai pertemuan 1st &amp; 2nd yang diwakili oleh remark <strong>a</strong> dan <strong>b</strong>. Tandakan sesi yang ingin dijana:
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Card 1: Meeting 1st 'a' */}
-                  <button
-                    type="button"
-                    id="btn-toggle-meeting-a"
-                    onClick={() => setIncludeMeetingA((prev) => !prev)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                      includeMeetingA
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white ring-1 ring-indigo-500/40 shadow-sm'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div
-                      className={`w-4 h-4 mt-0.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
-                        includeMeetingA
-                          ? 'bg-indigo-600 border-indigo-500 text-white'
-                          : 'border-slate-700 bg-slate-900'
-                      }`}
-                    >
-                      {includeMeetingA && <Check className="w-3 h-3 stroke-[3]" />}
-                    </div>
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-white">Meeting 1st ("a")</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold">
-                          {cleanBaseSessionName}a
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Pertemuan pertama dalam minggu
-                      </p>
-                    </div>
-                  </button>
-
-                  {/* Card 2: Meeting 2nd 'b' */}
-                  <button
-                    type="button"
-                    id="btn-toggle-meeting-b"
-                    onClick={() => setIncludeMeetingB((prev) => !prev)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                      includeMeetingB
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white ring-1 ring-indigo-500/40 shadow-sm'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div
-                      className={`w-4 h-4 mt-0.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
-                        includeMeetingB
-                          ? 'bg-indigo-600 border-indigo-500 text-white'
-                          : 'border-slate-700 bg-slate-900'
-                      }`}
-                    >
-                      {includeMeetingB && <Check className="w-3 h-3 stroke-[3]" />}
-                    </div>
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-white">Meeting 2nd ("b")</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold">
-                          {cleanBaseSessionName}b
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Pertemuan kedua dalam minggu
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* 3. Per-Class Generation Mode */}
+              {/* 2. Per-Class Generation Mode */}
               <button
                 type="button"
                 id="btn-toggle-generate-per-class"
@@ -1645,7 +1499,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                 </div>
               </button>
 
-              {/* 4. Target Classes Checklist */}
+              {/* 3. Target Classes Checklist */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
@@ -1770,7 +1624,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                       <span>Ringkasan: {previewGeneratedSessions.length} Sesi Kelas Akan Dijana</span>
                     </span>
                     <span className="text-[11px] text-indigo-300 font-mono">
-                      {generatePerClass ? `${newSessionClasses.length} Kelas × ${meetingSuffixes.length} Pertemuan` : `1 Sesi Gabungan`}
+                      {generatePerClass ? `${newSessionClasses.length} Kelas` : `1 Sesi Gabungan`}
                     </span>
                   </div>
 

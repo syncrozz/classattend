@@ -429,18 +429,6 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            id="header-open-scanner-btn"
-            type="button"
-            onClick={onOpenScanner}
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[48px] rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98]"
-          >
-            <QrCode className="w-5 h-5 text-indigo-200" />
-            <span>Buka Pengimbas</span>
-          </button>
-        </div>
       </header>
 
       {/* Action Notification / Feedback Banner */}
@@ -483,7 +471,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>SESI SEDANG DIBUKA</span>
+                <span>SESI SEDANG BERJALAN</span>
               </div>
 
               <div className="flex flex-wrap items-baseline gap-2">
@@ -540,7 +528,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[48px] rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98]"
                 >
                   <QrCode className="w-4 h-4" />
-                  <span>Imbas Sekarang</span>
+                  <span>Buka Pengimbas</span>
                 </button>
 
                 <button
@@ -561,7 +549,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all"
                   title="Tamatkan sesi dan simpan rekod kehadiran"
                 >
-                  <span>Tamatkan Sesi</span>
+                  <span>Tamat Sesi</span>
                 </button>
               </div>
             </div>

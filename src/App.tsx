@@ -839,6 +839,7 @@ export default function App() {
         onToggleAdminMode={handleToggleAdminMode}
         onLogoutLecturer={handleLogoutLecturer}
         onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+        isLecturerWorkspaceActive={activeTab === 'dashboard' && currentRole === 'LECTURER' && Boolean(activeLecturer)}
       />
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">

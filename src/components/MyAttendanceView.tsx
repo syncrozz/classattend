@@ -402,21 +402,27 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
         </div>
 
         {/* 4. TIMELINE OF CLASS SESSIONS */}
-        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-white">Jadual & Rekod Sesi Kelas</h3>
-              <p className="text-xs text-slate-400">Senarai semua kuliah dan tutorial mengikut subjek yang didaftarkan</p>
-            </div>
+        <section id="section-jadual-rekod-sesi" className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 sm:p-6 space-y-5 w-full">
+          {/* Header Block: Title & Description */}
+          <div className="w-full space-y-1.5">
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+              Jadual &amp; Rekod Sesi Kelas
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-400">
+              Senarai semua kuliah dan tutorial mengikut subjek yang didaftarkan
+            </p>
+          </div>
 
-            {/* Subject Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          {/* Responsive Course Filter Pills */}
+          <div className="w-full pt-0.5">
+            <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
                 onClick={() => setFilterSubject('ALL')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${
                   filterSubject === 'ALL'
-                    ? 'bg-indigo-600 text-white font-semibold'
-                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800'
                 }`}
               >
                 Semua Kursus
@@ -424,11 +430,12 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               {subjects.map((sub) => (
                 <button
                   key={sub.id}
+                  type="button"
                   onClick={() => setFilterSubject(sub.code)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${
                     filterSubject === sub.code
-                      ? 'bg-indigo-600 text-white font-semibold'
-                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800'
                   }`}
                 >
                   {sub.code}
@@ -438,9 +445,9 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
           </div>
 
           {/* Timeline List */}
-          <div className="space-y-2.5">
+          <div className="space-y-3 w-full border-t border-slate-800/80 pt-5">
             {filteredTimeline.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-xs">
+              <div className="text-center py-8 rounded-xl bg-slate-950/40 border border-slate-800/60 text-slate-400 text-xs">
                 Tiada sesi kelas dijadualkan bagi kursus ini.
               </div>
             ) : (
@@ -453,14 +460,14 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                 return (
                   <div
                     key={session.id}
-                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+                    className={`p-4 sm:p-5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all w-full min-w-0 ${
                       isAttended
                         ? 'bg-emerald-950/20 border-emerald-500/30'
                         : 'bg-slate-950/60 border-slate-800'
                     }`}
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
                         {session.subjectCode && (
                           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
                             {session.subjectCode}
@@ -473,14 +480,14 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                         )}
                       </div>
 
-                      <h4 className="text-sm font-bold text-white">
+                      <h4 className="text-sm sm:text-base font-bold text-white break-words">
                         {session.sessionName}
                       </h4>
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 pt-0.5">
                         {session.lecturerName && (
-                          <span className="text-slate-300 flex items-center gap-1">
-                            <UserCheck className="w-3 h-3 text-slate-500" />
+                          <span className="text-slate-300 flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span>Pensyarah: {session.lecturerName}</span>
                           </span>
                         )}
@@ -489,9 +496,9 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                     </div>
 
                     {/* Status Outcome */}
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">
                       {isAttended ? (
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 shadow-sm">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>HADIR</span>
@@ -501,7 +508,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
                           </div>
                         </div>
                       ) : (
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-700">
                             <XCircle className="w-3.5 h-3.5 text-slate-500" />
                             <span>TIDAK HADIR</span>
@@ -517,7 +524,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
               })
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       {/* 5. SLIP KEHADIRAN RASMI MODAL */}
