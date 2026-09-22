@@ -6,6 +6,26 @@ export type AttendanceMethod = 'QR' | 'MANUAL' | 'CAMERA_SCAN' | 'SIMULATOR' | '
 
 export type UserRole = 'ADMIN' | 'LECTURER' | 'STUDENT';
 
+export type TrustedRole = 'SUPER_ADMIN' | 'ADMIN' | 'LECTURER' | 'STUDENT' | 'KIOSK';
+
+export interface TrustedClaims {
+  role: TrustedRole;
+  institutionalId: string;
+  assignedClasses?: string[];
+  kioskId?: string;
+  [key: string]: unknown;
+}
+
+export interface TrustedIdentity {
+  uid: string;
+  email: string | null;
+  isAuthenticated: boolean;
+  role: TrustedRole | 'ANONYMOUS' | 'UNAUTHENTICATED';
+  institutionalId: string | null;
+  claims: TrustedClaims | null;
+  isAnonymous: boolean;
+}
+
 export type ActivityCategory =
   | 'CLASS'
   | 'ASSEMBLY'

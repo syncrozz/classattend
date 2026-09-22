@@ -20,7 +20,7 @@ import {
 } from '../data/mockData';
 import { sortSessionsLatestFirst } from '../utils/studentUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
-import { db, sanitizeForFirestore } from './firebase';
+import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from './firebase';
 import {
   collection,
   doc,
@@ -504,7 +504,7 @@ class AttendanceEngine {
           callback(this.students);
         },
         (error) => {
-          console.warn('Firestore students sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'students');
           callback(this.students);
         }
       );
@@ -541,7 +541,7 @@ class AttendanceEngine {
           callback(this.enrollments);
         },
         (error) => {
-          console.warn('Firestore enrollments sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'enrollments');
           callback(this.enrollments);
         }
       );
@@ -587,7 +587,7 @@ class AttendanceEngine {
           callback(this.lecturers);
         },
         (error) => {
-          console.warn('Firestore lecturers sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'lecturers');
           callback(this.lecturers);
         }
       );
@@ -640,7 +640,7 @@ class AttendanceEngine {
           callback(this.subjects);
         },
         (error) => {
-          console.warn('Firestore subjects sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'subjects');
           callback(this.subjects);
         }
       );
@@ -679,7 +679,7 @@ class AttendanceEngine {
           callback(this.sessions);
         },
         (error) => {
-          console.warn('Firestore sessions sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'sessions');
           callback(sortSessionsLatestFirst(this.sessions));
         }
       );
@@ -722,7 +722,7 @@ class AttendanceEngine {
           callback(this.attendanceRecords);
         },
         (error) => {
-          console.warn('Firestore records sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'attendance_records');
           callback(this.attendanceRecords);
         }
       );
@@ -760,7 +760,7 @@ class AttendanceEngine {
           callback(this.teachingAssignments);
         },
         (error) => {
-          console.warn('Firestore teaching_assignments sync error, using local data:', error);
+          handleFirestoreError(error, OperationType.LIST, 'teaching_assignments');
           callback(this.teachingAssignments);
         }
       );
