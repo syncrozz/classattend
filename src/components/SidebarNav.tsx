@@ -34,46 +34,109 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onOpenPWAInstall,
   onOpenQrPortal
 }) => {
-  const navItems = [
-    {
-      id: 'dashboard' as ActiveTab,
-      label: currentRole === 'ADMIN' ? 'Pusat Kawalan' : currentRole === 'LECTURER' ? 'Ruang Kerja' : 'Dashboard Utama',
-      icon: LayoutDashboard,
-      badge: undefined
-    },
-    {
-      id: 'students' as ActiveTab,
-      label: currentRole === 'ADMIN' || currentRole === 'LECTURER' ? 'Master Data' : 'Direktori & Subjek',
-      icon: Users,
-      badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
-      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-    },
-    {
-      id: 'my-attendance' as ActiveTab,
-      label: 'Kehadiran Pelajar',
-      icon: UserSquare2,
-      badge: 'Pelajar',
-      badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-    },
-    {
-      id: 'reports' as ActiveTab,
-      label: 'Laporan Kehadiran',
-      icon: FileSpreadsheet,
-      badge: totalRecordsCount > 0 ? `${totalRecordsCount}` : undefined
-    },
-    {
-      id: 'guide' as ActiveTab,
-      label: currentRole === 'ADMIN' ? 'Panduan Penggunaan' : currentRole === 'LECTURER' ? 'Panduan Pensyarah' : 'Panduan Pengguna',
-      icon: BookOpen,
-      badge: undefined
+  const navItems = React.useMemo(() => {
+    if (currentRole === 'LECTURER') {
+      return [
+        {
+          id: 'dashboard' as ActiveTab,
+          label: 'Kelas Saya',
+          icon: LayoutDashboard,
+          badge: undefined
+        },
+        {
+          id: 'reports' as ActiveTab,
+          label: 'Laporan',
+          icon: FileSpreadsheet,
+          badge: totalRecordsCount > 0 ? `${totalRecordsCount}` : undefined
+        },
+        {
+          id: 'guide' as ActiveTab,
+          label: 'Panduan',
+          icon: BookOpen,
+          badge: undefined
+        }
+      ];
     }
-  ];
+
+    if (currentRole === 'ADMIN') {
+      return [
+        {
+          id: 'dashboard' as ActiveTab,
+          label: 'Pusat Kawalan',
+          icon: LayoutDashboard,
+          badge: undefined
+        },
+        {
+          id: 'students' as ActiveTab,
+          label: 'Master Data',
+          icon: Users,
+          badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
+          badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+        },
+        {
+          id: 'my-attendance' as ActiveTab,
+          label: 'Kehadiran Pelajar',
+          icon: UserSquare2,
+          badge: 'Pelajar',
+          badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+        },
+        {
+          id: 'reports' as ActiveTab,
+          label: 'Laporan Kehadiran',
+          icon: FileSpreadsheet,
+          badge: totalRecordsCount > 0 ? `${totalRecordsCount}` : undefined
+        },
+        {
+          id: 'guide' as ActiveTab,
+          label: 'Panduan Penggunaan',
+          icon: BookOpen,
+          badge: undefined
+        }
+      ];
+    }
+
+    // Default: STUDENT / General Audience
+    return [
+      {
+        id: 'dashboard' as ActiveTab,
+        label: 'Dashboard Utama',
+        icon: LayoutDashboard,
+        badge: undefined
+      },
+      {
+        id: 'students' as ActiveTab,
+        label: 'Direktori & Subjek',
+        icon: Users,
+        badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
+        badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+      },
+      {
+        id: 'my-attendance' as ActiveTab,
+        label: 'Kehadiran Pelajar',
+        icon: UserSquare2,
+        badge: 'Pelajar',
+        badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+      },
+      {
+        id: 'reports' as ActiveTab,
+        label: 'Laporan Kehadiran',
+        icon: FileSpreadsheet,
+        badge: totalRecordsCount > 0 ? `${totalRecordsCount}` : undefined
+      },
+      {
+        id: 'guide' as ActiveTab,
+        label: 'Panduan Pengguna',
+        icon: BookOpen,
+        badge: undefined
+      }
+    ];
+  }, [currentRole, totalStudentsCount, totalRecordsCount]);
 
   return (
     <aside className="w-full md:w-64 bg-slate-900/60 md:min-h-[calc(100vh-4rem)] border-b md:border-b-0 md:border-r border-slate-800/80 p-3 sm:p-4 flex flex-col justify-between shrink-0">
       <div className="space-y-1">
         <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          Menu Kelas & Subjek
+          {currentRole === 'LECTURER' ? 'Menu Pensyarah' : currentRole === 'ADMIN' ? 'Menu Pentadbir' : 'Menu Kelas & Subjek'}
         </div>
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -111,7 +174,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
       {/* Footer Info Card */}
       <div className="space-y-2 mt-6">
-        {onOpenQrPortal && (
+        {onOpenQrPortal && currentRole !== 'LECTURER' && (
           <button
             id="sidebar-btn-qr-portal"
             onClick={onOpenQrPortal}

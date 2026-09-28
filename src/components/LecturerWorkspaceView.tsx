@@ -100,18 +100,18 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     myAssignments.forEach((ta) => {
       if (ta.subjectCode) codes.add(ta.subjectCode.trim().toUpperCase());
     });
-    // Fallback: If no explicit assignment, give access to college subjects
-    if (codes.size === 0) {
+    // Fallback: If admin, give access to college subjects
+    if (codes.size === 0 && isAdmin) {
       subjects.forEach((s) => codes.add(s.code.trim().toUpperCase()));
     }
     return codes;
-  }, [myAssignments, subjects]);
+  }, [myAssignments, subjects, isAdmin]);
 
   // Available subjects for this lecturer
   const availableSubjects = useMemo(() => {
     const filtered = subjects.filter((s) => myAssignedSubjectCodes.has(s.code.toUpperCase()));
-    return filtered.length > 0 ? filtered : subjects;
-  }, [subjects, myAssignedSubjectCodes]);
+    return filtered.length > 0 ? filtered : (isAdmin ? subjects : []);
+  }, [subjects, myAssignedSubjectCodes, isAdmin]);
 
   // State: Selection
   const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(() => {
@@ -119,6 +119,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   });
 
   const selectedSubject = useMemo(() => {
+    if (availableSubjects.length === 0) return null;
     return availableSubjects.find((s) => s.code.toUpperCase() === selectedSubjectCode.toUpperCase()) || availableSubjects[0];
   }, [availableSubjects, selectedSubjectCode]);
 
@@ -590,36 +591,50 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         </div>
       )}
 
-      {/* 3. PUSAT AKTIVASI SESI PANTAS (2-Step Direct Selector) */}
-      <section
-        id="quick-session-activation-hub"
-        aria-label="Pusat Aktivasi Sesi Pantas"
-        className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-6"
-      >
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div>
-            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              <Play className="w-4 h-4 text-indigo-400 fill-indigo-400" />
-              <span>Aktivasi Sesi Kehadiran</span>
+      {/* 3. KELAS SAYA / PUSAT AMBIL KEHADIRAN */}
+      {availableSubjects.length === 0 ? (
+        <section
+          id="lecturer-empty-classes-hub"
+          aria-label="Tiada Kelas Tersedia"
+          className="p-8 sm:p-12 rounded-2xl bg-slate-900 border border-slate-800 shadow-md text-center space-y-4"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto text-slate-400 shadow-inner">
+            <GraduationCap className="w-8 h-8 text-indigo-400" />
+          </div>
+          <div className="space-y-2 max-w-md mx-auto">
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-wide uppercase">
+              TIADA KELAS UNTUK DIAMBIL KEHADIRAN
             </h3>
-            <p className="text-xs text-slate-400">
-              Pilih subjek dan kelas, kemudian klik butang pengaktifan di bawah.
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+              Tiada sesi kelas tersedia pada masa ini. Sila hubungi Pentadbir Sistem untuk penetapan jadual subjek dan kelas pengajaran anda.
             </p>
           </div>
-        </div>
-
-        {/* STEP 1: SUBJEK SAYA */}
-        <div className="space-y-2.5">
-          <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Langkah 1: Pilih Subjek</span>
-          </label>
-
-          {availableSubjects.length === 0 ? (
-            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700 text-center text-slate-400 text-sm">
-              Tiada subjek ditugaskan. Sila hubungi pentadbir untuk penetapan jadual subjek.
+        </section>
+      ) : (
+        <section
+          id="quick-session-activation-hub"
+          aria-label="Kelas Saya — Pusat Pengambilan Kehadiran"
+          className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-6"
+        >
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-indigo-400" />
+                <span>KELAS SAYA</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Pilih subjek dan kelas untuk memulakan pengimbasan kehadiran pelajar.
+              </p>
             </div>
-          ) : (
+          </div>
+
+          {/* STEP 1: SUBJEK SAYA */}
+          <div className="space-y-2.5">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Langkah 1: Pilih Subjek</span>
+            </label>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {availableSubjects.map((sub) => {
                 const isSelected = selectedSubject?.code.toUpperCase() === sub.code.toUpperCase();
@@ -649,8 +664,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                 );
               })}
             </div>
-          )}
-        </div>
+          </div>
 
         {/* STEP 2: KELAS SAYA */}
         <div className="space-y-2.5">
@@ -697,7 +711,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
           )}
         </div>
 
-        {/* STEP 3: THE PRIMARY ACTIVATION BAR (Min 52-56px height, Mobile-First) */}
+        {/* STEP 3: THE PRIMARY ACTION: BUKA SCANNER (Mobile-First, Min 56px height) */}
         <div className="pt-2">
           {isSelectedActive && currentOpenSession ? (
             <button
@@ -707,8 +721,8 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               className="w-full min-h-[56px] px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 active:from-emerald-700 text-white font-extrabold text-base shadow-lg shadow-emerald-600/30 transition-all flex flex-col sm:flex-row items-center justify-center gap-2 active:scale-[0.99]"
             >
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-100" />
-                <span>Sambung Sesi Sedang Berjalan: {selectedSubject?.code} ({selectedClass})</span>
+                <QrCode className="w-5 h-5 text-emerald-100" />
+                <span>Buka Scanner (Sambung Sesi): {selectedSubject?.code} ({selectedClass})</span>
               </div>
               <span className="text-xs text-emerald-100 font-normal opacity-90">
                 (Sesi aktif sejak {currentOpenSession.startTime})
@@ -723,19 +737,19 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               className="w-full min-h-[56px] px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:from-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-base shadow-lg shadow-indigo-600/30 transition-all flex flex-col sm:flex-row items-center justify-center gap-2 active:scale-[0.99]"
             >
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-200" />
+                <QrCode className="w-5 h-5 text-indigo-200" />
                 <span>
-                  Aktifkan Sesi Kehadiran:{' '}
-                  {selectedSubject ? `${selectedSubject.code} — ${selectedClass || 'Tiada Kelas Dipilih'}` : 'Sila Pilih Subjek'}
+                  Buka Scanner: {selectedSubject ? `${selectedSubject.code} — ${selectedClass || 'Tiada Kelas Dipilih'}` : 'Sila Pilih Subjek'}
                 </span>
               </div>
               <span className="text-xs text-indigo-100 font-normal opacity-85">
-                (Buka Imbasan QR Langsung)
+                (Sesi kehadiran akan dibuka secara langsung)
               </span>
             </button>
           )}
         </div>
       </section>
+      )}
 
       {/* 4. RECENT ATTENDANCE HISTORY (Compact, Non-Weekly, Preserving All Records) */}
       <section

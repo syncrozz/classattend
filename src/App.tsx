@@ -247,6 +247,13 @@ export default function App() {
     }
   }, [sessions, selectedScannerSessionId]);
 
+  // Guard against non-lecturer tabs when role is LECTURER
+  useEffect(() => {
+    if (currentRole === 'LECTURER' && (activeTab === 'students' || activeTab === 'my-attendance')) {
+      setActiveTab('dashboard');
+    }
+  }, [currentRole, activeTab]);
+
   // Scoped active session calculation:
   // If user is LECTURER, strictly scope active session to authorized assignments / identity
   // If user is ADMIN or general, open sessions across institution are visible
@@ -929,6 +936,7 @@ export default function App() {
               isAdmin={isAdmin}
               activeLecturer={activeLecturer}
               teachingAssignments={teachingAssignments}
+              enrollments={enrollments}
               onRequestAdminAccess={handleRequestAdminAccess}
               onProcessScan={handleProcessScan}
               onGoToActivities={() => handleTabChange('dashboard')}

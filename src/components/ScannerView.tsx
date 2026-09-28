@@ -55,6 +55,9 @@ import {
   Award,
   BookOpen,
   UserCheck,
+  UserX,
+  MessageSquare,
+  Copy,
   QrCode,
   Lock,
   RotateCcw,
@@ -62,6 +65,7 @@ import {
   FileSpreadsheet,
   HardDrive
 } from 'lucide-react';
+import { formatWhatsAppPhone } from '../utils/whatsappHelper';
 import { ScannerSettingsModal, CustomPaceValues } from './ScannerSettingsModal';
 
 export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
@@ -210,7 +214,13 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     presentCount: number;
     totalCount: number;
     percentage: number;
+    absentList: Student[];
   } | null>(null);
+
+  // Tab for active attendees view: 'PRESENT' (Hadir) vs 'ABSENT' (Belum Hadir)
+  const [attendanceListTab, setAttendanceListTab] = useState<'PRESENT' | 'ABSENT'>('PRESENT');
+  const [absentSearchQuery, setAbsentSearchQuery] = useState<string>('');
+  const [copiedAbsentList, setCopiedAbsentList] = useState<boolean>(false);
 
   const [scanPace, setScanPace] = useState<ScanPaceMode>(() => {
     try {
@@ -386,6 +396,40 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     return student?.className.toUpperCase() === selectedClassFilter.toUpperCase();
   }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+  // Set of student IDs recorded as PRESENT
+  const presentStudentIdsSet = useMemo(() => {
+    const set = new Set<string>();
+    matchingPresentRecords.forEach((r) => {
+      if (r.studentId) set.add(r.studentId.trim().toUpperCase());
+      const stu = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+      if (stu) {
+        if (stu.id) set.add(stu.id.trim().toUpperCase());
+        if (stu.studentId) set.add(stu.studentId.trim().toUpperCase());
+      }
+    });
+    return set;
+  }, [matchingPresentRecords, students]);
+
+  // Authoritative Absent Students list (targetStudents who are not in presentStudentIdsSet)
+  const absentStudents = useMemo(() => {
+    return targetStudents.filter((st) => {
+      const idUpper = (st.id || '').trim().toUpperCase();
+      const codeUpper = (st.studentId || '').trim().toUpperCase();
+      const isPresent = (idUpper && presentStudentIdsSet.has(idUpper)) || (codeUpper && presentStudentIdsSet.has(codeUpper));
+      return !isPresent;
+    });
+  }, [targetStudents, presentStudentIdsSet]);
+
+  const filteredAbsentStudents = useMemo(() => {
+    if (!absentSearchQuery.trim()) return absentStudents;
+    const q = absentSearchQuery.toLowerCase();
+    return absentStudents.filter((st) =>
+      st.name.toLowerCase().includes(q) ||
+      st.studentId.toLowerCase().includes(q) ||
+      st.className.toLowerCase().includes(q)
+    );
+  }, [absentStudents, absentSearchQuery]);
+
   // Core scan execution with smart duplicate protection and dynamic cooldown
   const handleScannedData = useCallback((dataString: string, method: AttendanceMethod = 'CAMERA_SCAN') => {
     const now = Date.now();
@@ -545,6 +589,22 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     }
   };
 
+  // Auto-start camera when scanner mounts in CAMERA mode with an active session
+  useEffect(() => {
+    let isMounted = true;
+    if (scannerMode === 'CAMERA' && currentSession?.status === 'OPEN' && !isCameraActive && !cameraError) {
+      const timer = setTimeout(() => {
+        if (isMounted && !isCameraActive) {
+          startCamera();
+        }
+      }, 350);
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+      };
+    }
+  }, [scannerMode, currentSession?.id, currentSession?.status]);
+
   useEffect(() => {
     return () => {
       if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
@@ -615,7 +675,8 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       date: currentSession.date || new Date().toISOString().split('T')[0],
       presentCount: matchingPresentRecords.length,
       totalCount: targetStudents.length,
-      percentage: percentage
+      percentage: percentage,
+      absentList: absentStudents
     };
 
     setClosedSessionSummary(summary);
@@ -640,14 +701,20 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
           <div className="flex flex-wrap items-center gap-2.5">
             {currentSession?.status === 'OPEN' ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black tracking-wider uppercase shadow-sm">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black tracking-wider uppercase shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
                 <span>LIVE KEHADIRAN</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-xs font-bold uppercase">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-xs font-bold uppercase">
                 <Lock className="w-3 h-3" />
                 <span>SESI SELESAI</span>
+              </span>
+            )}
+
+            {currentSession?.className && (
+              <span className={`px-3 py-1 rounded-xl text-xs font-black border tracking-wide ${getClassBadgeColor(currentSession.className)}`}>
+                Kelas {currentSession.className}
               </span>
             )}
 
@@ -656,15 +723,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 {currentSession.subjectCode}
               </span>
             )}
-
-            {currentSession?.className && (
-              <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold border ${getClassBadgeColor(currentSession.className)}`}>
-                Kelas {currentSession.className}
-              </span>
-            )}
           </div>
 
-          {/* Right Side: Live Clock, Close Session, Pace, Sound Controls */}
+          {/* Right Side: Live Clock, Sound Controls, Tamatkan Sesi */}
           <div className="flex items-center gap-2">
             {/* Live Clock */}
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 text-xs font-mono">
@@ -678,61 +739,43 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </span>
             </div>
 
-            {/* Quick Backup CSV Button in Header */}
-            <button
-              type="button"
-              id="btn-quick-backup-session-header"
-              onClick={handleBackupSessionCSV}
-              className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="Muat turun & simpan fail backup kehadiran sesi ini (.CSV)"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Backup CSV</span>
-            </button>
-
-            {/* Master Admin Scanner Pace & Audio Settings Button */}
-            <button
-              type="button"
-              id="btn-scanner-settings-header"
-              onClick={() => {
-                if (!isAdmin) {
-                  onRequestAdminAccess('Tetapan Kelajuan & Audio Pengimbas');
-                }
-                setIsSettingsModalOpen(true);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="Tetapan Kelajuan Imbasan (Pace) & Tahap Audio Kejayaan (Master Admin)"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Tetapan Pace & Audio</span>
-              <span className="px-1.5 py-0.5 rounded bg-indigo-500/30 text-[10px] font-mono text-indigo-200">
-                {activePaceConfig.label.split(' ')[0]} • {Math.round(currentVolume * 100)}%
-              </span>
-            </button>
-
             {/* Sound Toggle */}
             <button
               type="button"
               id="btn-toggle-sound"
               onClick={() => onToggleSound(!soundEnabled)}
               className={`p-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                soundEnabled ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-950 border-slate-800 text-slate-500'
+                soundEnabled ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
               }`}
-              title="Bunyi Maklum Balas"
+              title={soundEnabled ? 'Matikan Bunyi Imbasan' : 'Aktifkan Bunyi Imbasan'}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4 text-indigo-400" /> : <VolumeX className="w-4 h-4" />}
             </button>
 
-            {/* Close Session Button */}
+            {/* Admin Settings (Hidden for regular lecturers to prevent distraction) */}
+            {isAdmin && (
+              <button
+                type="button"
+                id="btn-scanner-settings-header"
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Tetapan Kelajuan & Audio Pengimbas"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Pace & Audio</span>
+              </button>
+            )}
+
+            {/* Primary Action: Tamatkan Sesi */}
             {currentSession?.status === 'OPEN' && (
               <button
                 type="button"
                 id="btn-close-session-header"
                 onClick={() => setIsCloseModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="min-h-[40px] px-4 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white border border-rose-500/40 text-xs font-extrabold shadow-md shadow-rose-900/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span>Tutup Sesi</span>
+                <span>Tamatkan Sesi</span>
               </button>
             )}
           </div>
@@ -742,7 +785,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         <div className="space-y-1 relative z-10">
           <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
             {currentSession?.subjectName
-              ? `${currentSession.subjectCode ? `${currentSession.subjectCode} - ` : ''}${currentSession.subjectName}`
+              ? `${currentSession.subjectCode ? `${currentSession.subjectCode} — ` : ''}${currentSession.subjectName}`
               : currentSession?.sessionName || 'Sesi Kehadiran'}
           </h2>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
@@ -758,17 +801,18 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           </div>
         </div>
 
-        {/* PRIMARY REAL-TIME ATTENDANCE METRIC BAR */}
+        {/* PRIMARY REAL-TIME ATTENDANCE METRIC BAR (MYAU Focus) */}
         <div
           id="real-time-attendance-metric-card"
           className="p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-3 relative z-10"
         >
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Status Kehadiran Sebenar
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>STATUS KEHADIRAN KELAS</span>
               </div>
-              <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight flex items-baseline gap-2">
+              <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight flex items-baseline gap-2 pt-0.5">
                 <span className="text-emerald-400">{matchingPresentRecords.length}</span>
                 <span className="text-slate-500 text-lg sm:text-xl">/ {targetStudents.length} HADIR</span>
                 <span className="text-xs font-sans font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -777,19 +821,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </div>
             </div>
 
-            {/* 100% Completion Badge */}
+            {/* 100% Completion Badge or Absent Count */}
             {isAllPresent ? (
               <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black flex items-center gap-2 animate-bounce">
                 <Award className="w-4 h-4 text-emerald-400" />
                 <span>SEMUA PELAJAR DIREKODKAN (100%)</span>
               </div>
             ) : (
-              <div className="text-xs text-slate-400 text-right">
-                <span className="font-semibold text-slate-300">
-                  {Math.max(0, targetStudents.length - matchingPresentRecords.length)} Pelajar
-                </span>{' '}
-                belum hadir
-              </div>
+              <button
+                type="button"
+                onClick={() => setAttendanceListTab('ABSENT')}
+                className="text-xs text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <UserX className="w-3.5 h-3.5 text-rose-400" />
+                <span>{absentStudents.length} Pelajar Belum Hadir &rarr;</span>
+              </button>
             )}
           </div>
 
@@ -810,41 +856,36 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           </div>
         </div>
 
-        {/* Session Switcher Selector */}
-        <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-            <span className="text-slate-400 font-semibold whitespace-nowrap">Tukar Sesi:</span>
-            <select
-              id="select-active-session-switch"
-              value={selectedSessionId}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
-              disabled={activeOpenSessions.length === 0}
-              className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {activeOpenSessions.length === 0 ? (
-                <option value="" disabled>
-                  Tiada sesi kehadiran aktif
-                </option>
-              ) : (
-                activeOpenSessions.map((ses) => (
+        {/* Session Switcher Selector: Only displayed if multiple active sessions exist */}
+        {activeOpenSessions.length > 1 && (
+          <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <span className="text-slate-400 font-semibold whitespace-nowrap">Tukar Sesi:</span>
+              <select
+                id="select-active-session-switch"
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                {activeOpenSessions.map((ses) => (
                   <option key={ses.id} value={ses.id}>
                     [AKTIF] {ses.subjectCode ? `${ses.subjectCode} - ` : ''}
                     {ses.sessionName} ({ses.className || 'Semua'}) • {ses.date}
                   </option>
-                ))
-              )}
-            </select>
-          </div>
+                ))}
+              </select>
+            </div>
 
-          <button
-            type="button"
-            onClick={onGoToActivities}
-            className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
-          >
-            <span>Semua Sesi & Kelas</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={onGoToActivities}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <span>Semua Sesi & Kelas</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. MODE SELECTOR TABS (Camera / Projector QR / Manual Search) */}
@@ -1369,98 +1410,207 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           )}
         </div>
 
-        {/* RIGHT COLUMN: LIVE ATTENDEES STREAM & LOG (5 COLS) */}
+        {/* RIGHT COLUMN: ATTENDANCE STATUS (HADIR & BELUM HADIR TABS) (5 COLS) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-4 flex flex-col h-full shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 gap-2">
-              <div>
-                <h3 className="text-sm font-extrabold text-white">Log Kehadiran Langsung</h3>
-                <p className="text-[11px] text-slate-400">
-                  {matchingPresentRecords.length} pelajar hadir bagi sesi ini
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  id="btn-backup-scanned-stream-csv"
-                  onClick={handleBackupSessionCSV}
-                  disabled={matchingPresentRecords.length === 0}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Simpan / Backup rekod kehadiran sesi ini ke fail CSV"
-                >
-                  <Download className="w-3 h-3 text-emerald-400" />
-                  <span>Backup .CSV</span>
-                </button>
-                <button
-                  type="button"
-                  id="btn-backup-scanned-stream-json"
-                  onClick={handleBackupSessionJSON}
-                  disabled={matchingPresentRecords.length === 0}
-                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Muat turun fail backup JSON penuh untuk arkib"
-                >
-                  <HardDrive className="w-3 h-3 text-indigo-400" />
-                  <span className="hidden sm:inline">JSON</span>
-                </button>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono">
-                  {matchingPresentRecords.length}
-                </span>
-              </div>
+            {/* Header Tabs: Hadir vs Belum Hadir */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                id="tab-attendance-present"
+                onClick={() => setAttendanceListTab('PRESENT')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  attendanceListTab === 'PRESENT'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Hadir ({matchingPresentRecords.length})</span>
+              </button>
+
+              <button
+                type="button"
+                id="tab-attendance-absent"
+                onClick={() => setAttendanceListTab('ABSENT')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  attendanceListTab === 'ABSENT'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>Belum Hadir ({absentStudents.length})</span>
+              </button>
             </div>
 
-            {/* Attendees Stream List */}
-            <div className="flex-1 flex flex-col min-h-[360px]">
-              {filteredSessionRecords.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl">
-                  <Users className="w-10 h-10 mb-2 opacity-30 text-slate-400" />
-                  <p className="text-xs font-bold text-slate-400">Belum ada rekod kehadiran bagi sesi ini.</p>
-                  <p className="text-[10px] text-slate-500 mt-1">Imbas kod QR pelajar untuk mula merekod.</p>
+            {/* TAB CONTENT: HADIR (LIVE STREAM) */}
+            {attendanceListTab === 'PRESENT' && (
+              <div className="flex-1 flex flex-col min-h-[360px] space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-semibold">Log Kehadiran Masa Nyata</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      id="btn-backup-scanned-stream-csv"
+                      onClick={handleBackupSessionCSV}
+                      disabled={matchingPresentRecords.length === 0}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Simpan fail backup kehadiran ke .CSV"
+                    >
+                      <Download className="w-3 h-3 text-emerald-400" />
+                      <span>Backup .CSV</span>
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-                  {filteredSessionRecords.map((rec) => {
-                    const student = students.find((s) => s.id === rec.studentId);
-                    if (!student) return null;
 
-                    return (
+                {filteredSessionRecords.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+                    <Users className="w-10 h-10 mb-2 opacity-30 text-slate-400" />
+                    <p className="text-xs font-bold text-slate-400">Belum ada rekod kehadiran bagi sesi ini.</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Imbas kad kod QR pelajar untuk mula merekod kehadiran.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                    {filteredSessionRecords.map((rec) => {
+                      const student = students.find((s) => s.id === rec.studentId || s.studentId === rec.studentId);
+                      if (!student) return null;
+
+                      return (
+                        <div
+                          key={rec.id}
+                          className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition-all text-xs"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-extrabold shrink-0 shadow-sm ${getStudentColor(student.id)}`}>
+                              {getInitials(student.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-white truncate">{student.name}</div>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                <span className="font-mono">{student.studentId}</span>
+                                <span>•</span>
+                                <span className={`px-1.5 py-0.2 rounded border font-semibold ${getClassBadgeColor(student.className)}`}>
+                                  {student.className}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="text-[11px] font-mono text-emerald-400 font-bold">
+                              {new Date(rec.timestamp).toLocaleTimeString('ms-MY', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                              })}
+                            </div>
+                            <div className="text-[9px] text-slate-500 uppercase font-semibold">
+                              {rec.method === 'CAMERA_SCAN' ? 'Kamera' : rec.method === 'MANUAL' ? 'Manual' : 'Imbasan'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT: BELUM HADIR (ABSENT STUDENTS LIST) */}
+            {attendanceListTab === 'ABSENT' && (
+              <div className="flex-1 flex flex-col min-h-[360px] space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-semibold text-rose-300">
+                    Senarai Pelajar Belum Hadir ({absentStudents.length})
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Boleh tanda hadir terus jika ada dalam kelas
+                  </span>
+                </div>
+
+                {/* Search Bar for Absent Students */}
+                {absentStudents.length > 3 && (
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama atau No. Pelajar..."
+                      value={absentSearchQuery}
+                      onChange={(e) => setAbsentSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                )}
+
+                {absentStudents.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-emerald-950/20 border border-dashed border-emerald-500/30 rounded-2xl space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                      <Award className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-white">Semua Pelajar Hadir!</h4>
+                    <p className="text-xs text-slate-400 max-w-xs">
+                      Tahniah, kesemua {targetStudents.length} pelajar yang berdaftar telah direkodkan hadir dalam sesi ini.
+                    </p>
+                  </div>
+                ) : filteredAbsentStudents.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+                    <Search className="w-8 h-8 mb-2 opacity-30 text-slate-400" />
+                    <p className="text-xs text-slate-400">Tiada pelajar sepadan dengan carian "{absentSearchQuery}".</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                    {filteredAbsentStudents.map((st) => (
                       <div
-                        key={rec.id}
+                        key={st.id}
                         className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition-all text-xs"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-extrabold shrink-0 shadow-sm ${getStudentColor(student.id)}`}>
-                            {getInitials(student.name)}
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-extrabold shrink-0 shadow-sm ${getStudentColor(st.id)}`}>
+                            {getInitials(st.name)}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-bold text-white truncate">{student.name}</div>
+                            <div className="font-bold text-white truncate">{st.name}</div>
                             <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                              <span className="font-mono">{student.studentId}</span>
+                              <span className="font-mono text-indigo-300">{st.studentId}</span>
                               <span>•</span>
-                              <span className={`px-1.5 py-0.2 rounded border font-semibold ${getClassBadgeColor(student.className)}`}>
-                                {student.className}
+                              <span className={`px-1.5 py-0.2 rounded border font-semibold ${getClassBadgeColor(st.className)}`}>
+                                {st.className}
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="text-[11px] font-mono text-emerald-400 font-bold">
-                            {new Date(rec.timestamp).toLocaleTimeString('ms-MY', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
-                            })}
-                          </div>
-                          <div className="text-[9px] text-slate-500 uppercase font-semibold">
-                            {rec.method === 'CAMERA_SCAN' ? 'Kamera' : rec.method === 'MANUAL' ? 'Manual' : 'Imbasan'}
-                          </div>
+                        {/* Quick Actions: Manual Check-In or WhatsApp Reminder */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {st.phone && (
+                            <a
+                              href={`https://wa.me/${formatWhatsAppPhone(st.phone)}?text=${encodeURIComponent(
+                                `Assalamualaikum / Salam Sejahtera ${st.name}, peringatan kehadiran kelas ${currentSession?.subjectCode || ''} (${currentSession?.className || ''}) bersama ${currentSession?.lecturerName || ''} sedang berlangsung sekarang. Sila hadir ke kelas segera.`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Hantar Peringatan WhatsApp"
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-300 border border-slate-700 transition-all cursor-pointer"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleScannedData(st.id, 'MANUAL_OVERRIDE')}
+                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs border border-slate-700 hover:border-emerald-500 shadow-sm transition-all cursor-pointer active:scale-95"
+                            title="Tanda pelajar hadir secara manual"
+                          >
+                            + Hadir
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1561,6 +1711,47 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 </strong>
               </div>
             </div>
+
+            {/* Absent Students Summary Section */}
+            {closedSessionSummary.absentList && closedSessionSummary.absentList.length > 0 ? (
+              <div className="space-y-2 text-left">
+                <div className="flex items-center justify-between text-xs font-bold text-rose-300 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <UserX className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Tidak Hadir ({closedSessionSummary.absentList.length} orang)</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `SENARAI TIDAK HADIR\nSubjek: ${closedSessionSummary.subjectCode} (${closedSessionSummary.className})\nTarikh: ${closedSessionSummary.date}\n\n` +
+                        closedSessionSummary.absentList.map((s, idx) => `${idx + 1}. ${s.name} (${s.studentId})`).join('\n');
+                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                        navigator.clipboard.writeText(text);
+                        setCopiedAbsentList(true);
+                        setTimeout(() => setCopiedAbsentList(false), 3000);
+                      }
+                    }}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>{copiedAbsentList ? '✓ Disalin!' : 'Salin Senarai'}</span>
+                  </button>
+                </div>
+                <div className="max-h-36 overflow-y-auto p-2.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs">
+                  {closedSessionSummary.absentList.map((s, idx) => (
+                    <div key={s.id} className="flex items-center justify-between text-slate-300 py-0.5">
+                      <span className="truncate">{idx + 1}. {s.name}</span>
+                      <span className="font-mono text-[11px] text-slate-500 shrink-0 ml-2">{s.studentId}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2">
+                <Award className="w-4 h-4 text-emerald-400" />
+                <span>Tahniah! Semua pelajar hadir ke kelas ini (100%).</span>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2.5">
               <button
