@@ -174,7 +174,16 @@ export interface AttendanceRecord {
 }
 
 export interface ScanResult {
-  code: 'RECORDED' | 'ALREADY_RECORDED' | 'INVALID_QR' | 'NO_ACTIVE_EVENT' | 'STUDENT_NOT_FOUND' | 'CLASS_MISMATCH' | 'ERROR';
+  code:
+    | 'RECORDED'
+    | 'ALREADY_RECORDED'
+    | 'INVALID_QR'
+    | 'NO_ACTIVE_EVENT'
+    | 'SESSION_CLOSED'
+    | 'UNAUTHORIZED_LECTURER'
+    | 'STUDENT_NOT_FOUND'
+    | 'CLASS_MISMATCH'
+    | 'ERROR';
   message: string;
   student?: Student;
   session?: AttendanceSession;

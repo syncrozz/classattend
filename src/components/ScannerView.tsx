@@ -18,7 +18,8 @@ import {
   getClassBadgeColor,
   getInitials,
   getStudentColor,
-  sortSessionsLatestFirst
+  sortSessionsLatestFirst,
+  formatAbsentListForCopy
 } from '../utils/studentUtils';
 import { filterAuthorizedSessions } from '../utils/sessionAuth';
 import {
@@ -66,6 +67,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { formatWhatsAppPhone } from '../utils/whatsappHelper';
+import { formatAbsentListText, formatDisplayDate } from '../utils/absentHelper';
 import { ScannerSettingsModal, CustomPaceValues } from './ScannerSettingsModal';
 
 export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
@@ -221,6 +223,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const [attendanceListTab, setAttendanceListTab] = useState<'PRESENT' | 'ABSENT'>('PRESENT');
   const [absentSearchQuery, setAbsentSearchQuery] = useState<string>('');
   const [copiedAbsentList, setCopiedAbsentList] = useState<boolean>(false);
+  const [confirmManualStudentId, setConfirmManualStudentId] = useState<string | null>(null);
 
   const [scanPace, setScanPace] = useState<ScanPaceMode>(() => {
     try {
@@ -429,6 +432,24 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       st.className.toLowerCase().includes(q)
     );
   }, [absentStudents, absentSearchQuery]);
+
+  // Session status-based terminology (SES v4.4 Phase 3 standard)
+  // Active session = "Belum Hadir", Closed session = "Tidak Hadir"
+  const isSessionClosed = currentSession?.status !== 'OPEN';
+  const absentLabel = isSessionClosed ? 'Tidak Hadir' : 'Belum Hadir';
+
+  // Safe manual attendance handler with light confirmation to prevent accidental taps
+  const handleManualMarkClick = (studentId: string) => {
+    if (confirmManualStudentId === studentId) {
+      handleScannedData(studentId, 'MANUAL_OVERRIDE');
+      setConfirmManualStudentId(null);
+    } else {
+      setConfirmManualStudentId(studentId);
+      setTimeout(() => {
+        setConfirmManualStudentId((prev) => (prev === studentId ? null : prev));
+      }, 3500);
+    }
+  };
 
   // Core scan execution with smart duplicate protection and dynamic cooldown
   const handleScannedData = useCallback((dataString: string, method: AttendanceMethod = 'CAMERA_SCAN') => {
@@ -834,7 +855,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 className="text-xs text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <UserX className="w-3.5 h-3.5 text-rose-400" />
-                <span>{absentStudents.length} Pelajar Belum Hadir &rarr;</span>
+                <span>{absentStudents.length} Pelajar {absentLabel} &rarr;</span>
               </button>
             )}
           </div>
@@ -1440,7 +1461,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 }`}
               >
                 <UserX className="w-3.5 h-3.5" />
-                <span>Belum Hadir ({absentStudents.length})</span>
+                <span>{absentLabel} ({absentStudents.length})</span>
               </button>
             </div>
 
@@ -1517,16 +1538,39 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </div>
             )}
 
-            {/* TAB CONTENT: BELUM HADIR (ABSENT STUDENTS LIST) */}
+            {/* TAB CONTENT: BELUM HADIR / TIDAK HADIR (ABSENT STUDENTS LIST) */}
             {attendanceListTab === 'ABSENT' && (
               <div className="flex-1 flex flex-col min-h-[360px] space-y-3">
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span className="font-semibold text-rose-300">
-                    Senarai Pelajar Belum Hadir ({absentStudents.length})
+                    Senarai Pelajar {absentLabel} ({absentStudents.length})
                   </span>
-                  <span className="text-[10px] text-slate-500">
-                    Boleh tanda hadir terus jika ada dalam kelas
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {absentStudents.length > 0 && (
+                      <button
+                        type="button"
+                        id="btn-copy-live-absent"
+                        onClick={() => {
+                          const text = formatAbsentListText(
+                            currentSession?.className || 'Kelas',
+                            currentSession?.date,
+                            absentStudents,
+                            isSessionClosed
+                          );
+                          if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                            navigator.clipboard.writeText(text);
+                            setCopiedAbsentList(true);
+                            setTimeout(() => setCopiedAbsentList(false), 3000);
+                          }
+                        }}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Salin senarai pelajar belum hadir"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedAbsentList ? '✓ Disalin!' : 'Salin Senarai'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Search Bar for Absent Students */}
@@ -1581,7 +1625,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Quick Actions: Manual Check-In or WhatsApp Reminder */}
+                        {/* Quick Actions: WhatsApp Reminder (Secondary) & Manual Check-In with confirmation */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           {st.phone && (
                             <a
@@ -1590,7 +1634,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                               )}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              title="Hantar Peringatan WhatsApp"
+                              title="Hantar Peringatan WhatsApp (Sekunder)"
                               className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-300 border border-slate-700 transition-all cursor-pointer"
                             >
                               <MessageSquare className="w-3.5 h-3.5" />
@@ -1598,11 +1642,15 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                           )}
                           <button
                             type="button"
-                            onClick={() => handleScannedData(st.id, 'MANUAL_OVERRIDE')}
-                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs border border-slate-700 hover:border-emerald-500 shadow-sm transition-all cursor-pointer active:scale-95"
-                            title="Tanda pelajar hadir secara manual"
+                            onClick={() => handleManualMarkClick(st.id)}
+                            className={`px-3 py-1.5 min-h-[36px] rounded-xl font-bold text-xs border shadow-sm transition-all cursor-pointer active:scale-95 ${
+                              confirmManualStudentId === st.id
+                                ? 'bg-amber-600 hover:bg-emerald-600 text-white border-amber-400 ring-2 ring-amber-400/50 animate-pulse'
+                                : 'bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white border border-slate-700 hover:border-emerald-500'
+                            }`}
+                            title={confirmManualStudentId === st.id ? 'Klik sekali lagi untuk sahkan' : 'Tanda pelajar hadir secara manual'}
                           >
-                            + Hadir
+                            {confirmManualStudentId === st.id ? 'Pasti Hadir?' : '+ Hadir'}
                           </button>
                         </div>
                       </div>
@@ -1681,50 +1729,63 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
           id="session-summary-modal-backdrop"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
         >
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6 text-center relative overflow-hidden">
-            <div className="w-14 h-14 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 text-center relative overflow-hidden">
+            {/* Header: SESI SELESAI, Class, Subject */}
             <div className="space-y-1">
-              <h3 className="text-lg font-black text-white">KEHADIRAN BERJAYA DISIMPAN</h3>
-              <p className="text-xs text-slate-400">Sesi kelas telah selesai dan dimuktamatkan.</p>
+              <span className="inline-block px-3 py-1 rounded-full bg-slate-800 text-emerald-400 border border-slate-700 text-xs font-black uppercase tracking-wider">
+                SESI SELESAI
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-white pt-1">
+                {closedSessionSummary.className || 'Kelas'}
+              </h3>
+              <p className="text-xs text-indigo-300 font-semibold">
+                {closedSessionSummary.subjectName || closedSessionSummary.subjectCode}
+              </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 text-left text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Subjek:</span>
-                <strong className="text-white font-mono">{closedSessionSummary.subjectCode}</strong>
+            {/* Metrics: HADIR & TIDAK HADIR */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 text-left">
+                <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">HADIR</div>
+                <div className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5">
+                  {closedSessionSummary.presentCount}
+                  <span className="text-xs text-slate-400 font-normal"> / {closedSessionSummary.totalCount}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Kelas:</span>
-                <strong className="text-emerald-400">Kelas {closedSessionSummary.className}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Tarikh:</span>
-                <strong className="text-slate-300">{closedSessionSummary.date}</strong>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-slate-800">
-                <span className="text-slate-400">Jumlah Kehadiran:</span>
-                <strong className="text-emerald-400 font-mono text-sm">
-                  {closedSessionSummary.presentCount} / {closedSessionSummary.totalCount} ({closedSessionSummary.percentage}%)
-                </strong>
+              <div className={`p-3.5 rounded-2xl text-left border ${
+                closedSessionSummary.absentList && closedSessionSummary.absentList.length > 0
+                  ? 'bg-rose-950/30 border-rose-500/30'
+                  : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div className={`text-[11px] font-bold uppercase tracking-wider ${
+                  closedSessionSummary.absentList && closedSessionSummary.absentList.length > 0
+                    ? 'text-rose-400'
+                    : 'text-slate-400'
+                }`}>
+                  TIDAK HADIR
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5">
+                  {closedSessionSummary.absentList ? closedSessionSummary.absentList.length : 0}
+                  <span className="text-xs text-slate-400 font-normal"> orang</span>
+                </div>
               </div>
             </div>
 
-            {/* Absent Students Summary Section */}
+            {/* Absent Students List Section */}
             {closedSessionSummary.absentList && closedSessionSummary.absentList.length > 0 ? (
               <div className="space-y-2 text-left">
                 <div className="flex items-center justify-between text-xs font-bold text-rose-300 px-1">
-                  <span className="flex items-center gap-1.5">
-                    <UserX className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Tidak Hadir ({closedSessionSummary.absentList.length} orang)</span>
-                  </span>
+                  <span>TIDAK HADIR ({closedSessionSummary.absentList.length})</span>
                   <button
                     type="button"
+                    id="btn-copy-summary-absent"
                     onClick={() => {
-                      const text = `SENARAI TIDAK HADIR\nSubjek: ${closedSessionSummary.subjectCode} (${closedSessionSummary.className})\nTarikh: ${closedSessionSummary.date}\n\n` +
-                        closedSessionSummary.absentList.map((s, idx) => `${idx + 1}. ${s.name} (${s.studentId})`).join('\n');
+                      const text = formatAbsentListText(
+                        closedSessionSummary.className || 'Kelas',
+                        closedSessionSummary.date,
+                        closedSessionSummary.absentList,
+                        true
+                      );
                       if (typeof navigator !== 'undefined' && navigator.clipboard) {
                         navigator.clipboard.writeText(text);
                         setCopiedAbsentList(true);
@@ -1737,32 +1798,51 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                     <span>{copiedAbsentList ? '✓ Disalin!' : 'Salin Senarai'}</span>
                   </button>
                 </div>
-                <div className="max-h-36 overflow-y-auto p-2.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs">
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-0.5">
                   {closedSessionSummary.absentList.map((s, idx) => (
-                    <div key={s.id} className="flex items-center justify-between text-slate-300 py-0.5">
-                      <span className="truncate">{idx + 1}. {s.name}</span>
-                      <span className="font-mono text-[11px] text-slate-500 shrink-0 ml-2">{s.studentId}</span>
+                    <div
+                      key={s.id || idx}
+                      className="flex items-start justify-between gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <span className="text-rose-400 font-bold shrink-0 mt-0.5">❌</span>
+                        <div className="min-w-0">
+                          <div className="font-bold text-white truncate">{s.name}</div>
+                          <div className="font-mono text-[11px] text-slate-400 mt-0.5">
+                            {s.studentId} • <span className="text-slate-300">{s.className}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {s.phone && (
+                        <a
+                          href={`https://wa.me/${formatWhatsAppPhone(s.phone)}?text=${encodeURIComponent(
+                            `Assalamualaikum / Salam Sejahtera ${s.name}, makluman ketidakhadiran bagi kelas ${closedSessionSummary.subjectCode} (${closedSessionSummary.className}) pada ${formatDisplayDate(closedSessionSummary.date)}.`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="WhatsApp Pelajar (Sekunder)"
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-300 border border-slate-700 transition-colors shrink-0"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2">
-                <Award className="w-4 h-4 text-emerald-400" />
-                <span>Tahniah! Semua pelajar hadir ke kelas ini (100%).</span>
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-center space-y-1">
+                <div className="font-extrabold text-sm flex items-center justify-center gap-1.5 text-emerald-400">
+                  <Award className="w-4 h-4" />
+                  <span>SEMUA PELAJAR HADIR ✓</span>
+                </div>
+                <div className="text-xs font-mono text-emerald-300 font-bold">
+                  {closedSessionSummary.totalCount} / {closedSessionSummary.totalCount}
+                </div>
               </div>
             )}
 
-            <div className="flex flex-col gap-2.5">
-              <button
-                type="button"
-                id="btn-backup-summary-csv"
-                onClick={handleBackupSessionCSV}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-              >
-                <Download className="w-4 h-4 text-emerald-400" />
-                <span>Muat Turun Backup Kehadiran (.CSV)</span>
-              </button>
+            <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
                 id="btn-return-workspace"
@@ -1776,12 +1856,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </button>
               <button
                 type="button"
+                id="btn-backup-summary-csv"
+                onClick={handleBackupSessionCSV}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <span>Muat Turun Backup Kehadiran (.CSV)</span>
+              </button>
+              <button
+                type="button"
                 id="btn-view-reports"
                 onClick={() => {
                   setClosedSessionSummary(null);
                   if (onGoToReports) onGoToReports();
                 }}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-300 text-xs font-medium transition-all cursor-pointer"
               >
                 Lihat Rekod & Laporan
               </button>

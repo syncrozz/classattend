@@ -20,6 +20,7 @@ import {
 } from '../data/mockData';
 import { sortSessionsLatestFirst } from '../utils/studentUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
+import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
 import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from './firebase';
 import {
   collection,
@@ -42,6 +43,48 @@ const STORAGE_KEYS = {
   ACTIVE_LECTURER: 'classattend_active_lecturer_v5',
   INITIALIZED: 'classattend_initialized_v5'
 };
+
+const inMemoryFallbackStorage: Record<string, string> = {};
+
+function safeStorageGet(key: string): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+    if (typeof localStorage !== 'undefined' && localStorage.getItem) {
+      return localStorage.getItem(key);
+    }
+    return inMemoryFallbackStorage[key] || null;
+  } catch {
+    return inMemoryFallbackStorage[key] || null;
+  }
+}
+
+function safeStorageSet(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    } else if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+      localStorage.setItem(key, value);
+    }
+    inMemoryFallbackStorage[key] = value;
+  } catch {
+    inMemoryFallbackStorage[key] = value;
+  }
+}
+
+function safeStorageRemove(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    } else if (typeof localStorage !== 'undefined' && localStorage.removeItem) {
+      localStorage.removeItem(key);
+    }
+    delete inMemoryFallbackStorage[key];
+  } catch {
+    delete inMemoryFallbackStorage[key];
+  }
+}
 
 const DUMMY_SESSION_IDS: string[] = [];
 const DUMMY_RECORD_PREFIXES: string[] = [];
@@ -108,43 +151,43 @@ class AttendanceEngine {
 
   public reloadFromStorageAndNotify() {
     try {
-      const storedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+      const storedStudents = safeStorageGet(STORAGE_KEYS.STUDENTS);
       if (storedStudents) {
         this.students = JSON.parse(storedStudents);
         this.notifyStudentListeners();
       }
 
-      const storedLecturers = localStorage.getItem(STORAGE_KEYS.LECTURERS);
+      const storedLecturers = safeStorageGet(STORAGE_KEYS.LECTURERS);
       if (storedLecturers) {
         this.lecturers = JSON.parse(storedLecturers);
         this.notifyLecturerListeners();
       }
 
-      const storedSubjects = localStorage.getItem(STORAGE_KEYS.SUBJECTS);
+      const storedSubjects = safeStorageGet(STORAGE_KEYS.SUBJECTS);
       if (storedSubjects) {
         this.subjects = JSON.parse(storedSubjects);
         this.notifySubjectListeners();
       }
 
-      const storedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+      const storedSessions = safeStorageGet(STORAGE_KEYS.SESSIONS);
       if (storedSessions) {
         this.sessions = JSON.parse(storedSessions);
         this.notifySessionListeners();
       }
 
-      const storedRecords = localStorage.getItem(STORAGE_KEYS.RECORDS);
+      const storedRecords = safeStorageGet(STORAGE_KEYS.RECORDS);
       if (storedRecords) {
         this.attendanceRecords = JSON.parse(storedRecords);
         this.notifyRecordListeners();
       }
 
-      const storedEnrollments = localStorage.getItem(STORAGE_KEYS.ENROLLMENTS);
+      const storedEnrollments = safeStorageGet(STORAGE_KEYS.ENROLLMENTS);
       if (storedEnrollments) {
         this.enrollments = JSON.parse(storedEnrollments);
         this.notifyEnrollmentListeners();
       }
 
-      const storedAssignments = localStorage.getItem(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
+      const storedAssignments = safeStorageGet(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
       if (storedAssignments) {
         this.teachingAssignments = JSON.parse(storedAssignments);
         this.notifyTeachingAssignmentListeners();
@@ -155,18 +198,18 @@ class AttendanceEngine {
   }
 
   private initializeData() {
-    const isInitialized = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
+    const isInitialized = safeStorageGet(STORAGE_KEYS.INITIALIZED);
 
     if (isInitialized) {
       try {
-        const storedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-        const storedLecturers = localStorage.getItem(STORAGE_KEYS.LECTURERS);
-        const storedSubjects = localStorage.getItem(STORAGE_KEYS.SUBJECTS);
-        const storedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-        const storedRecords = localStorage.getItem(STORAGE_KEYS.RECORDS);
-        const storedEnrollments = localStorage.getItem(STORAGE_KEYS.ENROLLMENTS);
-        const storedAssignments = localStorage.getItem(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
-        const storedActiveLecturer = localStorage.getItem(STORAGE_KEYS.ACTIVE_LECTURER);
+        const storedStudents = safeStorageGet(STORAGE_KEYS.STUDENTS);
+        const storedLecturers = safeStorageGet(STORAGE_KEYS.LECTURERS);
+        const storedSubjects = safeStorageGet(STORAGE_KEYS.SUBJECTS);
+        const storedSessions = safeStorageGet(STORAGE_KEYS.SESSIONS);
+        const storedRecords = safeStorageGet(STORAGE_KEYS.RECORDS);
+        const storedEnrollments = safeStorageGet(STORAGE_KEYS.ENROLLMENTS);
+        const storedAssignments = safeStorageGet(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
+        const storedActiveLecturer = safeStorageGet(STORAGE_KEYS.ACTIVE_LECTURER);
 
         if (storedStudents) {
           const parsed: Student[] = JSON.parse(storedStudents);
@@ -357,7 +400,7 @@ class AttendanceEngine {
           this.saveSubjectsLocally();
           this.saveTeachingAssignmentsLocally();
         }
-        const rawTrusted = localStorage.getItem('classattend_trusted_access_session');
+        const rawTrusted = safeStorageGet('classattend_trusted_access_session');
         if (rawTrusted) {
           try {
             const sess = JSON.parse(rawTrusted);
@@ -467,7 +510,7 @@ class AttendanceEngine {
     this.saveEnrollmentsLocally();
     this.saveTeachingAssignmentsLocally();
     this.saveActiveLecturerLocally();
-    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+    safeStorageSet(STORAGE_KEYS.INITIALIZED, 'true');
   }
 
   public async syncInitialStudentsToFirestore() {
@@ -945,52 +988,52 @@ class AttendanceEngine {
 
   // --- Local Persistence Helpers ---
   private saveStudentsLocally() {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
+    safeStorageSet(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
     this.notifyStudentListeners();
     this.broadcastChange(STORAGE_KEYS.STUDENTS);
   }
 
   private saveLecturersLocally() {
-    localStorage.setItem(STORAGE_KEYS.LECTURERS, JSON.stringify(this.lecturers));
+    safeStorageSet(STORAGE_KEYS.LECTURERS, JSON.stringify(this.lecturers));
     this.notifyLecturerListeners();
     this.broadcastChange(STORAGE_KEYS.LECTURERS);
   }
 
   private saveSubjectsLocally() {
-    localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(this.subjects));
+    safeStorageSet(STORAGE_KEYS.SUBJECTS, JSON.stringify(this.subjects));
     this.notifySubjectListeners();
     this.broadcastChange(STORAGE_KEYS.SUBJECTS);
   }
 
   private saveSessionsLocally() {
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(this.sessions));
+    safeStorageSet(STORAGE_KEYS.SESSIONS, JSON.stringify(this.sessions));
     this.notifySessionListeners();
     this.broadcastChange(STORAGE_KEYS.SESSIONS);
   }
 
   private saveRecordsLocally() {
-    localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(this.attendanceRecords));
+    safeStorageSet(STORAGE_KEYS.RECORDS, JSON.stringify(this.attendanceRecords));
     this.notifyRecordListeners();
     this.broadcastChange(STORAGE_KEYS.RECORDS);
   }
 
   private saveEnrollmentsLocally() {
-    localStorage.setItem(STORAGE_KEYS.ENROLLMENTS, JSON.stringify(this.enrollments));
+    safeStorageSet(STORAGE_KEYS.ENROLLMENTS, JSON.stringify(this.enrollments));
     this.notifyEnrollmentListeners();
     this.broadcastChange(STORAGE_KEYS.ENROLLMENTS);
   }
 
   private saveTeachingAssignmentsLocally() {
-    localStorage.setItem(STORAGE_KEYS.TEACHING_ASSIGNMENTS, JSON.stringify(this.teachingAssignments));
+    safeStorageSet(STORAGE_KEYS.TEACHING_ASSIGNMENTS, JSON.stringify(this.teachingAssignments));
     this.notifyTeachingAssignmentListeners();
     this.broadcastChange(STORAGE_KEYS.TEACHING_ASSIGNMENTS);
   }
 
   private saveActiveLecturerLocally() {
     if (this.activeLecturer) {
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_LECTURER, JSON.stringify(this.activeLecturer));
+      safeStorageSet(STORAGE_KEYS.ACTIVE_LECTURER, JSON.stringify(this.activeLecturer));
     } else {
-      localStorage.removeItem(STORAGE_KEYS.ACTIVE_LECTURER);
+      safeStorageRemove(STORAGE_KEYS.ACTIVE_LECTURER);
     }
   }
 
@@ -2883,6 +2926,11 @@ class AttendanceEngine {
   }
 
   public updateSession(session: AttendanceSession): AttendanceSession[] {
+    const existing = this.sessions.find((s) => s.id === session.id);
+    if (existing && existing.status === 'CLOSED' && session.status === 'OPEN') {
+      console.warn(`[SESSION SAFETY] Illegal transition blocked: CLOSED session ${session.id} cannot be reopened via updateSession.`);
+      session = { ...session, status: 'CLOSED', endTime: existing.endTime || session.endTime };
+    }
     const updated = this.sessions.map((s) => (s.id === session.id ? { ...s, ...session } : s));
     this.sessions = updated;
     this.saveSessionsLocally();
@@ -2912,12 +2960,20 @@ class AttendanceEngine {
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     let targetUpdated: AttendanceSession | null = null;
 
+    const existingSession = this.sessions.find((s) => s.id === sessionId);
+    // SES v4.5 Lifecycle Safety: Block illegal transition CLOSED -> OPEN
+    if (existingSession && existingSession.status === 'CLOSED' && newStatus === 'OPEN') {
+      console.warn(`[SESSION SAFETY] Illegal transition blocked: Session ${sessionId} is CLOSED and cannot be transitioned back to OPEN.`);
+      return this.sessions;
+    }
+
     const updated = this.sessions.map((session) => {
       if (session.id === sessionId) {
+        const closedEndTime = session.endTime && session.endTime.trim().length > 0 ? session.endTime : timeStr;
         targetUpdated = {
           ...session,
           status: newStatus,
-          endTime: newStatus === 'CLOSED' ? (session.endTime || timeStr) : session.endTime,
+          endTime: newStatus === 'CLOSED' ? closedEndTime : session.endTime,
           updatedAt: now.toISOString()
         };
         return targetUpdated;
@@ -3014,6 +3070,26 @@ class AttendanceEngine {
 
 
   public addAttendanceRecord(record: AttendanceRecord) {
+    // 1. Session safety check: Reject new attendance for CLOSED sessions
+    const targetSession = this.sessions.find((s) => s.id === record.sessionId);
+    if (targetSession && targetSession.status === 'CLOSED') {
+      console.warn(`[ATTENDANCE ENGINE] Rejected attendance record for CLOSED session ${record.sessionId}`);
+      return;
+    }
+
+    // 2. Idempotency check: Deduplicate rapid or repeated scans for same student in same session
+    if (record.status === 'PRESENT') {
+      const alreadyPresent = this.attendanceRecords.some(
+        (r) =>
+          r.sessionId === record.sessionId &&
+          r.studentId.toUpperCase() === record.studentId.toUpperCase() &&
+          r.status === 'PRESENT'
+      );
+      if (alreadyPresent) {
+        return; // Idempotent no-op
+      }
+    }
+
     this.attendanceRecords = [record, ...this.attendanceRecords.filter((r) => r.id !== record.id)];
     this.saveRecordsLocally();
 
@@ -3037,14 +3113,25 @@ class AttendanceEngine {
   public processScan(
     qrString: string,
     method: AttendanceMethod = 'CAMERA_SCAN',
-    targetSessionId?: string
+    targetSessionId?: string,
+    callingLecturer?: Lecturer | null
   ): ScanResult {
     const now = new Date().toISOString();
 
     // 1. Identify Target Class Session
     let activeSession: AttendanceSession | null = null;
     if (targetSessionId) {
-      activeSession = this.sessions.find((s) => s.id === targetSessionId && s.status === 'OPEN') || null;
+      const targetSession = this.sessions.find((s) => s.id === targetSessionId);
+      if (targetSession && targetSession.status === 'CLOSED') {
+        return {
+          success: false,
+          code: 'SESSION_CLOSED',
+          message: 'Sesi kelas telah ditamatkan (CLOSED). Rekod kehadiran baharu tidak dibenarkan.',
+          timestamp: now,
+          session: targetSession
+        };
+      }
+      activeSession = targetSession && targetSession.status === 'OPEN' ? targetSession : null;
     } else {
       activeSession = this.getActiveSession();
     }
@@ -3056,6 +3143,26 @@ class AttendanceEngine {
         message: 'Tiada sesi kelas yang aktif atau dibuka pada masa ini.',
         timestamp: now
       };
+    }
+
+    // 1b. Check Lecturer Authorization Boundary (SES v4.5 Operational Safety)
+    const lecturerToCheck = callingLecturer !== undefined ? callingLecturer : this.activeLecturer;
+    if (lecturerToCheck && lecturerToCheck.role !== 'ADMIN') {
+      const isAuthorized = isLecturerAuthorizedForSession(
+        activeSession,
+        lecturerToCheck,
+        false,
+        this.teachingAssignments
+      );
+      if (!isAuthorized) {
+        return {
+          success: false,
+          code: 'UNAUTHORIZED_LECTURER',
+          message: 'Akses ditolak: Pensyarah tidak mempunyai kebenaran untuk merekod kehadiran sesi ini.',
+          timestamp: now,
+          session: activeSession
+        };
+      }
     }
 
     // 2. Parse and validate student identifier from QR

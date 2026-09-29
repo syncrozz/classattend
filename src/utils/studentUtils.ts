@@ -181,3 +181,36 @@ export const findStudentByAccessCode = (students: Student[], code: string): Stud
 
   return matched || null;
 };
+
+/**
+ * Formats absent students list for clean clipboard copying (SES v4.4 Phase 3 standard).
+ * Output format:
+ * Tidak hadir — DIA4B
+ * 28/09/2026
+ *
+ * 1. Muhammad Firdaus — PDA-2502-012
+ * 2. Nur Aisyah — PDA-2502-019
+ */
+export const formatAbsentListForCopy = (
+  className: string,
+  dateStr: string,
+  absentStudents: { name: string; studentId: string }[]
+): string => {
+  let formattedDate = dateStr;
+  if (formattedDate && formattedDate.includes('-')) {
+    const parts = formattedDate.split('-');
+    if (parts.length === 3) {
+      formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+  }
+
+  const lines = [
+    `Tidak hadir — ${className || 'Kelas'}`,
+    `${formattedDate}`,
+    '',
+    ...absentStudents.map((st, idx) => `${idx + 1}. ${st.name} — ${st.studentId}`)
+  ];
+
+  return lines.join('\n');
+};
+

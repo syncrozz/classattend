@@ -76,7 +76,8 @@ export interface SubjectCSVParseResult {
  * - Headers with Code / Kursus / Name / Subjek / Jabatan / Kelas
  */
 export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResult => {
-  const rawLines = csvText
+  const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+  const rawLines = cleanText
     .split(/\r\n|\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
@@ -84,6 +85,8 @@ export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResul
   if (rawLines.length === 0) {
     return { subjects: [], totalRowsRead: 0, duplicateCount: 0, skippedCount: 0 };
   }
+
+  const delimiter = detectDelimiter(cleanText);
 
   // Detect if first line is a header
   const firstLine = rawLines[0];
@@ -97,7 +100,7 @@ export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResul
 
   if (isHeader) {
     headerIndex = 0;
-    const headerCols = splitCSVRow(firstLine).map((h) => h.toLowerCase().trim());
+    const headerCols = splitCSVRow(firstLine, delimiter).map((h) => h.toLowerCase().trim());
     codeCol = headerCols.findIndex((h) => h.includes('kod') || h.includes('code'));
     nameCol = headerCols.findIndex((h) => h.includes('nama') || h.includes('name') || h.includes('tajuk') || h.includes('title'));
     deptCol = headerCols.findIndex((h) => h.includes('jabatan') || h.includes('dept') || h.includes('department') || h.includes('program'));
@@ -124,7 +127,7 @@ export const parseSubjectCSVWithReport = (csvText: string): SubjectCSVParseResul
     let sections: string[] = [];
 
     // Check if line is CSV separated or simple text like "COM2512 MEETING AND INTERVIEW SKILLS"
-    const cols = splitCSVRow(line);
+    const cols = splitCSVRow(line, delimiter);
 
     if (cols.length >= 2 && (codeCol >= 0 || nameCol >= 0 || cols[0].length <= 15)) {
       // CSV column based
