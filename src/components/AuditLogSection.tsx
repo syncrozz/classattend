@@ -24,6 +24,8 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Check,
   FileText,
@@ -193,6 +195,27 @@ export const AuditLogSection: React.FC<AuditLogSectionProps> = ({
       return true;
     });
   }, [logs, selectedCategory, selectedSeverity, dateFilter, searchQuery]);
+
+  // Pagination for Audit Logs (Prevents excessive scrolling)
+  const [logPage, setLogPage] = useState<number>(1);
+  const [logPerPage, setLogPerPage] = useState<number>(10);
+
+  const totalLogPages = Math.max(1, Math.ceil(filteredLogs.length / logPerPage));
+
+  useEffect(() => {
+    setLogPage(1);
+  }, [selectedCategory, selectedSeverity, dateFilter, searchQuery]);
+
+  useEffect(() => {
+    if (logPage > totalLogPages) {
+      setLogPage(totalLogPages);
+    }
+  }, [logPage, totalLogPages]);
+
+  const paginatedLogs = useMemo(() => {
+    const startIndex = (logPage - 1) * logPerPage;
+    return filteredLogs.slice(startIndex, startIndex + logPerPage);
+  }, [filteredLogs, logPage, logPerPage]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -407,8 +430,9 @@ export const AuditLogSection: React.FC<AuditLogSectionProps> = ({
         </div>
 
         {filteredLogs.length > 0 ? (
-          <div className="divide-y divide-slate-800/70">
-            {filteredLogs.map((log) => {
+          <>
+            <div className="divide-y divide-slate-800/70">
+              {paginatedLogs.map((log) => {
               const catCfg = CATEGORY_CONFIG[log.category] || CATEGORY_CONFIG.ALL;
               const sevCfg = SEVERITY_CONFIG[log.severity] || SEVERITY_CONFIG.INFO;
               const CatIcon = catCfg.icon;
@@ -545,7 +569,73 @@ export const AuditLogSection: React.FC<AuditLogSectionProps> = ({
               );
             })}
           </div>
-        ) : (
+
+          {/* Pagination Controls */}
+          <div className="py-3 px-4 sm:px-5 bg-slate-950/80 border-t border-slate-800 text-[11px] text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <span>
+              Menunjukkan{' '}
+              <strong className="text-white font-mono">
+                {(logPage - 1) * logPerPage + 1} -{' '}
+                {Math.min(logPage * logPerPage, filteredLogs.length)}
+              </strong>{' '}
+              daripada <strong className="text-white font-mono">{filteredLogs.length}</strong> rekod
+            </span>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-slate-400 text-[11px]">Papar:</span>
+                <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                  {[10, 25, 50].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => {
+                        setLogPerPage(size);
+                        setLogPage(1);
+                      }}
+                      className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                        logPerPage === size
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {totalLogPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={logPage === 1}
+                    onClick={() => setLogPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Sebelum</span>
+                  </button>
+
+                  <span className="px-2 font-mono text-slate-300">
+                    {logPage} / {totalLogPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={logPage === totalLogPages}
+                    onClick={() => setLogPage((p) => Math.min(totalLogPages, p + 1))}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                  >
+                    <span className="hidden sm:inline">Seterusnya</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
           <div className="p-12 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-500 flex items-center justify-center mx-auto">
               <Search className="w-6 h-6" />

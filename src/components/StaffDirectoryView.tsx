@@ -59,6 +59,8 @@ import {
   MessageCircle,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Copy
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
@@ -339,6 +341,27 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       student.phone.includes(q);
     return matchesSet && matchesSearch;
   });
+
+  // Pagination for Students Directory (Prevents 70+ students dumping into 1 page)
+  const [studentPage, setStudentPage] = useState<number>(1);
+  const [studentPerPage, setStudentPerPage] = useState<number>(10);
+
+  const totalStudentPages = Math.max(1, Math.ceil(filteredStudents.length / studentPerPage));
+
+  useEffect(() => {
+    setStudentPage(1);
+  }, [searchQuery, selectedSet]);
+
+  useEffect(() => {
+    if (studentPage > totalStudentPages) {
+      setStudentPage(totalStudentPages);
+    }
+  }, [studentPage, totalStudentPages]);
+
+  const paginatedStudents = useMemo(() => {
+    const startIndex = (studentPage - 1) * studentPerPage;
+    return filteredStudents.slice(startIndex, startIndex + studentPerPage);
+  }, [filteredStudents, studentPage, studentPerPage]);
 
   // Filter lecturers
   const filteredLecturers = lecturers.filter((l) => {
@@ -1316,7 +1339,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 text-xs">
-                      {filteredStudents.map((student) => {
+                      {paginatedStudents.map((student) => {
                         const stats = getStudentStats(student.id, student.className);
 
                         return (
@@ -1458,12 +1481,76 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   </table>
                 </div>
 
-                {/* Table Footer with quick summary count */}
-                <div className="py-2.5 px-4 bg-slate-950/60 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>Menunjukkan <strong className="text-white font-mono">{filteredStudents.length}</strong> daripada <strong className="text-white font-mono">{students.length}</strong> rekod pelajar</span>
-                  {selectedSet !== 'ALL' && (
-                    <span className="text-indigo-400 font-mono">Kelas: {selectedSet}</span>
-                  )}
+                {/* Table Footer with pagination and quick summary count */}
+                <div className="py-3 px-4 bg-slate-950/80 border-t border-slate-800 text-[11px] text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span>
+                      Menunjukkan{' '}
+                      <strong className="text-white font-mono">
+                        {filteredStudents.length === 0 ? 0 : (studentPage - 1) * studentPerPage + 1} -{' '}
+                        {Math.min(studentPage * studentPerPage, filteredStudents.length)}
+                      </strong>{' '}
+                      daripada <strong className="text-white font-mono">{filteredStudents.length}</strong> rekod pelajar
+                    </span>
+                    {selectedSet !== 'ALL' && (
+                      <span className="text-indigo-400 font-mono hidden md:inline">Kelas: {selectedSet}</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Per-page selector */}
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-400 text-[11px]">Papar:</span>
+                      <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                        {[10, 25, 50].map((size) => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => {
+                              setStudentPerPage(size);
+                              setStudentPage(1);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                              studentPerPage === size
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Prev / Page / Next */}
+                    {totalStudentPages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={studentPage === 1}
+                          onClick={() => setStudentPage((p) => Math.max(1, p - 1))}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Sebelum</span>
+                        </button>
+
+                        <span className="px-2 font-mono text-slate-300">
+                          {studentPage} / {totalStudentPages}
+                        </span>
+
+                        <button
+                          type="button"
+                          disabled={studentPage === totalStudentPages}
+                          onClick={() => setStudentPage((p) => Math.min(totalStudentPages, p + 1))}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                        >
+                          <span className="hidden sm:inline">Seterusnya</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

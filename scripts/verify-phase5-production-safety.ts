@@ -330,6 +330,42 @@ assert(
   'attendanceEngine rejects low-level writes to CLOSED sessions'
 );
 
+// 2H: Single Active Session Invariant (1 Pensyarah = Maksimum 1 Sesi Aktif)
+// Open session 1 for Khairi
+const khairiSess1 = attendanceEngine.activateClassSession(
+  mockSubjectMPU,
+  'DIA4B',
+  mockLecturerKhairi,
+  mockAssignmentKhairi.id
+).session;
+
+// Open session 2 for Khairi with another class (DIA3A) -> Session 1 must be auto-closed
+const khairiSess2Activation = attendanceEngine.activateClassSession(
+  mockSubjectMPU,
+  'DIA3A',
+  mockLecturerKhairi,
+  mockAssignmentKhairi.id
+);
+const khairiSess2 = khairiSess2Activation.session;
+
+const allKhairiOpenSessions = attendanceEngine
+  .getSessions()
+  .filter((s) => s.status === 'OPEN' && s.lecturerId === mockLecturerKhairi.id);
+
+const sess1AfterAutoClose = attendanceEngine.getSessions().find((s) => s.id === khairiSess1.id)!;
+
+assert(
+  'Session Safety',
+  'Opening a new session for a lecturer automatically closes the previous session (1 Pensyarah = 1 Sesi Aktif)',
+  allKhairiOpenSessions.length === 1 &&
+    allKhairiOpenSessions[0].id === khairiSess2.id &&
+    sess1AfterAutoClose.status === 'CLOSED' &&
+    sess1AfterAutoClose.endTime.length > 0,
+  'Exactly 1 OPEN session for lecturer; previous session transitioned to CLOSED',
+  `Open sessions count: ${allKhairiOpenSessions.length}, Previous session status: ${sess1AfterAutoClose.status}, endTime: "${sess1AfterAutoClose.endTime}"`,
+  'Single active session invariant strictly enforced'
+);
+
 // ---------------------------------------------------------------------------
 // 3. AUDIT: DUPLICATE SCAN & IDEMPOTENCY (Section 6)
 // ---------------------------------------------------------------------------

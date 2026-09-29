@@ -74,13 +74,6 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
         },
         {
-          id: 'my-attendance' as ActiveTab,
-          label: 'Kehadiran Pelajar',
-          icon: UserSquare2,
-          badge: 'Pelajar',
-          badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-        },
-        {
           id: 'reports' as ActiveTab,
           label: 'Laporan Kehadiran',
           icon: FileSpreadsheet,
@@ -102,26 +95,6 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         label: 'Dashboard Utama',
         icon: LayoutDashboard,
         badge: undefined
-      },
-      {
-        id: 'students' as ActiveTab,
-        label: 'Direktori & Subjek',
-        icon: Users,
-        badge: totalStudentsCount ? `${totalStudentsCount}` : undefined,
-        badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-      },
-      {
-        id: 'my-attendance' as ActiveTab,
-        label: 'Kehadiran Pelajar',
-        icon: UserSquare2,
-        badge: 'Pelajar',
-        badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-      },
-      {
-        id: 'reports' as ActiveTab,
-        label: 'Laporan Kehadiran',
-        icon: FileSpreadsheet,
-        badge: totalRecordsCount > 0 ? `${totalRecordsCount}` : undefined
       },
       {
         id: 'guide' as ActiveTab,
@@ -174,16 +147,16 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
       {/* Footer Info Card */}
       <div className="space-y-2 mt-6">
-        {onOpenQrPortal && currentRole !== 'LECTURER' && (
+        {onOpenQrPortal && (
           <button
             id="sidebar-btn-qr-portal"
             onClick={onOpenQrPortal}
             className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-950/30 hover:bg-teal-900/40 border border-teal-500/30 text-teal-300 text-xs font-semibold transition-all cursor-pointer group"
-            title="Buka Student QR Access Portal (#/qr)"
+            title="Buka atau Kongsi Pautan Pas QR Pelajar (#/qr)"
           >
             <div className="flex items-center gap-2.5">
               <QrCode className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform shrink-0" />
-              <span>Portal Kod QR</span>
+              <span>Portal Pas QR Pelajar</span>
             </div>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-mono font-bold">
               #/qr

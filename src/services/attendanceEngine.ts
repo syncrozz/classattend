@@ -426,9 +426,66 @@ class AttendanceEngine {
     // Clean any legacy dummy data
     this.cleanLegacyDummyData();
 
+    // Reconcile Single Active Session Invariant (1 Pensyarah = Maksimum 1 Sesi Aktif)
+    this.reconcileSingleActiveSessionPerLecturer();
+
     if (db) {
       this.isFirestoreConnected = true;
     }
+  }
+
+  public reconcileSingleActiveSessionPerLecturer(): boolean {
+    const openByLecturer = new Map<string, AttendanceSession[]>();
+    this.sessions.forEach((s) => {
+      if (s.status === 'OPEN') {
+        const key = (s.lecturerId || s.lecturerEmail || '').trim().toLowerCase();
+        if (key) {
+          const list = openByLecturer.get(key) || [];
+          list.push(s);
+          openByLecturer.set(key, list);
+        }
+      }
+    });
+
+    let modified = false;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    openByLecturer.forEach((openSessions) => {
+      if (openSessions.length > 1) {
+        // Sort by createdAt or date descending (newest first)
+        openSessions.sort((a, b) => {
+          const timeA = new Date(a.createdAt || a.date).getTime() || 0;
+          const timeB = new Date(b.createdAt || b.date).getTime() || 0;
+          return timeB - timeA;
+        });
+
+        // The newest (index 0) remains OPEN; older sessions (index 1+) are safely closed
+        const toCloseIds = new Set(openSessions.slice(1).map((s) => s.id));
+        this.sessions = this.sessions.map((s) => {
+          if (toCloseIds.has(s.id)) {
+            modified = true;
+            const closedSession: AttendanceSession = {
+              ...s,
+              status: 'CLOSED' as const,
+              endTime: s.endTime && s.endTime.trim().length > 0 ? s.endTime : timeStr,
+              updatedAt: now.toISOString()
+            };
+            if (db) {
+              setDoc(doc(db, 'sessions', closedSession.id), sanitizeForFirestore(closedSession), { merge: true }).catch(console.warn);
+            }
+            return closedSession;
+          }
+          return s;
+        });
+      }
+    });
+
+    if (modified) {
+      this.saveSessionsLocally();
+      this.notifySessionListeners();
+    }
+    return modified;
   }
 
   public cleanLegacyDummyData() {
@@ -732,6 +789,7 @@ class AttendanceEngine {
             .map((docSnap) => docSnap.data() as AttendanceSession)
             .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
           this.sessions = sortSessionsLatestFirst(data);
+          this.reconcileSingleActiveSessionPerLecturer();
           this.saveSessionsLocally();
           callback(this.sessions);
         },
@@ -2882,6 +2940,36 @@ class AttendanceEngine {
 
   public addSession(session: AttendanceSession) {
     let updated = [...this.sessions];
+
+    // Single Active Session Invariant (1 PENSYARAH = MAKSIMUM 1 SESI AKTIF PADA SATU MASA):
+    // If a new session is being added with status 'OPEN', any other active OPEN session for this lecturer is safely closed.
+    if (session.status === 'OPEN') {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const lecId = (session.lecturerId || '').trim();
+      const lecEmail = (session.lecturerEmail || '').trim().toLowerCase();
+
+      updated = updated.map((s) => {
+        if (s.id !== session.id && s.status === 'OPEN') {
+          const matchId = Boolean(lecId && s.lecturerId === lecId);
+          const matchEmail = Boolean(lecEmail && s.lecturerEmail && s.lecturerEmail.trim().toLowerCase() === lecEmail);
+          if (matchId || matchEmail) {
+            const closedOldSession: AttendanceSession = {
+              ...s,
+              status: 'CLOSED',
+              endTime: s.endTime && s.endTime.trim().length > 0 ? s.endTime : timeStr,
+              updatedAt: now.toISOString()
+            };
+            if (db) {
+              setDoc(doc(db, 'sessions', closedOldSession.id), sanitizeForFirestore(closedOldSession), { merge: true }).catch(console.warn);
+            }
+            return closedOldSession;
+          }
+        }
+        return s;
+      });
+    }
+
     const index = updated.findIndex((s) => s.id === session.id);
     if (index >= 0) {
       updated[index] = session;
@@ -3007,15 +3095,20 @@ class AttendanceEngine {
     className: string,
     lecturer: Lecturer,
     teachingAssignmentId?: string
-  ): { session: AttendanceSession; isExisting: boolean; conflictingSession?: AttendanceSession } {
-    // 1. Check for existing OPEN session for the exact same subject and class (Duplicate Protection)
+  ): { session: AttendanceSession; isExisting: boolean; closedPreviousSession?: AttendanceSession; conflictingSession?: AttendanceSession } {
+    // 1. Check for existing OPEN session for the exact same subject and class (Duplicate Protection / Resume)
     const existing = this.findActiveSession(subject.code, className, lecturer.id);
     if (existing) {
       return { session: existing, isExisting: true };
     }
 
-    // 2. Check for other OPEN sessions by this lecturer or college (Information only - DO NOT AUTO CLOSE)
-    const conflicting = this.sessions.find((s) => s.status === 'OPEN' && (s.lecturerId === lecturer.id || s.subjectCode === subject.code));
+    // 2. Identify previous OPEN session for this lecturer (Single Active Session Invariant: 1 Pensyarah = 1 Sesi Aktif)
+    const prevOpen = this.sessions.find(
+      (s) =>
+        s.status === 'OPEN' &&
+        (s.lecturerId === lecturer.id ||
+          (s.lecturerEmail && lecturer.email && s.lecturerEmail.toLowerCase() === lecturer.email.toLowerCase()))
+    );
 
     // 3. Resolve active teachingAssignmentId
     const resolvedTeachingAssignmentId =
@@ -3063,9 +3156,9 @@ class AttendanceEngine {
       updatedAt: now.toISOString()
     };
 
-    // Add session without closing any existing session
+    // addSession automatically closes any prior OPEN session for this lecturer (Single Active Session invariant)
     this.addSession(newSession);
-    return { session: newSession, isExisting: false, conflictingSession: conflicting };
+    return { session: newSession, isExisting: false, closedPreviousSession: prevOpen, conflictingSession: prevOpen };
   }
 
 

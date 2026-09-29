@@ -239,7 +239,7 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
     date: new Date().toISOString().split('T')[0],
     startTime: '08:30',
     endTime: '10:30',
-    status: 'OPEN',
+    status: 'CLOSED',
     attendanceMethod: 'QR',
     category: 'CLASS'
   }

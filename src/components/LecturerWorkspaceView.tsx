@@ -24,7 +24,9 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import {
@@ -300,6 +302,23 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     return filterAuthorizedSessions(historicalOnly, activeLecturer, isAdmin, teachingAssignments);
   }, [sessions, activeLecturer, isAdmin, teachingAssignments]);
 
+  // Pagination for Recent Attendance History (Default 5 items to avoid excessive scrolling)
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const [historyPerPage, setHistoryPerPage] = useState<number>(5);
+
+  const totalHistoryPages = Math.max(1, Math.ceil(historySessions.length / historyPerPage));
+
+  React.useEffect(() => {
+    if (historyPage > totalHistoryPages) {
+      setHistoryPage(totalHistoryPages);
+    }
+  }, [historyPage, totalHistoryPages]);
+
+  const paginatedHistorySessions = useMemo(() => {
+    const startIndex = (historyPage - 1) * historyPerPage;
+    return historySessions.slice(startIndex, startIndex + historyPerPage);
+  }, [historySessions, historyPage, historyPerPage]);
+
   const selectedSessionForDetail = useMemo(() => {
     if (!selectedSessionIdForDetail) return null;
     const found = sessions.find((s) => s.id === selectedSessionIdForDetail);
@@ -341,17 +360,9 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
       return;
     }
 
-    // 2. If another session is OPEN -> Do NOT automatically close it!
-    // Offer warning to let lecturer resume or explicitly close first
-    if (isAnotherSessionOpen && currentOpenSession) {
-      setActionNotice({
-        type: 'warning',
-        message: `Sesi "${currentOpenSession.subjectCode} - ${currentOpenSession.className}" sedang dibuka. Sistem tidak menutup sesi tersebut secara automatik untuk memelihara integriti data.`
-      });
-      return;
-    }
-
-    // 3. Activate session via authoritative engine
+    // 2. Activate session via authoritative engine
+    // Single Active Session Invariant (1 Pensyarah = 1 Sesi Aktif):
+    // If another session was open for this lecturer, activateClassSession automatically concludes it safely.
     try {
       const res = attendanceEngine.activateClassSession(
         selectedSubject,
@@ -359,10 +370,17 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         activeLecturer,
         matchingAssignment?.id
       );
-      setActionNotice({
-        type: 'success',
-        message: `Sesi kehadiran untuk ${selectedSubject.code} (${selectedClass}) berjaya diaktifkan!`
-      });
+      if (res.closedPreviousSession) {
+        setActionNotice({
+          type: 'success',
+          message: `Sesi "${res.closedPreviousSession.subjectCode} (${res.closedPreviousSession.className})" telah ditamatkan dan sesi baharu bagi ${selectedSubject.code} (${selectedClass}) kini sedia untuk diimbas!`
+        });
+      } else {
+        setActionNotice({
+          type: 'success',
+          message: `Sesi kehadiran untuk ${selectedSubject.code} (${selectedClass}) berjaya diaktifkan!`
+        });
+      }
       // Seamlessly navigate to scanner
       onOpenScannerForSession(res.session.id);
     } catch (err) {
@@ -558,17 +576,17 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         </section>
       )}
 
-      {/* Warning Banner if ANOTHER session is open while viewing a different subject/class */}
+      {/* Notice Banner if ANOTHER session is open while viewing a different subject/class */}
       {isAnotherSessionOpen && currentOpenSession && (
         <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">
-                Perhatian: Sesi "{currentOpenSession.subjectCode} - {currentOpenSession.className}" sedang dibuka.
+                Perhatian: Sesi "{currentOpenSession.subjectCode} - {currentOpenSession.className}" sedang aktif.
               </p>
               <p className="text-xs text-amber-300/80 mt-0.5">
-                Sistem tidak menutup sesi tersebut secara automatik untuk melindungi integriti rekod kehadiran.
+                Memulakan sesi bagi kelas ini akan menamatkan sesi terdahulu secara automatik (1 Pensyarah = 1 Sesi Aktif).
               </p>
             </div>
           </div>
@@ -751,22 +769,52 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
       </section>
       )}
 
-      {/* 4. RECENT ATTENDANCE HISTORY (Compact, Non-Weekly, Preserving All Records) */}
+      {/* 4. RECENT ATTENDANCE HISTORY (Paginated to prevent excessive scrolling) */}
       <section
         id="recent-attendance-history-section"
         aria-label="Sejarah Kehadiran Terkini"
         className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4"
       >
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
               <Clock className="w-4 h-4 text-indigo-400" />
               <span>Sejarah Sesi Kehadiran Terkini</span>
             </h3>
             <p className="text-xs text-slate-400">
-              Paparan 10 sesi terakhir bagi kelas dan subjek anda.
+              {historySessions.length === 0
+                ? 'Tiada sesi terdahulu.'
+                : `Menunjukkan ${(historyPage - 1) * historyPerPage + 1} - ${Math.min(
+                    historyPage * historyPerPage,
+                    historySessions.length
+                  )} daripada ${historySessions.length} sesi.`}
             </p>
           </div>
+
+          {historySessions.length > 5 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-400">Papar:</span>
+              <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+                {[5, 10, 20].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setHistoryPerPage(size);
+                      setHistoryPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      historyPerPage === size
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {historySessions.length === 0 ? (
@@ -794,7 +842,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {historySessions.map((s) => {
+                  {paginatedHistorySessions.map((s) => {
                     const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
                     const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(
                       records.length,
@@ -871,7 +919,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
 
             {/* Mobile Stacked Card View */}
             <div className="md:hidden space-y-3">
-              {historySessions.map((s) => {
+              {paginatedHistorySessions.map((s) => {
                 const records = attendanceRecords.filter((r) => r.sessionId === s.id && r.status === 'PRESENT');
                 const { targetCount: target, attendancePercent: percent } = calculateAttendanceMetrics(
                   records.length,
@@ -960,6 +1008,73 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                 );
               })}
             </div>
+
+            {/* Pagination Controls */}
+            {totalHistoryPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800 text-xs">
+                <span className="text-slate-400">
+                  Halaman <strong className="text-white">{historyPage}</strong> daripada{' '}
+                  <strong className="text-white">{totalHistoryPages}</strong>
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={historyPage === 1}
+                    onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white font-medium transition cursor-pointer border border-slate-700"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Sebelumnya</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalHistoryPages }, (_, idx) => idx + 1).map((pageNum) => {
+                      if (
+                        totalHistoryPages > 5 &&
+                        pageNum !== 1 &&
+                        pageNum !== totalHistoryPages &&
+                        Math.abs(pageNum - historyPage) > 1
+                      ) {
+                        if (pageNum === 2 || pageNum === totalHistoryPages - 1) {
+                          return (
+                            <span key={pageNum} className="text-slate-600 px-1">
+                              •••
+                            </span>
+                          );
+                        }
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => setHistoryPage(pageNum)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                            historyPage === pageNum
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={historyPage === totalHistoryPages}
+                    onClick={() => setHistoryPage((p) => Math.min(totalHistoryPages, p + 1))}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white font-medium transition cursor-pointer border border-slate-700"
+                  >
+                    <span>Seterusnya</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </section>

@@ -239,10 +239,13 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
             <div className="space-y-5">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-slate-200">
-                  Enter your Student QR Access Code
+                  Dapatkan Pas Kod QR Pelajar
                 </p>
                 <p className="text-xs text-slate-400">
                   Masukkan 6 digit kod akses kehadiran anda
+                </p>
+                <p className="text-[10px] text-teal-400/80 pt-0.5">
+                  Khusus untuk penjanaan Pas QR sahaja (Bukan untuk semakan kehadiran)
                 </p>
               </div>
 
@@ -359,6 +362,9 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
                 </div>
                 <p className="text-[11px] text-slate-400">
                   Pamerkan kod QR ini di hadapan kamera pengimbas pensyarah
+                </p>
+                <p className="text-[10px] text-slate-500 pt-1">
+                  Nota: Portal ini hanya untuk memaparkan Pas QR pelajar. Rekod dan semakan kehadiran dikendalikan secara rasmi oleh pensyarah kelas.
                 </p>
               </div>
 

@@ -825,7 +825,7 @@ export default function App() {
     return (
       <StudentQrPortalView
         students={students}
-        onReturnToMain={handleReturnFromQr}
+        onReturnToMain={activeLecturer || isAdmin ? handleReturnFromQr : undefined}
       />
     );
   }
@@ -1013,20 +1013,6 @@ export default function App() {
               onRequestAdminAccess={handleRequestAdminAccess}
               onQuickSimulateScan={handleQuickSimulateScan}
               onUpdateLecturerAssignments={handleUpdateLecturerAssignments}
-            />
-          )}
-
-          {activeTab === 'my-attendance' && (
-            <MyAttendanceView
-              students={students}
-              sessions={sessions}
-              subjects={subjects}
-              attendanceRecords={attendanceRecords}
-              onOpenStudentCheckin={(ctx) => {
-                setStudentCheckinContext(ctx || null);
-                setIsStudentCheckinOpen(true);
-              }}
-              onOpenQrPortal={handleOpenQrPortal}
             />
           )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Student,
   AttendanceSession,
@@ -40,7 +40,9 @@ import {
   Lock,
   FileSpreadsheet,
   HardDrive,
-  ShieldCheck
+  ShieldCheck,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import {
   BarChart,
@@ -260,6 +262,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         rate
       };
     });
+
+  // Pagination for Class Analysis table
+  const [analysisPage, setAnalysisPage] = useState<number>(1);
+  const [analysisPerPage, setAnalysisPerPage] = useState<number>(10);
+
+  const totalAnalysisPages = Math.max(1, Math.ceil(selectedClassStudentStats.length / analysisPerPage));
+
+  React.useEffect(() => {
+    setAnalysisPage(1);
+  }, [selectedClassSection, searchQuery]);
+
+  React.useEffect(() => {
+    if (analysisPage > totalAnalysisPages) {
+      setAnalysisPage(totalAnalysisPages);
+    }
+  }, [analysisPage, totalAnalysisPages]);
+
+  const paginatedClassStudentStats = useMemo(() => {
+    const startIndex = (analysisPage - 1) * analysisPerPage;
+    return selectedClassStudentStats.slice(startIndex, startIndex + analysisPerPage);
+  }, [selectedClassStudentStats, analysisPage, analysisPerPage]);
 
   // Export Class Specific CSV
   const handleExportClassCSV = () => {
@@ -601,13 +624,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    selectedClassStudentStats.map((item, idx) => {
+                    paginatedClassStudentStats.map((item, idx) => {
+                      const overallIdx = (analysisPage - 1) * analysisPerPage + idx + 1;
                       const isHigh = item.rate >= 90;
                       const isMedium = item.rate >= 75 && item.rate < 90;
 
                       return (
                         <tr key={item.student.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="py-3 px-4 text-slate-500 font-mono">{idx + 1}</td>
+                          <td className="py-3 px-4 text-slate-500 font-mono">{overallIdx}</td>
                           <td className="py-3 px-4 font-mono font-bold text-indigo-400">{item.student.studentId}</td>
                           <td className="py-3 px-4 font-semibold text-white">{item.student.name}</td>
                           <td className="py-3 px-4 text-center font-mono text-slate-300">
@@ -682,6 +706,73 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {selectedClassStudentStats.length > 0 && (
+              <div className="py-3 px-4 bg-slate-950/80 border-t border-slate-800 text-[11px] text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <span>
+                  Menunjukkan{' '}
+                  <strong className="text-white font-mono">
+                    {(analysisPage - 1) * analysisPerPage + 1} -{' '}
+                    {Math.min(analysisPage * analysisPerPage, selectedClassStudentStats.length)}
+                  </strong>{' '}
+                  daripada <strong className="text-white font-mono">{selectedClassStudentStats.length}</strong> pelajar
+                </span>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="text-slate-400 text-[11px]">Papar:</span>
+                    <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                      {[10, 20, 50].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => {
+                            setAnalysisPerPage(size);
+                            setAnalysisPage(1);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                            analysisPerPage === size
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {totalAnalysisPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={analysisPage === 1}
+                        onClick={() => setAnalysisPage((p) => Math.max(1, p - 1))}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Sebelum</span>
+                      </button>
+
+                      <span className="px-2 font-mono text-slate-300">
+                        {analysisPage} / {totalAnalysisPages}
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={analysisPage === totalAnalysisPages}
+                        onClick={() => setAnalysisPage((p) => Math.min(totalAnalysisPages, p + 1))}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer border border-slate-700"
+                      >
+                        <span className="hidden sm:inline">Seterusnya</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
