@@ -33,6 +33,37 @@ interface HeaderProps {
   isLecturerWorkspaceActive?: boolean;
 }
 
+const formatSessionHeaderTitle = (session: { subjectCode?: string; sessionName?: string; className?: string }): string => {
+  const code = (session.subjectCode || '').trim();
+  const rawName = (session.sessionName || '').trim();
+  const className = (session.className || '').trim();
+
+  if (!code) return rawName || 'Sesi Kehadiran';
+  if (!rawName) return `[${code}]${className ? ` ${className}` : ''}`;
+
+  const cleanCode = code.toUpperCase();
+  const upperName = rawName.toUpperCase();
+
+  // If sessionName already starts with bracketed code: e.g. "[ISI1092] DIA1A"
+  if (upperName.startsWith(`[${cleanCode}]`)) {
+    return rawName;
+  }
+
+  // If sessionName starts directly with subjectCode: e.g. "ISI1092 - DIA1A" -> "[ISI1092] DIA1A"
+  if (upperName.startsWith(cleanCode)) {
+    const afterCode = rawName.substring(code.length).replace(/^[\s\-–—:;]+/, '').trim();
+    return afterCode ? `[${code}] ${afterCode}` : `[${code}]`;
+  }
+
+  // If sessionName already contains subjectCode anywhere: e.g. "Kuliah ISI1092 - DIA1A"
+  if (upperName.includes(cleanCode)) {
+    return rawName;
+  }
+
+  // Otherwise, prepend bracketed code: e.g. "[ISI1092] Pengenalan Kursus"
+  return `[${code}] ${rawName}`;
+};
+
 export const Header: React.FC<HeaderProps> = ({
   activeSession,
   activeLecturer,
@@ -104,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }
               }}
               className="cursor-pointer hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 hover:bg-rose-500/20 hover:border-rose-500/40 text-xs font-medium text-emerald-300 hover:text-rose-200 transition-all group select-none active:scale-95 shadow-sm shadow-emerald-950/40"
-              title={`Klik untuk Tutup Sesi: ${activeSession.subjectCode ? `[${activeSession.subjectCode}] ` : ''}${activeSession.sessionName} (${activeSession.className || 'Semua Kelas'})`}
+              title={`Klik untuk Tutup Sesi: ${formatSessionHeaderTitle(activeSession)}`}
             >
               {/* Normal status pulse dot */}
               <span className="relative flex h-2 w-2 group-hover:hidden">
@@ -118,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
 
               <span className="truncate max-w-[150px] md:max-w-[200px] text-slate-200 group-hover:text-rose-100 font-semibold transition-colors">
-                {activeSession.subjectCode ? `[${activeSession.subjectCode}] ` : ''}{activeSession.sessionName}
+                {formatSessionHeaderTitle(activeSession)}
               </span>
 
               {/* Status badge: Normal state shows KELAS BUKA, hover state shows TUTUP SESI */}

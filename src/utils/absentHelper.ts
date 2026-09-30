@@ -1,5 +1,5 @@
 import { Student, Enrollment, AttendanceRecord } from '../types';
-import { normalizeClassCode } from './classHelper';
+import { normalizeClassCode, areClassesMatching } from './classHelper';
 
 /**
  * Formats a date string (e.g. '2026-09-28') to Malaysian display format '28/09/2026'.
@@ -71,25 +71,30 @@ export function deriveSessionTargetStudents(
 
     const activeEnrollments = enrollments.filter((e) => {
       const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
-      const matchClass = !normClass || normalizeClassCode(e.className) === normClass;
+      const matchClass = !session.className || session.className === 'ALL' || session.className === 'SEMUA' || areClassesMatching(e.className, session.className);
       const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
       return matchSub && matchClass && isActive;
     });
 
     if (activeEnrollments.length > 0) {
       const enrolledStudentIds = new Set(activeEnrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
-      return students.filter((s) => {
+      const enrolled = students.filter((s) => {
         const sId = (s.studentId || '').trim().toUpperCase();
         const id = (s.id || '').trim().toUpperCase();
         return enrolledStudentIds.has(sId) || enrolledStudentIds.has(id);
       });
+      if (enrolled.length > 0) {
+        return enrolled;
+      }
     }
   }
 
   // 2. Class-level fallback
   if (session.className && session.className !== 'Semua' && session.className !== 'ALL') {
-    const normClass = normalizeClassCode(session.className);
-    return students.filter((s) => normalizeClassCode(s.className) === normClass);
+    const classStudents = students.filter((s) => areClassesMatching(s.className, session.className));
+    if (classStudents.length > 0) {
+      return classStudents;
+    }
   }
 
   return students;

@@ -1,4 +1,4 @@
-import { AttendanceSession, AttendanceRecord, Lecturer, TeachingAssignment, Enrollment } from '../types';
+import { AttendanceSession, AttendanceRecord, Lecturer, TeachingAssignment, Enrollment, Student } from '../types';
 import { areClassesMatching, normalizeClassCode } from './classHelper';
 
 export type RosterCountSource = 'SNAPSHOT' | 'LEGACY_DYNAMIC' | 'EMPTY';
@@ -147,10 +147,11 @@ export function filterAuthorizedAttendanceRecords(
  */
 export function resolveSessionRosterCount(
   session: AttendanceSession | { subjectCode?: string; className?: string; targetCount?: number | null },
-  enrollments?: Enrollment[]
+  enrollments?: Enrollment[],
+  fallbackStudents?: Student[]
 ): { targetCount: number; source: RosterCountSource } {
-  // 1. Snapshot check: preserves historical session semantics
-  if (typeof session.targetCount === 'number' && !Number.isNaN(session.targetCount) && session.targetCount >= 0) {
+  // 1. Snapshot check: preserves historical session semantics if > 0
+  if (typeof session.targetCount === 'number' && !Number.isNaN(session.targetCount) && session.targetCount > 0) {
     return {
       targetCount: session.targetCount,
       source: 'SNAPSHOT'
@@ -160,19 +161,31 @@ export function resolveSessionRosterCount(
   // 2. Legacy Dynamic Fallback: resolve from authoritative ACTIVE enrollments
   if (enrollments && enrollments.length > 0 && session.subjectCode && session.className) {
     const cleanSub = session.subjectCode.trim().toUpperCase();
-    const normClass = normalizeClassCode(session.className);
 
     const activeEnrollments = enrollments.filter((e) => {
       const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
-      const matchClass = normalizeClassCode(e.className) === normClass;
+      const matchClass = areClassesMatching(e.className, session.className);
       const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
       return matchSub && matchClass && isActive;
     });
 
-    return {
-      targetCount: activeEnrollments.length,
-      source: 'LEGACY_DYNAMIC'
-    };
+    if (activeEnrollments.length > 0) {
+      return {
+        targetCount: activeEnrollments.length,
+        source: 'LEGACY_DYNAMIC'
+      };
+    }
+  }
+
+  // 3. Class cohort fallback
+  if (fallbackStudents && fallbackStudents.length > 0 && session.className && session.className !== 'ALL' && session.className !== 'SEMUA') {
+    const classCount = fallbackStudents.filter((s) => areClassesMatching(s.className, session.className)).length;
+    if (classCount > 0) {
+      return {
+        targetCount: classCount,
+        source: 'LEGACY_DYNAMIC'
+      };
+    }
   }
 
   return {
@@ -190,36 +203,48 @@ export function resolveSessionRosterCount(
  * @param rawTargetCount Stored session targetCount snapshot (if any)
  * @param fallbackEnrollments Optional enrollments list to resolve legacy sessions missing targetCount
  * @param session Optional session context (subjectCode, className)
+ * @param fallbackStudents Optional students list to resolve class cohort size if enrollments are not populated
  */
 export function calculateAttendanceMetrics(
   presentCount: number,
   rawTargetCount?: number | null,
   fallbackEnrollments?: Enrollment[],
-  session?: AttendanceSession | { subjectCode?: string; className?: string }
+  session?: AttendanceSession | { subjectCode?: string; className?: string },
+  fallbackStudents?: Student[]
 ): AttendanceMetrics {
   const safePresent = Math.max(0, presentCount || 0);
 
   let targetCount = 0;
   let source: RosterCountSource = 'EMPTY';
 
-  // 1. Explicit snapshot targetCount provided
-  if (typeof rawTargetCount === 'number' && !Number.isNaN(rawTargetCount) && rawTargetCount >= 0) {
+  // 1. Explicit snapshot targetCount provided (> 0)
+  if (typeof rawTargetCount === 'number' && !Number.isNaN(rawTargetCount) && rawTargetCount > 0) {
     targetCount = rawTargetCount;
     source = 'SNAPSHOT';
   } else if (fallbackEnrollments && fallbackEnrollments.length > 0 && session?.subjectCode && session?.className) {
     // 2. Legacy Dynamic Fallback from authoritative ACTIVE enrollments
     const cleanSub = session.subjectCode.trim().toUpperCase();
-    const normClass = normalizeClassCode(session.className);
 
     const activeEnrollments = fallbackEnrollments.filter((e) => {
       const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
-      const matchClass = normalizeClassCode(e.className) === normClass;
+      const matchClass = areClassesMatching(e.className, session.className);
       const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
       return matchSub && matchClass && isActive;
     });
 
-    targetCount = activeEnrollments.length;
-    source = 'LEGACY_DYNAMIC';
+    if (activeEnrollments.length > 0) {
+      targetCount = activeEnrollments.length;
+      source = 'LEGACY_DYNAMIC';
+    }
+  }
+
+  // 3. Fallback to student cohort roster matching the session's class
+  if (targetCount <= 0 && fallbackStudents && fallbackStudents.length > 0 && session?.className && session.className !== 'ALL' && session.className !== 'SEMUA') {
+    const classCount = fallbackStudents.filter((s) => areClassesMatching(s.className, session.className)).length;
+    if (classCount > 0) {
+      targetCount = classCount;
+      source = 'LEGACY_DYNAMIC';
+    }
   }
 
   // Edge case: targetCount = 0 (Safe Zero Protection)

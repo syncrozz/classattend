@@ -123,11 +123,11 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
   };
 
   const handleResetToDefaults = () => {
-    setSelectedPace('BALANCED');
+    setSelectedPace('FAST');
     setIsCustomMode(false);
-    setCustomFps(5);
-    setCustomCooldownSec(2.5);
-    setCustomGraceSec(4.0);
+    setCustomFps(8);
+    setCustomCooldownSec(1.0);
+    setCustomGraceSec(2.0);
     setVolume(0.85);
     setLocalSoundEnabled(true);
     soundService.setVolume(0.85);
@@ -136,11 +136,11 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
 
     try {
       localStorage.setItem('classattend_scan_pace_is_custom', 'false');
-      localStorage.setItem('classattend_scan_pace', 'BALANCED');
+      localStorage.setItem('classattend_scan_pace', 'FAST');
       localStorage.setItem('classattend_scanner_volume', '0.85');
     } catch {}
 
-    setSavedToast('Tetapan dikembalikan ke nilai piawai (Sederhana 5 FPS & 85% Volume)!');
+    setSavedToast('Tetapan dikembalikan ke nilai piawai (Pantas 8 FPS, 1s jeda & 85% Volume)!');
     setTimeout(() => setSavedToast(null), 3500);
   };
 
@@ -305,7 +305,7 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
                 </div>
               </button>
 
-              {/* BALANCED (RECOMMENDED) */}
+              {/* BALANCED */}
               <button
                 type="button"
                 id="btn-pace-balanced"
@@ -322,9 +322,9 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
                       <Zap className="w-3.5 h-3.5" />
                       Sederhana
                     </span>
-                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Standard
-                    </span>
+                    {selectedPace === 'BALANCED' && (
+                      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    )}
                   </div>
                   <div className="text-[11px] font-mono text-slate-400">5 FPS • 2.5s jeda</div>
                   <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
@@ -333,7 +333,7 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
                 </div>
               </button>
 
-              {/* FAST */}
+              {/* FAST (DEFAULT) */}
               <button
                 type="button"
                 id="btn-pace-fast"
@@ -350,13 +350,13 @@ export const ScannerSettingsModal: React.FC<ScannerSettingsModalProps> = ({
                       <Gauge className="w-3.5 h-3.5" />
                       Pantas
                     </span>
-                    {selectedPace === 'FAST' && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    )}
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Lalai (Piawai)
+                    </span>
                   </div>
-                  <div className="text-[11px] font-mono text-slate-400">8 FPS • 1.5s jeda</div>
+                  <div className="text-[11px] font-mono text-slate-400">8 FPS • 1s jeda</div>
                   <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                    Imbasan kilat untuk barisan pelajar yang panjang.
+                    Imbasan kilat 1s untuk aliran barisan pelajar yang pantas.
                   </p>
                 </div>
               </button>

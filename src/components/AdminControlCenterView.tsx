@@ -91,7 +91,7 @@ export const AdminControlCenterView: React.FC<AdminControlCenterViewProps> = ({
       const saved = localStorage.getItem('classattend_scan_pace');
       if (saved === 'RELAXED' || saved === 'BALANCED' || saved === 'FAST') return saved;
     } catch {}
-    return 'BALANCED';
+    return 'FAST';
   });
   const [soundEnabled, setSoundEnabled] = useState(() => soundService.isEnabled());
   const [processingId, setProcessingId] = useState<string | null>(null);

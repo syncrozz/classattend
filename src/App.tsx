@@ -77,17 +77,17 @@ export default function App() {
   const [isFirstTimeLecturerModalOpen, setIsFirstTimeLecturerModalOpen] = useState<boolean>(false);
 
   // Real-time state from Attendance Engine
-  const [students, setStudents] = useState<Student[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [lecturers, setLecturers] = useState<Lecturer[]>([]);
-  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [students, setStudents] = useState<Student[]>(() => attendanceEngine.getStudents());
+  const [subjects, setSubjects] = useState<Subject[]>(() => attendanceEngine.getSubjects());
+  const [lecturers, setLecturers] = useState<Lecturer[]>(() => attendanceEngine.getLecturers());
+  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>(() => attendanceEngine.getTeachingAssignments());
+  const [enrollments, setEnrollments] = useState<Enrollment[]>(() => attendanceEngine.getEnrollments());
   const [activeLecturer, setActiveLecturer] = useState<Lecturer | null>(() => {
     const acc = accessManager.getAccessState();
     return acc.session ? (acc.lecturer || attendanceEngine.getActiveLecturer()) : null;
   });
-  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [sessions, setSessions] = useState<AttendanceSession[]>(() => attendanceEngine.getSessions());
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => attendanceEngine.getAttendanceRecords());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Student Check-In Modal & Context (From QR Scan / Link / Hash)

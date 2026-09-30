@@ -12,7 +12,7 @@ import {
   TeachingAssignment,
   Enrollment
 } from '../types';
-import { normalizeClassCode } from '../utils/classHelper';
+import { normalizeClassCode, areClassesMatching, isStudentInClasses } from '../utils/classHelper';
 import { soundService } from '../services/soundService';
 import {
   getClassBadgeColor,
@@ -67,7 +67,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { formatWhatsAppPhone } from '../utils/whatsappHelper';
-import { formatAbsentListText, formatDisplayDate } from '../utils/absentHelper';
+import { formatAbsentListText, formatDisplayDate, deriveSessionTargetStudents } from '../utils/absentHelper';
 import { ScannerSettingsModal, CustomPaceValues } from './ScannerSettingsModal';
 
 export type ScanPaceMode = 'RELAXED' | 'BALANCED' | 'FAST';
@@ -98,9 +98,9 @@ export const PACE_CONFIGS: Record<ScanPaceMode, PaceConfig> = {
   FAST: {
     label: 'Pantas (Laju)',
     fps: 8,
-    cooldownMs: 1500,
-    sameCodeGraceMs: 2500,
-    desc: '1.5s jeda • Imbasan pantas berterusan'
+    cooldownMs: 1000,
+    sameCodeGraceMs: 2000,
+    desc: '1s jeda • Imbasan kilat berterusan'
   }
 };
 
@@ -122,7 +122,7 @@ export function getActivePaceConfig(pace: ScanPaceMode): PaceConfig {
       }
     } catch {}
   }
-  return PACE_CONFIGS[pace] || PACE_CONFIGS.BALANCED;
+  return PACE_CONFIGS[pace] || PACE_CONFIGS.FAST;
 }
 
 interface ScannerViewProps {
@@ -174,7 +174,8 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       return sortSessionsLatestFirst(openOnly);
     }
     if (activeLecturer) {
-      return filterAuthorizedSessions(openOnly, activeLecturer, isAdmin, teachingAssignments || []);
+      const authorized = filterAuthorizedSessions(openOnly, activeLecturer, isAdmin, teachingAssignments || []);
+      if (authorized.length > 0) return authorized;
     }
     return sortSessionsLatestFirst(openOnly);
   }, [allSessions, isAdmin, activeLecturer, teachingAssignments]);
@@ -182,12 +183,15 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
     if (initialSessionId) {
       const match = allSessions.find((s) => s.id === initialSessionId);
-      if (match && match.status === 'OPEN') return match.id;
+      if (match) return match.id;
     }
-    if (activeSession && activeSession.status === 'OPEN') {
+    if (activeSession) {
       return activeSession.id;
     }
-    return activeOpenSessions[0]?.id || '';
+    if (activeOpenSessions[0]) {
+      return activeOpenSessions[0].id;
+    }
+    return allSessions[0]?.id || '';
   });
   
   // Tabs: 'CAMERA' | 'PROJECTOR_QR' | 'MANUAL'
@@ -232,7 +236,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         return saved;
       }
     } catch (e) {}
-    return 'BALANCED';
+    return 'FAST';
   });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [currentVolume, setCurrentVolume] = useState<number>(() => soundService.getVolume());
@@ -280,35 +284,44 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
 
-  // Ensure selectedSessionId defaults to initialSessionId or activeSession, and stays bound to OPEN sessions
+  // Ensure selectedSessionId defaults to initialSessionId or activeSession, and stays bound to active or latest session
   useEffect(() => {
     if (initialSessionId) {
       const match = allSessions.find((s) => s.id === initialSessionId);
-      if (match && match.status === 'OPEN') {
+      if (match) {
         setSelectedSessionId(initialSessionId);
         return;
       }
     }
-    if (activeSession && activeSession.status === 'OPEN') {
+    if (activeSession) {
       setSelectedSessionId(activeSession.id);
       return;
     }
 
-    // If current selectedSessionId is no longer OPEN or missing from activeOpenSessions
-    const isCurrentValid = activeOpenSessions.some((s) => s.id === selectedSessionId);
-    if (!isCurrentValid) {
-      setSelectedSessionId(activeOpenSessions[0]?.id || '');
+    if (activeOpenSessions.length > 0) {
+      const isCurrentValid = activeOpenSessions.some((s) => s.id === selectedSessionId);
+      if (!isCurrentValid) {
+        setSelectedSessionId(activeOpenSessions[0].id);
+      }
+    } else if (allSessions.length > 0) {
+      const isCurrentValid = allSessions.some((s) => s.id === selectedSessionId);
+      if (!isCurrentValid) {
+        setSelectedSessionId(allSessions[0].id);
+      }
     }
   }, [initialSessionId, activeSession, activeOpenSessions, selectedSessionId, allSessions]);
 
-  // Current active session: strictly an OPEN session from authoritative activeOpenSessions
+  // Current active session: strictly prioritize OPEN sessions from activeOpenSessions, but gracefully fallback to allSessions[0]
   const currentSession = useMemo(() => {
     if (selectedSessionId) {
-      const found = activeOpenSessions.find((s) => s.id === selectedSessionId);
-      if (found) return found;
+      const foundInOpen = activeOpenSessions.find((s) => s.id === selectedSessionId);
+      if (foundInOpen) return foundInOpen;
+      const foundInAll = allSessions.find((s) => s.id === selectedSessionId);
+      if (foundInAll) return foundInAll;
     }
-    return activeOpenSessions[0] || null;
-  }, [selectedSessionId, activeOpenSessions]);
+    if (activeOpenSessions.length > 0) return activeOpenSessions[0];
+    return allSessions[0] || null;
+  }, [selectedSessionId, activeOpenSessions, allSessions]);
 
   // Session attendance stats
   const sessionRecords = currentSession
@@ -320,45 +333,30 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     if (!currentSession?.className || currentSession.className === 'ALL' || currentSession.className === 'SEMUA') {
       return null;
     }
-    return currentSession.className.split(',').map((c) => c.trim().toUpperCase());
+    return currentSession.className.split(/[,;|/]/).map((c) => c.trim().toUpperCase()).filter(Boolean);
   }, [currentSession?.className]);
 
   const targetStudents = useMemo(() => {
-    if (!currentSession) return [];
+    const effectiveSession = currentSession || allSessions[0] || null;
+    let list = deriveSessionTargetStudents(effectiveSession, students, enrollments);
 
-    // SES v4.5 Authoritative subject enrollment:
-    // If enrollments and subjectCode are available, target students are strictly those with ACTIVE enrollments.
-    if (enrollments && enrollments.length > 0 && currentSession.subjectCode) {
-      const cleanSub = currentSession.subjectCode.trim().toUpperCase();
-      const normClass = normalizeClassCode(currentSession.className);
-
-      const activeEnrollments = enrollments.filter((e) => {
-        const matchSub = (e.subjectCode || '').trim().toUpperCase() === cleanSub;
-        const matchClass = !normClass || normClass === 'ALL' || normClass === 'SEMUA' || normalizeClassCode(e.className) === normClass;
-        const isActive = e.status === 'ACTIVE' || (!e.status && e.status !== 'DROPPED');
-        return matchSub && matchClass && isActive;
-      });
-
-      const enrolledStudentIds = new Set(activeEnrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
-      return students.filter((s) => {
-        const sId = (s.studentId || '').trim().toUpperCase();
-        const id = (s.id || '').trim().toUpperCase();
-        return enrolledStudentIds.has(sId) || enrolledStudentIds.has(id);
-      });
-    }
-
-    if (sessionAllowedClasses) {
-      return students.filter((s) => sessionAllowedClasses.includes(s.className.toUpperCase()));
-    }
     if (selectedClassFilter !== 'ALL') {
-      return students.filter((s) => s.className.toUpperCase() === selectedClassFilter.toUpperCase());
+      const filtered = list.filter((s) => areClassesMatching(s.className, selectedClassFilter));
+      if (filtered.length > 0) {
+        return filtered;
+      }
     }
-    return students;
-  }, [currentSession, sessionAllowedClasses, selectedClassFilter, students, enrollments]);
+
+    if (list.length === 0 && students.length > 0) {
+      return students;
+    }
+
+    return list;
+  }, [currentSession, allSessions, students, enrollments, selectedClassFilter]);
 
   // Present records strictly matching the target class / enrolled students (if class session)
   const matchingPresentRecords = useMemo(() => {
-    if (enrollments && enrollments.length > 0 && currentSession?.subjectCode) {
+    if (targetStudents.length > 0) {
       const targetIds = new Set(targetStudents.map((s) => s.id));
       const targetCodes = new Set(targetStudents.map((s) => (s.studentId || '').trim().toUpperCase()));
       return sessionRecords.filter((r) => {
@@ -367,25 +365,33 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       });
     }
 
-    if (sessionAllowedClasses) {
+    if (sessionAllowedClasses && sessionAllowedClasses.length > 0) {
       return sessionRecords.filter((r) => {
-        const student = students.find((s) => s.id === r.studentId);
-        return student && sessionAllowedClasses.includes(student.className.toUpperCase());
+        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        return student && isStudentInClasses(student.className, sessionAllowedClasses);
+      });
+    }
+    if (currentSession?.className && currentSession.className !== 'ALL' && currentSession.className !== 'SEMUA') {
+      return sessionRecords.filter((r) => {
+        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        return student && areClassesMatching(student.className, currentSession.className);
       });
     }
     if (selectedClassFilter !== 'ALL') {
       return sessionRecords.filter((r) => {
-        const student = students.find((s) => s.id === r.studentId);
-        return student?.className.toUpperCase() === selectedClassFilter.toUpperCase();
+        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        return student && areClassesMatching(student.className, selectedClassFilter);
       });
     }
     return sessionRecords;
-  }, [enrollments, currentSession?.subjectCode, targetStudents, sessionRecords, sessionAllowedClasses, selectedClassFilter, students]);
+  }, [targetStudents, sessionRecords, sessionAllowedClasses, currentSession?.className, selectedClassFilter, students]);
 
-  // Total target count: prioritize stored snapshot session.targetCount, otherwise fallback to targetStudents.length
-  const totalTargetCount = typeof currentSession?.targetCount === 'number' && currentSession.targetCount >= 0
-    ? currentSession.targetCount
-    : targetStudents.length;
+  // Total target count: prioritize targetStudents.length (if resolved), otherwise stored snapshot session.targetCount
+  const totalTargetCount = targetStudents.length > 0
+    ? targetStudents.length
+    : (typeof currentSession?.targetCount === 'number' && currentSession.targetCount > 0
+        ? currentSession.targetCount
+        : (students.length > 0 ? students.length : 0));
 
   const percentage =
     totalTargetCount > 0 ? Math.round((matchingPresentRecords.length / totalTargetCount) * 100) : 0;
@@ -835,7 +841,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </div>
               <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight flex items-baseline gap-2 pt-0.5">
                 <span className="text-emerald-400">{matchingPresentRecords.length}</span>
-                <span className="text-slate-500 text-lg sm:text-xl">/ {targetStudents.length} HADIR</span>
+                <span className="text-slate-500 text-lg sm:text-xl">
+                  / {totalTargetCount > 0 ? totalTargetCount : (targetStudents.length > 0 ? targetStudents.length : (students.length > 0 ? students.length : 0))} HADIR
+                </span>
                 <span className="text-xs font-sans font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {percentage}%
                 </span>
@@ -888,12 +896,20 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 onChange={(e) => setSelectedSessionId(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
-                {activeOpenSessions.map((ses) => (
-                  <option key={ses.id} value={ses.id}>
-                    [AKTIF] {ses.subjectCode ? `${ses.subjectCode} - ` : ''}
-                    {ses.sessionName} ({ses.className || 'Semua'}) • {ses.date}
-                  </option>
-                ))}
+                {activeOpenSessions.map((ses) => {
+                  const subCode = (ses.subjectCode || '').trim();
+                  const sName = (ses.sessionName || '').trim();
+                  const cName = (ses.className || '').trim();
+                  const title = sName.toUpperCase().includes(subCode.toUpperCase())
+                    ? sName
+                    : `${subCode ? `${subCode} - ` : ''}${sName}`;
+                  const classSuffix = cName && !sName.toUpperCase().includes(cName.toUpperCase()) ? ` (${cName})` : '';
+                  return (
+                    <option key={ses.id} value={ses.id}>
+                      [AKTIF] {title}{classSuffix} • {ses.date}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -1235,7 +1251,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                   <div className="h-6 w-px bg-slate-800" />
                   <div>
                     <div className="text-[10px] text-slate-400 uppercase font-semibold">Terkumpul</div>
-                    <strong className="text-white font-mono">{matchingPresentRecords.length} / {targetStudents.length}</strong>
+                    <strong className="text-white font-mono">{matchingPresentRecords.length} / {totalTargetCount > 0 ? totalTargetCount : (targetStudents.length || students.length || 0)}</strong>
                   </div>
                 </div>
               </div>
@@ -1272,7 +1288,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                   <h3 className="text-sm font-bold text-white">Carian & Input No. Pelajar</h3>
                 </div>
                 <span className="text-[11px] text-slate-400">
-                  {targetStudents.length} Pelajar Berdaftar
+                  {totalTargetCount > 0 ? totalTargetCount : (targetStudents.length || students.length || 0)} Pelajar Berdaftar
                 </span>
               </div>
 
@@ -1692,7 +1708,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               <div className="flex justify-between pt-1 border-t border-slate-800">
                 <span className="text-slate-400">Jumlah Direkod:</span>
                 <strong className="text-emerald-400 font-mono text-sm">
-                  {matchingPresentRecords.length} / {targetStudents.length} ({percentage}%)
+                  {matchingPresentRecords.length} / {totalTargetCount > 0 ? totalTargetCount : (targetStudents.length || students.length || 0)} ({percentage}%)
                 </strong>
               </div>
             </div>

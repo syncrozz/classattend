@@ -20,6 +20,7 @@ import {
 } from '../data/mockData';
 import { sortSessionsLatestFirst } from '../utils/studentUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
+import { areClassesMatching } from '../utils/classHelper';
 import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
 import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from './firebase';
 import {
@@ -229,6 +230,10 @@ class AttendanceEngine {
           this.students = Array.from(dedupedMap.values());
         } else {
           this.students = [];
+        }
+        if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
+          this.students = [...INITIAL_STUDENTS];
+          this.saveStudentsLocally();
         }
         this.lecturers = storedLecturers
           ? JSON.parse(storedLecturers).filter((l: Lecturer) => !DUMMY_LECTURER_IDS.includes(l.id))
@@ -583,6 +588,45 @@ class AttendanceEngine {
     }
   }
 
+  public async syncInitialLecturersToFirestore() {
+    if (!db || this.lecturers.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      for (const lecturer of this.lecturers) {
+        batch.set(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
+      }
+      await batch.commit();
+    } catch (e: any) {
+      console.warn('Firestore initial lecturers seed notice:', e?.message || e);
+    }
+  }
+
+  public async syncInitialTeachingAssignmentsToFirestore() {
+    if (!db || this.teachingAssignments.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      for (const ta of this.teachingAssignments) {
+        batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+      }
+      await batch.commit();
+    } catch (e: any) {
+      console.warn('Firestore initial teaching assignments seed notice:', e?.message || e);
+    }
+  }
+
+  public async syncInitialSessionsToFirestore() {
+    if (!db || this.sessions.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      for (const session of this.sessions) {
+        batch.set(doc(db, 'sessions', session.id), sanitizeForFirestore(session), { merge: true });
+      }
+      await batch.commit();
+    } catch (e: any) {
+      console.warn('Firestore initial sessions seed notice:', e?.message || e);
+    }
+  }
+
   // --- Subscriptions ---
   public subscribeStudents(callback: (students: Student[]) => void): () => void {
     this.studentListeners.add(callback);
@@ -599,6 +643,16 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
+          if (snapshot.empty) {
+            if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
+              this.students = [...INITIAL_STUDENTS];
+              this.saveStudentsLocally();
+            }
+            this.syncInitialStudentsToFirestore();
+            callback(this.students);
+            return;
+          }
+
           const data = snapshot.docs.map((docSnap) => docSnap.data() as Student);
           const dedupedMap = new Map<string, Student>();
           data.forEach((s) => {
@@ -613,12 +667,28 @@ class AttendanceEngine {
               });
             }
           });
+
+          // Self-heal: If data was somehow empty, fallback to INITIAL_STUDENTS
+          if (dedupedMap.size === 0 && INITIAL_STUDENTS.length > 0) {
+            INITIAL_STUDENTS.forEach((st) => {
+              const rawId = (st.studentId || st.id || '').trim().toUpperCase();
+              if (rawId && !dedupedMap.has(rawId)) {
+                dedupedMap.set(rawId, st);
+              }
+            });
+            this.syncInitialStudentsToFirestore();
+          }
+
           this.students = Array.from(dedupedMap.values());
           this.saveStudentsLocally();
           callback(this.students);
         },
         (error) => {
           handleFirestoreError(error, OperationType.LIST, 'students');
+          if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
+            this.students = [...INITIAL_STUDENTS];
+            this.saveStudentsLocally();
+          }
           callback(this.students);
         }
       );
@@ -627,6 +697,10 @@ class AttendanceEngine {
         unsubscribe();
       };
     } catch (e) {
+      if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
+        this.students = [...INITIAL_STUDENTS];
+        this.saveStudentsLocally();
+      }
       callback(this.students);
       return () => {
         this.studentListeners.delete(callback);
@@ -686,6 +760,16 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
+          if (snapshot.empty) {
+            if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
+              this.lecturers = [...INITIAL_LECTURERS];
+              this.saveLecturersLocally();
+            }
+            this.syncInitialLecturersToFirestore();
+            callback(this.lecturers);
+            return;
+          }
+
           const data = snapshot.docs
             .map((docSnap) => docSnap.data() as Lecturer)
             .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id))
@@ -695,13 +779,24 @@ class AttendanceEngine {
               assignedSections: Array.from(new Set(lec.assignedSections || [])),
               assignedSubjects: Array.from(new Set(lec.assignedSubjects || []))
             }));
-          this.lecturers = data;
+
+          if (data.length === 0 && INITIAL_LECTURERS.length > 0) {
+            this.lecturers = [...INITIAL_LECTURERS];
+            this.syncInitialLecturersToFirestore();
+          } else {
+            this.lecturers = data;
+          }
+
           this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
           this.saveLecturersLocally();
           callback(this.lecturers);
         },
         (error) => {
           handleFirestoreError(error, OperationType.LIST, 'lecturers');
+          if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
+            this.lecturers = [...INITIAL_LECTURERS];
+            this.saveLecturersLocally();
+          }
           callback(this.lecturers);
         }
       );
@@ -710,6 +805,10 @@ class AttendanceEngine {
         unsubscribe();
       };
     } catch {
+      if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
+        this.lecturers = [...INITIAL_LECTURERS];
+        this.saveLecturersLocally();
+      }
       callback(this.lecturers);
       return () => {
         this.lecturerListeners.delete(callback);
@@ -785,16 +884,37 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
+          if (snapshot.empty) {
+            if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
+              this.sessions = [...INITIAL_SESSIONS];
+              this.saveSessionsLocally();
+            }
+            this.syncInitialSessionsToFirestore();
+            callback(sortSessionsLatestFirst(this.sessions));
+            return;
+          }
+
           const data = snapshot.docs
             .map((docSnap) => docSnap.data() as AttendanceSession)
             .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
-          this.sessions = sortSessionsLatestFirst(data);
+
+          if (data.length === 0 && INITIAL_SESSIONS.length > 0) {
+            this.sessions = sortSessionsLatestFirst([...INITIAL_SESSIONS]);
+            this.syncInitialSessionsToFirestore();
+          } else {
+            this.sessions = sortSessionsLatestFirst(data);
+          }
+
           this.reconcileSingleActiveSessionPerLecturer();
           this.saveSessionsLocally();
           callback(this.sessions);
         },
         (error) => {
           handleFirestoreError(error, OperationType.LIST, 'sessions');
+          if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
+            this.sessions = [...INITIAL_SESSIONS];
+            this.saveSessionsLocally();
+          }
           callback(sortSessionsLatestFirst(this.sessions));
         }
       );
@@ -803,6 +923,10 @@ class AttendanceEngine {
         unsubscribe();
       };
     } catch (e) {
+      if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
+        this.sessions = [...INITIAL_SESSIONS];
+        this.saveSessionsLocally();
+      }
       callback(sortSessionsLatestFirst(this.sessions));
       return () => {
         this.sessionListeners.delete(callback);
@@ -868,14 +992,35 @@ class AttendanceEngine {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
+          if (snapshot.empty) {
+            if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+              this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+              this.saveTeachingAssignmentsLocally();
+            }
+            this.syncInitialTeachingAssignmentsToFirestore();
+            callback(this.teachingAssignments);
+            return;
+          }
+
           const data = snapshot.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
-          this.teachingAssignments = data;
+
+          if (data.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+            this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+            this.syncInitialTeachingAssignmentsToFirestore();
+          } else {
+            this.teachingAssignments = data;
+          }
+
           this.syncAssignmentsToSubjectsAndLecturers(data);
           this.saveTeachingAssignmentsLocally();
           callback(this.teachingAssignments);
         },
         (error) => {
           handleFirestoreError(error, OperationType.LIST, 'teaching_assignments');
+          if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+            this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+            this.saveTeachingAssignmentsLocally();
+          }
           callback(this.teachingAssignments);
         }
       );
@@ -884,6 +1029,10 @@ class AttendanceEngine {
         unsubscribe();
       };
     } catch (e) {
+      if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
+        this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
+        this.saveTeachingAssignmentsLocally();
+      }
       callback(this.teachingAssignments);
       return () => {
         this.teachingAssignmentListeners.delete(callback);
@@ -2314,15 +2463,24 @@ class AttendanceEngine {
 
   public getStudentsForSubjectClass(subjectCode: string, className?: string): Student[] {
     const enrollments = this.getEnrollmentsForSubjectClass(subjectCode, className);
-    const studentIds = new Set(enrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
+    if (enrollments.length > 0) {
+      const studentIds = new Set(enrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
+      const enrolled = this.students.filter((s) => {
+        const sId = (s.studentId || '').trim().toUpperCase();
+        const id = (s.id || '').trim().toUpperCase();
+        return studentIds.has(sId) || studentIds.has(id);
+      });
+      if (enrolled.length > 0) {
+        return enrolled;
+      }
+    }
     
-    // Authoritative SES v4.5: Return ONLY students with verified ACTIVE subject enrollments.
-    // Do NOT include non-enrolled students simply because their className matches in master /students.
-    return this.students.filter((s) => {
-      const sId = (s.studentId || '').trim().toUpperCase();
-      const id = (s.id || '').trim().toUpperCase();
-      return studentIds.has(sId) || studentIds.has(id);
-    });
+    // Fallback: If no individual subject enrollments exist yet, return all students belonging to this class
+    if (className && className !== 'ALL' && className !== 'SEMUA') {
+      return this.students.filter((s) => areClassesMatching(s.className, className));
+    }
+
+    return this.students;
   }
 
   public getAvailableClasses(): string[] {
@@ -3121,11 +3279,10 @@ class AttendanceEngine {
           normalizeClassCode(ta.className) === normalizeClassCode(className)
       )?.id;
 
-    // 4. Determine authoritative target student count from ACTIVE enrollments
-    // SES v4.5: Target count is strictly the count of verified ACTIVE enrollments for this subject and class.
-    // Never fallback to 30 or generic class capacity.
+    // 4. Determine authoritative target student count from ACTIVE enrollments or class cohort
     const activeEnrollments = this.getEnrollmentsForSubjectClass(subject.code, className);
-    const targetCount = activeEnrollments.length;
+    const classCohortStudents = this.students.filter((s) => areClassesMatching(s.className, className));
+    const targetCount = activeEnrollments.length > 0 ? activeEnrollments.length : classCohortStudents.length;
 
     // 5. Current timestamp
     const now = new Date();
@@ -3402,10 +3559,13 @@ class AttendanceEngine {
     const presentRecords = sessionRecords.filter((r) => r.status === 'PRESENT');
 
     // Use session targetCount snapshot if available, otherwise resolve from authoritative active enrollments
-    let totalStudents = typeof session.targetCount === 'number' && session.targetCount >= 0 ? session.targetCount : 0;
+    let totalStudents = typeof session.targetCount === 'number' && session.targetCount > 0 ? session.targetCount : 0;
     if (totalStudents === 0 && session.subjectCode && session.className) {
       const activeEnrollments = this.getEnrollmentsForSubjectClass(session.subjectCode, session.className);
       totalStudents = activeEnrollments.length;
+    }
+    if (totalStudents === 0 && session.className && session.className !== 'ALL' && session.className !== 'SEMUA') {
+      totalStudents = this.students.filter((s) => areClassesMatching(s.className, session.className)).length;
     }
 
     const presentCount = presentRecords.length;

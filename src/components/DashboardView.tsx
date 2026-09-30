@@ -76,6 +76,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   const [classStatScope, setClassStatScope] = useState<'CUMULATIVE' | 'ACTIVE_SESSION'>('CUMULATIVE');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('ALL');
+  const [showAllClasses, setShowAllClasses] = useState<boolean>(false);
+  const [showAllSubjects, setShowAllSubjects] = useState<boolean>(false);
 
   // Current session stats
   const activeSessionRecords = activeSession
@@ -175,18 +177,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   });
 
-  // Chart data for class % comparison
-  const classChartData = detailedClassStats.map((cls) => ({
-    name: `Kelas ${cls.name}`,
-    shortName: cls.name,
-    Peratus: cls.displayRate,
-    Pelajar: cls.totalStudents,
-    Hadir: cls.displayPresent
-  }));
+  // Sort classes by frequency (kekerapan): highest attendance transactions, session count, and rate first
+  const sortedClassesByFrequency = useMemo(() => {
+    return [...detailedClassStats].sort((a, b) => {
+      // 1. Kekerapan kehadiran (bilangan transaksi kehadiran)
+      if (b.displayPresent !== a.displayPresent) {
+        return b.displayPresent - a.displayPresent;
+      }
+      // 2. Kekerapan sesi kuliah
+      if (b.sessionCount !== a.sessionCount) {
+        return b.sessionCount - a.sessionCount;
+      }
+      // 3. Kadar peratusan kehadiran
+      if (b.displayRate !== a.displayRate) {
+        return b.displayRate - a.displayRate;
+      }
+      // 4. Bilangan pelajar
+      if (b.totalStudents !== a.totalStudents) {
+        return b.totalStudents - a.totalStudents;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [detailedClassStats]);
+
+  // Display 8 items (in the requested 8-10 items range) for optimal visual clarity
+  const displayedClassStats = useMemo(() => {
+    if (showAllClasses) return sortedClassesByFrequency;
+    return sortedClassesByFrequency.slice(0, 8);
+  }, [showAllClasses, sortedClassesByFrequency]);
+
+  // Chart data for class % comparison matching the frequent classes
+  const classChartData = useMemo(() => {
+    return displayedClassStats.map((cls) => ({
+      name: `Kelas ${cls.name}`,
+      shortName: cls.name,
+      Peratus: cls.displayRate,
+      Pelajar: cls.totalStudents,
+      Hadir: cls.displayPresent
+    }));
+  }, [displayedClassStats]);
 
   // Sort for top performing class
-  const sortedByRate = [...detailedClassStats].sort((a, b) => b.displayRate - a.displayRate);
+  const sortedByRate = useMemo(() => {
+    return [...detailedClassStats].sort((a, b) => b.displayRate - a.displayRate);
+  }, [detailedClassStats]);
   const bestClass = sortedByRate[0];
+
+  // Sort subjects by frequency (kekerapan sesi kuliah & transaksi kehadiran)
+  const sortedSubjectsByFrequency = useMemo(() => {
+    return [...subjects].map((sub) => {
+      const subSessions = sessions.filter(
+        (s) => s.subjectId === sub.id || s.subjectCode === sub.code
+      );
+      const sessionCount = subSessions.length;
+      const sessionIds = new Set(subSessions.map((s) => s.id));
+      const attendanceCount = attendanceRecords.filter((r) => sessionIds.has(r.sessionId)).length;
+      return {
+        ...sub,
+        sessionCount,
+        attendanceCount,
+        frequencyScore: attendanceCount * 10 + sessionCount
+      };
+    }).sort((a, b) => b.frequencyScore - a.frequencyScore || b.sessionCount - a.sessionCount || a.code.localeCompare(b.code));
+  }, [subjects, sessions, attendanceRecords]);
+
+  // Display 8 items (in 8-10 items range)
+  const displayedSubjects = useMemo(() => {
+    if (showAllSubjects) return sortedSubjectsByFrequency;
+    return sortedSubjectsByFrequency.slice(0, 8);
+  }, [showAllSubjects, sortedSubjectsByFrequency]);
 
   // Recent 8 live scans
   const recentRecords = attendanceRecords
@@ -197,17 +256,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return { record, student, session };
     });
 
-  // Filter students for quick simulate
-  const filteredSimulateStudents = students
-    .filter((s) => {
-      const q = searchSimulate.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.studentId.toLowerCase().includes(q) ||
-        s.className.toLowerCase().includes(q)
-      );
-    })
-    .slice(0, 6);
+  // Students sorted by attendance frequency (kekerapan transaksi imbasan/kehadiran)
+  const studentsByFrequency = useMemo(() => {
+    const counts = new Map<string, number>();
+    attendanceRecords.forEach((r) => {
+      counts.set(r.studentId, (counts.get(r.studentId) || 0) + 1);
+    });
+    return [...students].sort((a, b) => {
+      const cA = counts.get(a.id) || 0;
+      const cB = counts.get(b.id) || 0;
+      if (cB !== cA) return cB - cA;
+      return a.name.localeCompare(b.name);
+    });
+  }, [students, attendanceRecords]);
+
+  // Filter students for quick simulate (limited to 8 items in the 8-10 range)
+  const filteredSimulateStudents = useMemo(() => {
+    const q = searchSimulate.toLowerCase().trim();
+    const list = q
+      ? students.filter((s) => {
+          return (
+            s.name.toLowerCase().includes(q) ||
+            s.studentId.toLowerCase().includes(q) ||
+            (s.className || '').toLowerCase().includes(q)
+          );
+        })
+      : studentsByFrequency;
+    return list.slice(0, 8);
+  }, [students, searchSimulate, studentsByFrequency]);
 
   const handleSimulate = (studentId: string) => {
     const res = onQuickSimulateScan(studentId);
@@ -525,87 +601,125 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
 
-        {/* Visual Cards Grid for Each Class */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {detailedClassStats.map((st, idx) => {
-            const isHigh = st.displayRate >= 90;
-            const isMedium = st.displayRate >= 75 && st.displayRate < 90;
-            const isLow = st.displayRate < 75;
-
-            const badgeColor = isHigh
-              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-              : isMedium
-              ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30'
-              : 'text-amber-400 bg-amber-500/10 border-amber-500/30';
-
-            const badgeText = isHigh ? 'Cemerlang' : isMedium ? 'Baik' : 'Perlu Perhatian';
-
-            return (
-              <div
-                key={`detailed-card-${st.name}-${idx}`}
-                className={`p-4 rounded-xl bg-slate-950/70 border transition-all hover:border-slate-700 space-y-3 ${
-                  st.isTargeted ? 'border-indigo-500/50 shadow-md shadow-indigo-500/10' : 'border-slate-800'
-                }`}
+        {/* Visual Cards Grid for Each Class - Displaying Top 8 Frequent Classes */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>Memaparkan <strong>{displayedClassStats.length}</strong> kelas paling kerap (berdasarkan transaksi kehadiran & sesi)</span>
+            </span>
+            {sortedClassesByFrequency.length > 8 && (
+              <button
+                type="button"
+                onClick={() => setShowAllClasses(!showAllClasses)}
+                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
               >
-                {/* Baris 1: Kelas */}
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(st.name)}`}>
-                    Kelas {st.name}
-                  </span>
-                  {st.isTargeted && (
-                    <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded border border-indigo-500/30">
-                      Sesi Dibuka
+                {showAllClasses ? 'Papar 8 Teratas' : `Lihat Semua (${sortedClassesByFrequency.length} Kelas)`}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {displayedClassStats.map((st, idx) => {
+              const isHigh = st.displayRate >= 90;
+              const isMedium = st.displayRate >= 75 && st.displayRate < 90;
+              const isLow = st.displayRate < 75;
+
+              const badgeColor = isHigh
+                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                : isMedium
+                ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30'
+                : 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+
+              const badgeText = isHigh ? 'Cemerlang' : isMedium ? 'Baik' : 'Perlu Perhatian';
+
+              return (
+                <div
+                  key={`detailed-card-${st.name}-${idx}`}
+                  className={`p-4 rounded-xl bg-slate-950/70 border transition-all hover:border-slate-700 space-y-3 relative overflow-hidden ${
+                    st.isTargeted ? 'border-indigo-500/50 shadow-md shadow-indigo-500/10' : 'border-slate-800'
+                  }`}
+                >
+                  {/* Baris 1: Kelas & Ranking Kekerapan */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getClassBadgeColor(st.name)}`}>
+                        Kelas {st.name}
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60" title="Kedudukan kekerapan">
+                        #{idx + 1}
+                      </span>
+                    </div>
+                    {st.isTargeted && (
+                      <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded border border-indigo-500/30">
+                        Sesi Dibuka
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Baris 2: Status Tahap Prestasi & Kekerapan Hadir */}
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}`}>
+                      {badgeText}
                     </span>
-                  )}
-                </div>
+                    <span className="text-[10px] text-slate-400 font-medium truncate">
+                      {st.displayPresent} transaksi hadir
+                    </span>
+                  </div>
 
-                {/* Baris 2: Status Tahap Prestasi */}
-                <div className="flex items-center">
-                  <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded border ${badgeColor}`}>
-                    {badgeText}
-                  </span>
-                </div>
+                  {/* Big percentage number */}
+                  <div className="flex items-baseline justify-between pt-1">
+                    <div>
+                      <div className="text-3xl font-black text-white tracking-tight">
+                        {st.displayRate}<span className="text-xl text-indigo-400">%</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">
+                        Peratus Kehadiran
+                      </div>
+                    </div>
+                    <div className="text-right text-xs">
+                      <div className="font-bold text-slate-200">
+                        {st.totalStudents} Pelajar
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {classStatScope === 'ACTIVE_SESSION'
+                          ? `${st.presentInActive} Hadir Hari Ini`
+                          : `${st.sessionCount} Sesi Kuliah`}
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Big percentage number */}
-                <div className="flex items-baseline justify-between pt-1">
-                  <div>
-                    <div className="text-3xl font-black text-white tracking-tight">
-                      {st.displayRate}<span className="text-xl text-indigo-400">%</span>
+                  {/* Progress bar */}
+                  <div className="space-y-1">
+                    <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isHigh ? 'bg-emerald-400' : isMedium ? 'bg-indigo-400' : 'bg-amber-400'
+                        }`}
+                        style={{ width: `${st.displayRate}%` }}
+                      ></div>
                     </div>
-                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-                      Peratus Kehadiran
-                    </div>
-                  </div>
-                  <div className="text-right text-xs">
-                    <div className="font-bold text-slate-200">
-                      {st.totalStudents} Pelajar
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {classStatScope === 'ACTIVE_SESSION'
-                        ? `${st.presentInActive} Hadir Hari Ini`
-                        : `${st.sessionCount} Sesi Kuliah`}
+                    <div className="flex justify-between text-[9px] text-slate-400">
+                      <span>Sasaran: 80% KPM</span>
+                      <span>{st.displayRate >= 80 ? '✅ Capai KPI' : '❌ Bawah KPI'}</span>
                     </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Progress bar */}
-                <div className="space-y-1">
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        isHigh ? 'bg-emerald-400' : isMedium ? 'bg-indigo-400' : 'bg-amber-400'
-                      }`}
-                      style={{ width: `${st.displayRate}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-[9px] text-slate-400">
-                    <span>Sasaran: 80% KPM</span>
-                    <span>{st.displayRate >= 80 ? '✅ Capai KPI' : '❌ Bawah KPI'}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {sortedClassesByFrequency.length > 8 && !showAllClasses && (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAllClasses(true)}
+                className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-indigo-300 hover:text-white transition-all cursor-pointer"
+              >
+                Papar Semua ({sortedClassesByFrequency.length} Kelas)
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Side-by-Side Comparison Chart and Breakdown */}
@@ -650,15 +764,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* Quick Class Summary Table */}
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3 flex flex-col justify-between">
             <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">
-                Ringkasan Prestasi Kelas
-              </h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Ringkasan Prestasi Kelas
+                </h4>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                  {displayedClassStats.length} Kerap
+                </span>
+              </div>
               <div className="space-y-2.5">
-                {detailedClassStats.map((st, idx) => (
+                {displayedClassStats.map((st, idx) => (
                   <div key={`summary-row-${st.name}-${idx}`} className="flex items-center justify-between text-xs py-1 border-b border-slate-800/60 last:border-0">
                     <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-slate-500 w-4">#{idx + 1}</span>
                       <span className="font-semibold text-slate-200">Kelas {st.name}</span>
-                      <span className="text-[10px] text-slate-500">({st.totalStudents} Pelajar)</span>
+                      <span className="text-[10px] text-slate-500">({st.displayPresent} hadir)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-white">{st.displayRate}%</span>
@@ -690,27 +810,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-2 rounded-2xl bg-slate-900/80 border border-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-white">Senarai Subjek & Agihan Kelas Pensyarah</h3>
-              <p className="text-xs text-slate-400">Subjek akademik KPM Bandar Penawar dan kelas yang diajar</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Senarai Subjek & Agihan Kelas Pensyarah</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Kekerapan Sesi
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Memaparkan {displayedSubjects.length} subjek paling kerap dijalankan kuliah untuk rujukan pantas
+              </p>
             </div>
-            <button
-              onClick={onGoToActivities}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
-            >
-              <span>Urus Subjek</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-3">
+              {sortedSubjectsByFrequency.length > 8 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllSubjects(!showAllSubjects)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                >
+                  {showAllSubjects ? 'Papar 8 Teratas' : `Lihat Semua (${sortedSubjectsByFrequency.length})`}
+                </button>
+              )}
+              <button
+                onClick={onGoToActivities}
+                className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <span>Urus Subjek</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {subjects.map((sub) => (
-              <div key={sub.id} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+            {displayedSubjects.map((sub, sIdx) => (
+              <div key={sub.id} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2 relative overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-                    {sub.code}
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate-400">
-                    {(sub.sections || []).length > 0 ? `${sub.sections.length} Kelas Terlibat` : 'Katalog Terbuka'}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                      {sub.code}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                      #{sIdx + 1}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                    {sub.sessionCount} Sesi • {sub.attendanceCount} Hadir
                   </span>
                 </div>
                 <div className="text-xs font-bold text-white truncate">{sub.name}</div>
@@ -734,6 +877,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             ))}
           </div>
+
+          {sortedSubjectsByFrequency.length > 8 && !showAllSubjects && (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAllSubjects(true)}
+                className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-indigo-300 hover:text-white transition-all cursor-pointer"
+              >
+                Papar Semua ({sortedSubjectsByFrequency.length} Subjek)
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Quick Simulator / Fast Scan Drawer for instant testing */}
@@ -743,9 +898,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Sparkles className="w-4 h-4" />
               <span>Simulasi Ujian Imbasan Pantas</span>
             </div>
-            <h3 className="text-base font-bold text-white">Uji Imbas Pelajar</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Uji Imbas Pelajar</h3>
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                8 Kekerapan
+              </span>
+            </div>
             <p className="text-xs text-slate-400 mt-1">
-              Klik nama pelajar untuk simulasi imbasan QR tanpa memerlukan kamera.
+              Klik nama pelajar untuk simulasi imbasan QR (Disusun mengikut kekerapan kehadiran, 8 pelajar teratas).
             </p>
 
             <div className="mt-3 relative">
