@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Student, OFFICIAL_STUDENT_ATTEND_ICON } from '../types';
-import { findStudentByAccessCode } from '../utils/studentUtils';
+import { findStudentById, findStudentByAccessCode, normalizeStudentId } from '../utils/studentUtils';
 import { soundService } from '../services/soundService';
 import {
   QrCode,
@@ -27,7 +27,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
   students,
   onReturnToMain
 }) => {
-  const [accessCode, setAccessCode] = useState<string>('');
+  const [studentIdInput, setStudentIdInput] = useState<string>('');
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isCheckingMemory, setIsCheckingMemory] = useState<boolean>(true);
@@ -38,9 +38,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
     try {
       const savedId = localStorage.getItem(STORAGE_KEY);
       if (savedId) {
-        const matched = students.find(
-          (s) => s.studentId.toUpperCase() === savedId.toUpperCase() || s.id.toUpperCase() === savedId.toUpperCase()
-        );
+        const matched = findStudentById(students, savedId);
         if (matched) {
           setVerifiedStudent(matched);
         } else if (students.length > 0) {
@@ -56,7 +54,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
     }
   }, [students]);
 
-  // Focus input when returning to access-code screen
+  // Focus input when returning to ID input screen
   useEffect(() => {
     if (!verifiedStudent && !isCheckingMemory) {
       setTimeout(() => {
@@ -66,17 +64,15 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
   }, [verifiedStudent, isCheckingMemory]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Only allow numeric digits, max length 6
-    const numericValue = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setAccessCode(numericValue);
+    const val = e.target.value.toUpperCase();
+    setStudentIdInput(val);
     if (errorMsg) setErrorMsg(null);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedText = e.clipboardData.getData('text');
-    const numericValue = pastedText.replace(/\D/g, '').slice(0, 6);
-    setAccessCode(numericValue);
+    const pastedText = e.clipboardData.getData('text').toUpperCase().trim();
+    setStudentIdInput(pastedText);
     if (errorMsg) setErrorMsg(null);
   };
 
@@ -90,7 +86,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
     if (e) e.preventDefault();
     setErrorMsg(null);
 
-    const trimmedCode = accessCode.trim();
+    const trimmedInput = studentIdInput.trim();
 
     // 1. Check if student database is empty
     if (students.length === 0) {
@@ -99,15 +95,19 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
       return;
     }
 
-    // 2. Exact 6-digit numeric validation
-    if (trimmedCode.length !== 6 || !/^\d{6}$/.test(trimmedCode)) {
-      setErrorMsg('Access code tidak sah. Sila semak 3 digit terakhir ID pelajar dan 3 digit terakhir nombor telefon.');
+    if (!trimmedInput) {
+      setErrorMsg('Sila masukkan No. ID Pelajar anda (contoh: PDA2502001).');
       soundService.playError();
       return;
     }
 
-    // 3. Match against existing student records
-    const matched = findStudentByAccessCode(students, trimmedCode);
+    // 2. Match against student ID (supports e.g. PDA2502001, PDA-2502-001, etc.)
+    let matched = findStudentById(students, trimmedInput);
+
+    // Fallback: If student entered 6-digit legacy access code, also support it gracefully
+    if (!matched && /^\d{6}$/.test(trimmedInput)) {
+      matched = findStudentByAccessCode(students, trimmedInput);
+    }
 
     if (matched) {
       setVerifiedStudent(matched);
@@ -118,7 +118,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
       } catch {}
       soundService.playSuccess();
     } else {
-      setErrorMsg('Access code tidak sah. Sila semak 3 digit terakhir ID pelajar dan 3 digit terakhir nombor telefon.');
+      setErrorMsg(`No. ID Pelajar "${trimmedInput}" tidak dijumpai dalam sistem. Sila pastikan anda memasukkan No. ID yang betul (cth: PDA2502001 atau PDA-2502-001).`);
       soundService.playError();
     }
   };
@@ -152,7 +152,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
     setVerifiedStudent(null);
-    setAccessCode('');
+    setStudentIdInput('');
     setErrorMsg(null);
     soundService.playClick();
   };
@@ -235,14 +235,14 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
           </div>
 
           {!verifiedStudent ? (
-            /* INITIAL STATE: ACCESS CODE INPUT */
+            /* INITIAL STATE: STUDENT ID INPUT */
             <div className="space-y-5">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-slate-200">
                   Dapatkan Pas Kod QR Pelajar
                 </p>
                 <p className="text-xs text-slate-400">
-                  Masukkan 6 digit kod akses kehadiran anda
+                  Masukkan No. ID Pelajar anda (cth: PDA2502001)
                 </p>
                 <p className="text-[10px] text-teal-400/80 pt-0.5">
                   Khusus untuk penjanaan Pas QR sahaja (Bukan untuk semakan kehadiran)
@@ -268,35 +268,18 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
                       ref={inputRef}
                       id="input-qr-access-code"
                       type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
+                      autoCapitalize="characters"
                       autoComplete="off"
-                      placeholder="001550"
-                      value={accessCode}
+                      spellCheck={false}
+                      maxLength={20}
+                      placeholder="cth: PDA2502001"
+                      value={studentIdInput}
                       onChange={handleInputChange}
                       onPaste={handlePaste}
                       onKeyDown={handleKeyDown}
-                      className="w-full text-center px-4 py-3.5 rounded-2xl bg-slate-950 border-2 border-slate-700 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/20 text-2xl sm:text-3xl font-mono tracking-[0.25em] font-black text-teal-300 placeholder:text-slate-700 outline-none transition-all shadow-inner"
-                      aria-label="Student QR Access Code"
+                      className="w-full text-center px-4 py-3.5 rounded-2xl bg-slate-950 border-2 border-slate-700 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/20 text-xl sm:text-2xl font-mono tracking-widest font-black text-teal-300 placeholder:text-slate-700 outline-none transition-all shadow-inner uppercase"
+                      aria-label="No. ID Pelajar"
                     />
-                  </div>
-
-                  {/* Character progress indicator */}
-                  <div className="flex justify-center gap-1.5 pt-1">
-                    {[0, 1, 2, 3, 4, 5].map((idx) => {
-                      const isFilled = accessCode.length > idx;
-                      return (
-                        <span
-                          key={idx}
-                          className={`h-1.5 rounded-full transition-all duration-200 ${
-                            isFilled
-                              ? 'w-4 bg-teal-400'
-                              : 'w-2 bg-slate-800'
-                          }`}
-                        />
-                      );
-                    })}
                   </div>
                 </div>
 
@@ -304,10 +287,10 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
                 <button
                   type="submit"
                   id="btn-show-my-qr"
-                  disabled={accessCode.length !== 6}
+                  disabled={!studentIdInput.trim()}
                   className="w-full py-3.5 px-4 rounded-2xl bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:hover:bg-teal-500 text-slate-950 font-extrabold text-sm tracking-wider uppercase transition-all shadow-lg shadow-teal-500/20 active:scale-[0.98] cursor-pointer"
                 >
-                  SHOW MY QR
+                  PAPAR KOD QR SAYA
                 </button>
               </form>
 
@@ -315,12 +298,11 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 text-left space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-slate-300 text-xs">
                   <Info className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Format Kod Akses Pelajar:</span>
+                  <span>Panduan No. ID Pelajar:</span>
                 </div>
-                <div className="space-y-1 text-slate-400 leading-relaxed font-mono">
-                  <div>• <span className="text-teal-300">3 digit akhir</span> No. Pelajar (cth: PDA-2502-<strong className="text-white">001</strong>)</div>
-                  <div>• <span className="text-teal-300">3 digit akhir</span> No. Telefon (cth: ...71<strong className="text-white">550</strong>)</div>
-                  <div className="text-slate-500 pt-0.5">Kod: <strong className="text-teal-400">001550</strong></div>
+                <div className="space-y-1 text-slate-400 leading-relaxed font-mono text-[11px]">
+                  <div>• Masukkan No. Pelajar rasmi: <strong className="text-teal-300">PDA2502001</strong> atau <strong className="text-teal-300">PDA-2502-001</strong></div>
+                  <div className="text-slate-500 pt-0.5">• Tiada kata laluan atau digit telefon diperlukan. Sistem terus memaparkan Pas Kod QR rasmi untuk imbasan kehadiran.</div>
                 </div>
               </div>
             </div>

@@ -1,13 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Student,
   AttendanceSession,
   Subject,
   AttendanceRecord,
   Lecturer,
-  Enrollment
+  Enrollment,
+  TeachingAssignment
 } from '../types';
-import { normalizeClassCode } from '../utils/classHelper';
+import { areClassesMatching, normalizeClassCode } from '../utils/classHelper';
+import { filterAuthorizedSessions } from '../utils/sessionAuth';
 import {
   getClassBadgeColor,
   getInitials,
@@ -61,6 +63,7 @@ interface ReportsViewProps {
   subjects?: Subject[];
   attendanceRecords: AttendanceRecord[];
   enrollments?: Enrollment[];
+  teachingAssignments?: TeachingAssignment[];
   isAdmin?: boolean;
   activeLecturer?: Lecturer | null;
   onRequestAdminAccess?: (actionName?: string) => void;
@@ -72,32 +75,133 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   subjects = [],
   attendanceRecords,
   enrollments = [],
+  teachingAssignments = [],
   isAdmin = false,
   activeLecturer = null,
   onRequestAdminAccess
 }) => {
-  const sortedSessions = sortSessionsLatestFirst(sessions);
+  // Determine if lecturer privacy scoping is active (True when lecturer is logged in and not an Admin)
+  const isLecturerRestricted = Boolean(activeLecturer && !isAdmin && activeLecturer.role !== 'ADMIN');
+
+  // Authorized sessions: When restricted, only sessions belonging to this lecturer are accessible
+  const authorizedSessions = useMemo(() => {
+    if (!isLecturerRestricted) {
+      return sortSessionsLatestFirst(sessions);
+    }
+    return filterAuthorizedSessions(sessions, activeLecturer, isAdmin, teachingAssignments);
+  }, [sessions, activeLecturer, isAdmin, teachingAssignments, isLecturerRestricted]);
+
+  // Lecturer assigned classes: derived from Teaching Assignments, lecturer profile, and authorized sessions
+  const lecturerClasses = useMemo(() => {
+    if (!isLecturerRestricted || !activeLecturer) {
+      return null; // Admin sees all classes
+    }
+    const classSet = new Set<string>();
+
+    // 1. From Teaching Assignments (authoritative)
+    (teachingAssignments || []).forEach((ta) => {
+      const isActive = ta.status === 'ACTIVE';
+      const matchId = ta.lecturerId === activeLecturer.id;
+      const matchEmail = Boolean(
+        ta.lecturerEmail &&
+        activeLecturer.email &&
+        ta.lecturerEmail.trim().toLowerCase() === activeLecturer.email.trim().toLowerCase()
+      );
+      const matchName = Boolean(
+        ta.lecturerName &&
+        activeLecturer.name &&
+        ta.lecturerName.trim().toLowerCase() === activeLecturer.name.trim().toLowerCase()
+      );
+      if (isActive && (matchId || matchEmail || matchName) && ta.className) {
+        classSet.add(ta.className.trim());
+      }
+    });
+
+    // 2. From assignedClasses / assignedSections on lecturer profile
+    const profileClasses = activeLecturer.assignedClasses || activeLecturer.assignedSections || [];
+    profileClasses.forEach((cls) => {
+      if (cls && cls.trim()) classSet.add(cls.trim());
+    });
+
+    // 3. From authorized sessions
+    authorizedSessions.forEach((s) => {
+      if (s.className && s.className.trim() && s.className !== 'ALL' && s.className !== 'SEMUA') {
+        classSet.add(s.className.trim());
+      }
+    });
+
+    return Array.from(classSet);
+  }, [isLecturerRestricted, activeLecturer, teachingAssignments, authorizedSessions]);
+
+  // Unique classes dynamically scoped:
+  // If lecturer restricted, strictly classes taught by this lecturer.
+  // Otherwise, all classes registered in students/sessions.
+  const uniqueClasses: string[] = useMemo(() => {
+    if (lecturerClasses !== null) {
+      const filtered = Array.from(
+        new Set([
+          ...lecturerClasses,
+          ...(authorizedSessions.map((s) => s.className?.trim()).filter(Boolean) as string[])
+        ])
+      ).filter((c) => c && c !== 'ALL' && c !== 'SEMUA');
+
+      return filtered.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    return Array.from(
+      new Set([
+        ...(students.map((s) => s.className?.trim()).filter(Boolean) as string[]),
+        ...(sessions.map((s) => s.className?.trim()).filter(Boolean) as string[])
+      ])
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [students, sessions, authorizedSessions, lecturerClasses]);
+
+  // Scoped students: Only students belonging to the lecturer's assigned classes
+  const scopedStudents = useMemo(() => {
+    if (lecturerClasses === null) {
+      return students;
+    }
+    return students.filter((st) =>
+      lecturerClasses.some((c) => areClassesMatching(c, st.className))
+    );
+  }, [students, lecturerClasses]);
+
+  // Scoped attendance records: Only records belonging to the lecturer's authorized sessions
+  const scopedAttendanceRecords = useMemo(() => {
+    if (!isLecturerRestricted) {
+      return attendanceRecords;
+    }
+    const authorizedSessionIds = new Set(authorizedSessions.map((s) => s.id));
+    return attendanceRecords.filter((r) => authorizedSessionIds.has(r.sessionId));
+  }, [attendanceRecords, authorizedSessions, isLecturerRestricted]);
+
   const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT'>('CLASS');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(sortedSessions[0]?.id || '');
-  const [selectedClassSection, setSelectedClassSection] = useState<string>('DIA_3A');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => authorizedSessions[0]?.id || '');
+  const [selectedClassSection, setSelectedClassSection] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [backupToast, setBackupToast] = useState<string | null>(null);
 
-  const currentSession = sortedSessions.find((s) => s.id === selectedSessionId) || sortedSessions[0];
+  // Synchronize selectedSessionId when authorized sessions change
+  useEffect(() => {
+    if (authorizedSessions.length > 0 && !authorizedSessions.some((s) => s.id === selectedSessionId)) {
+      setSelectedSessionId(authorizedSessions[0].id);
+    }
+  }, [authorizedSessions, selectedSessionId]);
 
-  // Extract unique classes dynamically from actual registered students and sessions
-  const uniqueClasses: string[] = Array.from(
-    new Set([
-      ...(students.map((s) => s.className?.trim()).filter(Boolean) as string[]),
-      ...(sessions.map((s) => s.className?.trim()).filter(Boolean) as string[])
-    ])
-  ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // Synchronize selectedClassSection when unique classes change
+  useEffect(() => {
+    if (uniqueClasses.length > 0 && !uniqueClasses.some((c) => areClassesMatching(c, selectedClassSection))) {
+      setSelectedClassSection(uniqueClasses[0]);
+    }
+  }, [uniqueClasses, selectedClassSection]);
+
+  const currentSession = authorizedSessions.find((s) => s.id === selectedSessionId) || authorizedSessions[0];
 
   // Records for current session
   const sessionRecords = currentSession
-    ? attendanceRecords.filter((r) => r.sessionId === currentSession.id)
+    ? scopedAttendanceRecords.filter((r) => r.sessionId === currentSession.id)
     : [];
 
   const recordMap = new Map<string, AttendanceRecord>();
@@ -105,7 +209,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Determine target students for current session:
   // SES v4.5 Authoritative subject enrollment: Active students in (subjectCode, className)
-  let targetStudents = students;
+  let targetStudents = scopedStudents;
   if (currentSession?.subjectCode && enrollments && enrollments.length > 0) {
     const cleanSub = currentSession.subjectCode.trim().toUpperCase();
     const normClass = normalizeClassCode(currentSession.className);
@@ -118,18 +222,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     });
 
     const enrolledIds = new Set(activeEnrollments.map((e) => (e.studentId || '').trim().toUpperCase()));
-    targetStudents = students.filter((s) => {
+    targetStudents = scopedStudents.filter((s) => {
       const sId = (s.studentId || '').trim().toUpperCase();
       const id = (s.id || '').trim().toUpperCase();
       return enrolledIds.has(sId) || enrolledIds.has(id);
     });
   } else if (currentSession?.className) {
-    targetStudents = students.filter((s) => s.className === currentSession.className);
+    targetStudents = scopedStudents.filter((s) => areClassesMatching(s.className, currentSession.className));
   }
 
   // Filtered by set & status & search
   const filteredSessionStudents = targetStudents.filter((student) => {
-    const matchesSet = filterSet === 'ALL' || student.className === filterSet;
+    const matchesSet = filterSet === 'ALL' || areClassesMatching(student.className, filterSet);
     const isPresent = recordMap.has(student.id) && recordMap.get(student.id)?.status === 'PRESENT';
     const matchesStatus =
       filterStatus === 'ALL' ||
@@ -153,9 +257,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Chart Data: Class Section Performance for current session
   const setPerformanceData = uniqueClasses.map((setName) => {
-    const classTotal = students.filter((s) => s.className === setName).length;
-    const classPresent = students.filter(
-      (s) => s.className === setName && recordMap.has(s.id) && recordMap.get(s.id)?.status === 'PRESENT'
+    const classTotal = scopedStudents.filter((s) => areClassesMatching(s.className, setName)).length;
+    const classPresent = scopedStudents.filter(
+      (s) => areClassesMatching(s.className, setName) && recordMap.has(s.id) && recordMap.get(s.id)?.status === 'PRESENT'
     ).length;
     const rate = classTotal > 0 ? Math.round((classPresent / classTotal) * 100) : 0;
     return {
@@ -173,14 +277,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       onRequestAdminAccess(`Eksport Data Laporan Kehadiran (${currentSession.sessionName})`);
       return;
     }
-    const csvContent = exportSessionAttendanceToCSV(currentSession, students, attendanceRecords);
+    const csvContent = exportSessionAttendanceToCSV(currentSession, scopedStudents, scopedAttendanceRecords);
     downloadCSV(csvContent, `Laporan_Kehadiran_Kelas_${currentSession.sessionName.replace(/\s+/g, '_')}.csv`);
   };
 
   // Handle Backup Scanned Attendees for Selected Session
   const handleBackupCurrentSessionScannedCSV = () => {
     if (!currentSession) return;
-    const csvContent = exportScannedAttendeesOnlyToCSV(currentSession, students, attendanceRecords);
+    const csvContent = exportScannedAttendeesOnlyToCSV(currentSession, scopedStudents, scopedAttendanceRecords);
     const dateStr = currentSession.date || new Date().toISOString().split('T')[0];
     const subStr = (currentSession.subjectCode || currentSession.sessionName || 'Kelas').replace(/[\s/]/g, '_');
     downloadCSV(csvContent, `Backup_Pelajar_Hadir_${subStr}_${dateStr}.csv`);
@@ -188,16 +292,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     setTimeout(() => setBackupToast(null), 4000);
   };
 
-  // Handle Backup ALL Attendance Records College-Wide to CSV
+  // Handle Backup ALL Attendance Records Scoped to Authorized Classes
   const handleBackupAllAttendanceCSV = () => {
     if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
       onRequestAdminAccess('Backup Semua Rekod Kehadiran Kolej');
       return;
     }
-    const csvContent = exportAllAttendanceRecordsToCSV(attendanceRecords, students, sessions);
+    const csvContent = exportAllAttendanceRecordsToCSV(scopedAttendanceRecords, scopedStudents, authorizedSessions);
     const dateStr = new Date().toISOString().split('T')[0];
-    downloadCSV(csvContent, `Backup_Semua_Rekod_Kehadiran_Kolej_${dateStr}.csv`);
-    setBackupToast(`Backup keseluruhan (${attendanceRecords.length} rekod) berjaya dimuat turun!`);
+    const label = activeLecturer ? `Pensyarah_${activeLecturer.name.replace(/\s+/g, '_')}` : 'Kolej';
+    downloadCSV(csvContent, `Backup_Rekod_Kehadiran_${label}_${dateStr}.csv`);
+    setBackupToast(`Backup keseluruhan (${scopedAttendanceRecords.length} rekod) berjaya dimuat turun!`);
     setTimeout(() => setBackupToast(null), 4000);
   };
 
@@ -208,9 +313,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       return;
     }
     const jsonContent = generateAttendanceBackupJSON(
-      attendanceRecords,
-      students,
-      sessions,
+      scopedAttendanceRecords,
+      scopedStudents,
+      authorizedSessions,
       activeLecturer?.name || 'Pentadbir'
     );
     const dateStr = new Date().toISOString().split('T')[0];
@@ -221,10 +326,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Class-Perspective Data Calculations
   const classSummaryStats = uniqueClasses.map((clsName) => {
-    const classStudents = students.filter((s) => s.className === clsName);
-    const applicableSessions = sessions.filter((s) => !s.className || s.className === clsName);
+    const classStudents = scopedStudents.filter((s) => areClassesMatching(s.className, clsName));
+    const applicableSessions = authorizedSessions.filter((s) => !s.className || areClassesMatching(s.className, clsName));
     const totalSlots = classStudents.length * applicableSessions.length;
-    const presentSlots = attendanceRecords.filter(
+    const presentSlots = scopedAttendanceRecords.filter(
       (r) =>
         r.status === 'PRESENT' &&
         classStudents.some((s) => s.id === r.studentId) &&
@@ -243,8 +348,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   });
 
   // Specific selected class student records
-  const targetClassStudents = students.filter((s) => s.className === selectedClassSection);
-  const targetClassSessions = sessions.filter((s) => !s.className || s.className === selectedClassSection);
+  const targetClassStudents = scopedStudents.filter((s) => areClassesMatching(s.className, selectedClassSection));
+  const targetClassSessions = authorizedSessions.filter((s) => !s.className || areClassesMatching(s.className, selectedClassSection));
 
   const selectedClassStudentStats = targetClassStudents
     .filter((st) => {
@@ -252,7 +357,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       return st.name.toLowerCase().includes(q) || st.studentId.toLowerCase().includes(q);
     })
     .map((st) => {
-      const studentRecs = attendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');
+      const studentRecs = scopedAttendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');
       const rate = targetClassSessions.length > 0 ? Math.round((studentRecs.length / targetClassSessions.length) * 100) : 0;
 
       return {
@@ -298,16 +403,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   // Student-Centric list calculations
-  const studentReportsList = students
+  const studentReportsList = scopedStudents
     .filter((st) => {
-      const matchesSet = filterSet === 'ALL' || st.className === filterSet;
+      const matchesSet = filterSet === 'ALL' || areClassesMatching(st.className, filterSet);
       const q = searchQuery.toLowerCase();
       const matchesSearch = st.name.toLowerCase().includes(q) || st.studentId.toLowerCase().includes(q);
       return matchesSet && matchesSearch;
     })
     .map((st) => {
-      const applicableSessions = sessions.filter((s) => !s.className || s.className === st.className);
-      const studentRecs = attendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');
+      const applicableSessions = authorizedSessions.filter((s) => !s.className || areClassesMatching(s.className, st.className));
+      const studentRecs = scopedAttendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');
       const rate = applicableSessions.length > 0 ? Math.round((studentRecs.length / applicableSessions.length) * 100) : 0;
 
       return {
@@ -327,6 +432,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
               <span>Laporan & Analitik Kehadiran Pelajar</span>
             </h2>
+            {isLecturerRestricted && activeLecturer && (
+              <p className="text-xs text-indigo-300/90 mt-1 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" />
+                <span>Mod Pensyarah: Hanya memaparkan subjek & kelas yang diajar oleh <strong>{activeLecturer.name}</strong> ({uniqueClasses.length > 0 ? uniqueClasses.join(', ') : 'Tiada Kelas Ditugaskan'}).</span>
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -418,7 +529,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 onChange={(e) => setSelectedSessionId(e.target.value)}
                 className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer max-w-md"
               >
-                {sortedSessions.map((s) => {
+                {authorizedSessions.map((s) => {
                   const subjectDetail = s.subjectCode ? `[${s.subjectCode}] ` : '';
                   const classDetail = s.className ? ` (${s.className})` : '';
                   const dateDetail = s.date ? ` • ${s.date}` : '';
@@ -507,8 +618,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {reportPerspective === 'CLASS' && (
         <div className="space-y-6">
           {/* Class Section Overview Tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {classSummaryStats.map((cls, clsIdx) => {
+          {classSummaryStats.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-white">Tiada Kelas Ditugaskan</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                {isLecturerRestricted
+                  ? 'Akaun anda belum mempunyai sebarang kelas atau subjek yang ditugaskan. Sila hubungi Pentadbir Sistem untuk penetapan jadual pengajaran anda.'
+                  : 'Tiada rekod kelas ditemui dalam sistem.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {classSummaryStats.map((cls, clsIdx) => {
               const isSelected = cls.name === selectedClassSection;
               const isHigh = cls.rate >= 90;
               const isMedium = cls.rate >= 75 && cls.rate < 90;
@@ -587,6 +711,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               );
             })}
           </div>
+          )}
 
           {/* Table of Students in the Selected Class */}
           <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-lg">

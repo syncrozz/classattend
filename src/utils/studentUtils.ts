@@ -155,6 +155,32 @@ export const getStudentPhoneSuffix = (phone?: string): string => {
 };
 
 /**
+ * Normalizes a student ID for robust comparison (strips hyphens, underscores, spaces, and uppercases).
+ * e.g., 'PDA-2502-001' -> 'PDA2502001'
+ * e.g., 'pda 2502 001' -> 'PDA2502001'
+ */
+export const normalizeStudentId = (id?: string): string => {
+  return (id || '').trim().replace(/[\s\-_]/g, '').toUpperCase();
+};
+
+/**
+ * Finds a student by their Student ID (supports hyphenated, un-hyphenated, and raw formats).
+ * e.g., input 'PDA2502001' matches student with ID 'PDA-2502-001' or 'PDA2502001'
+ */
+export const findStudentById = (students: Student[], inputId: string): Student | null => {
+  const cleanInput = normalizeStudentId(inputId);
+  if (!cleanInput) return null;
+
+  return (
+    students.find((s) => {
+      const cleanId = normalizeStudentId(s.studentId);
+      const cleanPrimaryId = normalizeStudentId(s.id);
+      return cleanId === cleanInput || cleanPrimaryId === cleanInput;
+    }) || null
+  );
+};
+
+/**
  * Matches a 6-digit access code (3-digit Student ID suffix + 3-digit Phone suffix)
  * to an existing student in the database.
  */

@@ -1022,6 +1022,8 @@ export default function App() {
               sessions={sessions}
               subjects={subjects}
               attendanceRecords={attendanceRecords}
+              teachingAssignments={teachingAssignments}
+              enrollments={enrollments}
               isAdmin={isAdmin}
               activeLecturer={activeLecturer}
               onRequestAdminAccess={handleRequestAdminAccess}
