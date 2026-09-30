@@ -1105,7 +1105,7 @@ export default function App() {
           onStartTeaching={() => {
             setIsFirstTimeLecturerModalOpen(false);
             accessManager.markLecturerOnboarded(activeLecturer.id);
-            handleTabChange('activities');
+            handleTabChange('dashboard');
           }}
         />
       )}

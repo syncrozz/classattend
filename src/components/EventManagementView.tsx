@@ -1037,7 +1037,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
 
                   {/* Level 4: Subject Management Actions (Clean Button Hierarchy) */}
                   <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
-                    {/* Primary Action for this Subject: Add a new session schedule */}
+                    {/* Primary Action for this Subject: Deprecated with the new 'Kelas Saya' 1-click scanning concept */}
                     <button
                       type="button"
                       id={`btn-add-session-${subject.id}`}
@@ -1045,8 +1045,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         e.stopPropagation();
                         handleOpenAddSession(subject.id);
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95 border border-indigo-500/50"
-                      title="Cipta & jadualkan sesi kuliah/amali baharu untuk subjek ini"
+                      className="hidden"
+                      aria-hidden="true"
+                      title="Tidak diperlukan lagi — gunakan 'Kelas Saya' untuk mulakan imbasan terus"
                     >
                       <CalendarPlus className="w-3.5 h-3.5 text-indigo-200" />
                       <span>+ Jadualkan Sesi</span>
