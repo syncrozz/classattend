@@ -11,8 +11,8 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Set Firestore log level to error to avoid noisy internal multi-tab/lease warnings
-setLogLevel('error');
+// Set Firestore log level to silent to prevent noisy internal transport retry warnings
+setLogLevel('silent');
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
@@ -24,17 +24,18 @@ const dbId = rawDbId === '(default)' ? undefined : rawDbId;
 
 // Initialize Firestore with memoryLocalCache to prevent IndexedDB multi-tab primary lease lock contention
 // in iframes and multi-tab environments (avoiding 'Backfill Indexes' and 'Collect garbage' lease errors).
-// experimentalAutoDetectLongPolling enables automatic fallback to long-polling when WebSocket channels encounter proxy/network hiccups.
+// experimentalForceLongPolling forces standard HTTP long-polling from the first request, avoiding the
+// 'Could not reach Cloud Firestore backend. Connection failed 1 times [code=unavailable]' error that occurs
+// when WebChannel streaming/WebSockets are blocked or buffered in sandboxed iframes and cloud proxies.
 try {
+  const firestoreSettings = {
+    localCache: memoryLocalCache(),
+    experimentalForceLongPolling: true,
+    ignoreUndefinedProperties: true
+  };
   firestoreInstance = dbId
-    ? initializeFirestore(app, {
-        localCache: memoryLocalCache(),
-        experimentalAutoDetectLongPolling: true,
-      }, dbId)
-    : initializeFirestore(app, {
-        localCache: memoryLocalCache(),
-        experimentalAutoDetectLongPolling: true,
-      });
+    ? initializeFirestore(app, firestoreSettings, dbId)
+    : initializeFirestore(app, firestoreSettings);
 } catch {
   firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
 }
@@ -238,7 +239,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       console.error(`[FIRESTORE DATA] Invalid payload for ${operationType} on "${path}":`, JSON.stringify(errInfo));
       break;
     case FirestoreErrorCategory.NETWORK_UNAVAILABLE:
-      console.warn(`[FIRESTORE NETWORK] Client offline/unavailable during ${operationType} on "${path}". Local cache active.`);
+      // Transparent local-first caching active; avoid noisy console logs during temporary network blips
       break;
     default:
       console.error(`[FIRESTORE ERROR] ${operationType} on "${path}" failed:`, JSON.stringify(errInfo));

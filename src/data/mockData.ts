@@ -37,7 +37,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
   { id: 'SUB-MPU2162', code: 'MPU2162', name: 'PENGAJIAN MALAYSIA 2', department: 'Jabatan Pengajian Am', sections: ['DIA3A'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
   { id: 'SUB-MPU2232', code: 'MPU2232', name: 'PUBLIC SPEAKING AND COMMUNICATION', department: 'Jabatan Pengajian Am', sections: [] },
   { id: 'SUB-MPU2372', code: 'MPU2372', name: 'DINAMIKA ISLAM DI MALAYSIA', department: 'Jabatan Pengajian Am', sections: [] },
-  { id: 'SUB-MPU2412', code: 'MPU2412', name: 'KURSUS INTEGRITI DAN ANTI RASUAH', department: 'Jabatan Pengajian Am', sections: ['DIA4A'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
+  { id: 'SUB-MPU2412', code: 'MPU2412', name: 'KURSUS INTEGRITI DAN ANTI RASUAH', department: 'Jabatan Pengajian Am', sections: ['DIA4A', 'DIA4B', 'DIA4C'], lecturerId: 'LEC-KHAIRI', lecturerName: 'AHMAD KHAIRI BIN MOHD', lecturerEmail: 'khairi@bpenawar.kpm.edu.my' },
   { id: 'SUB-MPU2482', code: 'MPU2482', name: 'KEMAHIRAN & TANGGUNGJAWAB SOSIAL KORPORAT', department: 'Jabatan Pengajian Am', sections: [] },
 
   // Jabatan Perakaunan & Kewangan (18 kursus)
@@ -219,6 +219,30 @@ export const INITIAL_TEACHING_ASSIGNMENTS: TeachingAssignment[] = [
     subjectCode: 'MPU2412',
     subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
     className: 'DIA4A',
+    status: 'ACTIVE',
+    createdAt: '2025-01-10T08:00:00.000Z'
+  },
+  {
+    id: 'TA-KHAIRI-MPU2412-DIA4B',
+    lecturerId: 'LEC-KHAIRI',
+    lecturerName: 'AHMAD KHAIRI BIN MOHD',
+    lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+    subjectId: 'SUB-MPU2412',
+    subjectCode: 'MPU2412',
+    subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
+    className: 'DIA4B',
+    status: 'ACTIVE',
+    createdAt: '2025-01-10T08:00:00.000Z'
+  },
+  {
+    id: 'TA-KHAIRI-MPU2412-DIA4C',
+    lecturerId: 'LEC-KHAIRI',
+    lecturerName: 'AHMAD KHAIRI BIN MOHD',
+    lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+    subjectId: 'SUB-MPU2412',
+    subjectCode: 'MPU2412',
+    subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
+    className: 'DIA4C',
     status: 'ACTIVE',
     createdAt: '2025-01-10T08:00:00.000Z'
   }

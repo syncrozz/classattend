@@ -26,7 +26,13 @@ import {
   ArrowRight,
   ShieldCheck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Settings,
+  SlidersHorizontal,
+  Plus,
+  Check,
+  Info,
+  Edit3
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import {
@@ -57,6 +63,7 @@ interface LecturerWorkspaceViewProps {
   onCloseActiveSession: (sessionId: string) => void;
   onGoToStudents: () => void;
   onGoToReports: () => void;
+  onUpdateSubjectClasses?: (subjectCode: string, classNames: string[]) => void;
 }
 
 export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
@@ -75,7 +82,8 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onSetSessionStatus,
   onCloseActiveSession: _onCloseActiveSession,
   onGoToStudents: _onGoToStudents,
-  onGoToReports: _onGoToReports
+  onGoToReports: _onGoToReports,
+  onUpdateSubjectClasses
 }) => {
   // 1. Identify Lecturer's ACTIVE teaching assignments (SES v4.5 Authoritative Source)
   const myAssignments = useMemo(() => {
@@ -136,9 +144,28 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
       .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode && ta.subjectCode.trim().toUpperCase() === normSubjCode)
       .forEach((ta) => {
         if (ta.className && ta.className.trim()) {
+          const normCls = normalizeClassCode(ta.className);
+          // Strict academic mapping: MPU2162 is only DIA3A; MPU2412 is only DIA4A, DIA4B, DIA4C
+          if (normSubjCode === 'MPU2162' && normCls !== 'DIA3A') {
+            return;
+          }
+          if (normSubjCode === 'MPU2412' && normCls === 'DIA3A') {
+            return;
+          }
           authorizedClasses.add(ta.className.trim());
         }
       });
+
+    // Authoritative fallback if cache or state was empty
+    if (authorizedClasses.size === 0) {
+      if (normSubjCode === 'MPU2162') {
+        authorizedClasses.add('DIA3A');
+      } else if (normSubjCode === 'MPU2412') {
+        authorizedClasses.add('DIA4A');
+        authorizedClasses.add('DIA4B');
+        authorizedClasses.add('DIA4C');
+      }
+    }
 
     return Array.from(authorizedClasses);
   }, [selectedSubject, myAssignments]);
@@ -167,14 +194,29 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         myAssignments
           .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode && ta.subjectCode.trim().toUpperCase() === normCode)
           .map((ta) => ta.className?.trim())
-          .filter((cls): cls is string => Boolean(cls))
+          .filter((cls): cls is string => {
+            if (!cls) return false;
+            const normCls = normalizeClassCode(cls);
+            if (normCode === 'MPU2162' && normCls !== 'DIA3A') return false;
+            if (normCode === 'MPU2412' && normCls === 'DIA3A') return false;
+            return true;
+          })
       )
     );
 
-    if (authorizedForNewSubject.includes(selectedClass)) {
+    const fallbackList =
+      authorizedForNewSubject.length > 0
+        ? authorizedForNewSubject
+        : normCode === 'MPU2162'
+        ? ['DIA3A']
+        : normCode === 'MPU2412'
+        ? ['DIA4A', 'DIA4B', 'DIA4C']
+        : [];
+
+    if (fallbackList.includes(selectedClass)) {
       // Retain selection if authorized for the new subject
-    } else if (authorizedForNewSubject.length > 0) {
-      setSelectedClass(authorizedForNewSubject[0]);
+    } else if (fallbackList.length > 0) {
+      setSelectedClass(fallbackList[0]);
     } else {
       setSelectedClass('');
     }
@@ -234,6 +276,152 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   const [confirmEndSessionId, setConfirmEndSessionId] = useState<string | null>(null);
   const [confirmCloseOtherSessionId, setConfirmCloseOtherSessionId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+
+  // Subject Classes Configuration Modal state
+  const [isClassSettingsModalOpen, setIsClassSettingsModalOpen] = useState(false);
+  const [editingSubjectCode, setEditingSubjectCode] = useState<string>('');
+  const [editingClasses, setEditingClasses] = useState<string[]>([]);
+  const [newClassInput, setNewClassInput] = useState<string>('');
+
+  // Distinct college classes for selection
+  const allCollegeClasses = useMemo(() => {
+    const set = new Set<string>(['DIA1A', 'DIA1B', 'DIA2A', 'DIA3A', 'DIA4A', 'DIA4B', 'DIA4C']);
+    students.forEach((s) => {
+      if (s.className?.trim()) set.add(s.className.trim().toUpperCase());
+    });
+    subjects.forEach((s) => {
+      (s.sections || []).forEach((sec) => {
+        if (sec?.trim()) set.add(sec.trim().toUpperCase());
+      });
+    });
+    editingClasses.forEach((c) => {
+      if (c?.trim()) set.add(c.trim().toUpperCase());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [students, subjects, editingClasses]);
+
+  const handleOpenClassSettings = (subjectCodeToEdit?: string) => {
+    const targetCode = subjectCodeToEdit || selectedSubject?.code || availableSubjects[0]?.code || '';
+    const normTargetCode = targetCode.trim().toUpperCase();
+    setEditingSubjectCode(normTargetCode);
+
+    // Find current classes for this subject
+    const currentClasses = new Set<string>();
+    myAssignments
+      .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode?.toUpperCase() === normTargetCode)
+      .forEach((ta) => {
+        if (ta.className?.trim()) {
+          const normCls = normalizeClassCode(ta.className);
+          if (normTargetCode === 'MPU2162' && normCls !== 'DIA3A') return;
+          if (normTargetCode === 'MPU2412' && normCls === 'DIA3A') return;
+          currentClasses.add(ta.className.trim().toUpperCase());
+        }
+      });
+
+    const targetSub = subjects.find((s) => s.code.toUpperCase() === normTargetCode);
+    (targetSub?.sections || []).forEach((sec) => {
+      if (sec && sec.trim()) {
+        const normCls = normalizeClassCode(sec);
+        if (normTargetCode === 'MPU2162' && normCls !== 'DIA3A') return;
+        if (normTargetCode === 'MPU2412' && normCls === 'DIA3A') return;
+        currentClasses.add(sec.trim().toUpperCase());
+      }
+    });
+
+    if (currentClasses.size === 0) {
+      if (normTargetCode === 'MPU2162') currentClasses.add('DIA3A');
+      if (normTargetCode === 'MPU2412') {
+        currentClasses.add('DIA4A');
+        currentClasses.add('DIA4B');
+        currentClasses.add('DIA4C');
+      }
+    }
+
+    setEditingClasses(Array.from(currentClasses));
+    setNewClassInput('');
+    setIsClassSettingsModalOpen(true);
+  };
+
+  const handleSwitchEditingSubject = (code: string) => {
+    const normTargetCode = code.trim().toUpperCase();
+    setEditingSubjectCode(normTargetCode);
+    const currentClasses = new Set<string>();
+    myAssignments
+      .filter((ta) => ta.status === 'ACTIVE' && ta.subjectCode?.toUpperCase() === normTargetCode)
+      .forEach((ta) => {
+        if (ta.className?.trim()) {
+          const normCls = normalizeClassCode(ta.className);
+          if (normTargetCode === 'MPU2162' && normCls !== 'DIA3A') return;
+          if (normTargetCode === 'MPU2412' && normCls === 'DIA3A') return;
+          currentClasses.add(ta.className.trim().toUpperCase());
+        }
+      });
+
+    const targetSub = subjects.find((s) => s.code.toUpperCase() === normTargetCode);
+    (targetSub?.sections || []).forEach((sec) => {
+      if (sec && sec.trim()) {
+        const normCls = normalizeClassCode(sec);
+        if (normTargetCode === 'MPU2162' && normCls !== 'DIA3A') return;
+        if (normTargetCode === 'MPU2412' && normCls === 'DIA3A') return;
+        currentClasses.add(sec.trim().toUpperCase());
+      }
+    });
+
+    if (currentClasses.size === 0) {
+      if (normTargetCode === 'MPU2162') currentClasses.add('DIA3A');
+      if (normTargetCode === 'MPU2412') {
+        currentClasses.add('DIA4A');
+        currentClasses.add('DIA4B');
+        currentClasses.add('DIA4C');
+      }
+    }
+
+    setEditingClasses(Array.from(currentClasses));
+    setNewClassInput('');
+  };
+
+  const handleToggleClassForEditing = (className: string) => {
+    const upper = className.trim().toUpperCase();
+    setEditingClasses((prev) => {
+      if (prev.some((c) => c.toUpperCase() === upper)) {
+        return prev.filter((c) => c.toUpperCase() !== upper);
+      } else {
+        return [...prev, upper];
+      }
+    });
+  };
+
+  const handleAddCustomClass = () => {
+    const clean = newClassInput.trim().toUpperCase().replace(/[\s\-_]/g, '');
+    if (!clean) return;
+    if (!editingClasses.some((c) => c.toUpperCase() === clean)) {
+      setEditingClasses((prev) => [...prev, clean]);
+    }
+    setNewClassInput('');
+  };
+
+  const handleSaveClassSettings = () => {
+    if (!editingSubjectCode) return;
+    if (onUpdateSubjectClasses) {
+      onUpdateSubjectClasses(editingSubjectCode, editingClasses);
+    } else {
+      attendanceEngine.updateSubjectClasses(editingSubjectCode, editingClasses, activeLecturer);
+    }
+
+    // If currently selected subject was edited, ensure selectedClass stays valid
+    if (selectedSubjectCode.toUpperCase() === editingSubjectCode.toUpperCase()) {
+      if (editingClasses.length > 0 && !editingClasses.includes(selectedClass)) {
+        setSelectedClass(editingClasses[0]);
+      }
+    }
+
+    setActionNotice({
+      type: 'success',
+      message: `Kelas bagi subjek ${editingSubjectCode} berjaya dikemas kini (${editingClasses.length > 0 ? editingClasses.join(', ') : 'Tiada Kelas'})!`
+    });
+    setTimeout(() => setActionNotice(null), 4000);
+    setIsClassSettingsModalOpen(false);
+  };
 
   const handleOpenSessionDetail = (sessionId: string) => {
     setSelectedSessionIdForDetail(sessionId);
@@ -634,7 +822,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
           aria-label="Kelas Saya — Pusat Pengambilan Kehadiran"
           className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-6"
         >
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
             <div>
               <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
                 <GraduationCap className="w-5 h-5 text-indigo-400" />
@@ -644,6 +832,18 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                 Pilih subjek dan kelas untuk memulakan pengimbasan kehadiran pelajar.
               </p>
             </div>
+
+            {/* Top Right: Gear / Settings Button to configure classes for subjects */}
+            <button
+              type="button"
+              id="btn-open-class-settings"
+              onClick={() => handleOpenClassSettings(selectedSubject?.code)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer group self-start sm:self-center"
+              title="Tetapkan atau ubah senarai kelas bagi subjek yang diajar"
+            >
+              <Settings className="w-4 h-4 text-indigo-400 group-hover:rotate-45 transition-transform duration-300" />
+              <span>Ubah Kelas Subjek (Tetapan)</span>
+            </button>
           </div>
 
           {/* STEP 1: SUBJEK SAYA */}
@@ -661,7 +861,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                     key={sub.id || sub.code}
                     type="button"
                     onClick={() => handleSelectSubject(sub.code)}
-                    className={`text-left p-3.5 rounded-xl transition-all min-h-[56px] border flex flex-col justify-between ${
+                    className={`text-left p-3.5 rounded-xl transition-all min-h-[56px] border flex flex-col justify-between cursor-pointer ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-950/40 text-white shadow-md shadow-indigo-500/10 ring-1 ring-indigo-500'
                         : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
@@ -691,13 +891,34 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
               <span>Langkah 2: Pilih Kelas</span>
             </label>
+
+            <button
+              type="button"
+              id="btn-quick-edit-classes"
+              onClick={() => handleOpenClassSettings(selectedSubject?.code)}
+              className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 transition-colors font-semibold py-0.5 px-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 cursor-pointer"
+              title="Ubah pilihan kelas bagi subjek ini"
+            >
+              <SlidersHorizontal className="w-3 h-3 text-indigo-400" />
+              <span>Ubah Pilihan Kelas ({availableClassesForSubject.length})</span>
+            </button>
           </div>
 
           {/* Class Badges / Chips */}
           {availableClassesForSubject.length === 0 ? (
-            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-xs flex items-center gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span>Tiada kelas aktif yang ditugaskan untuk subjek ini. Sila hubungi pentadbir untuk penetapan pengajaran.</span>
+            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span>Tiada kelas aktif yang ditugaskan untuk subjek ini.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenClassSettings(selectedSubject?.code)}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all active:scale-95 inline-flex items-center gap-1.5 self-start cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Pilih Kelas Sekarang</span>
+              </button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2.5">
@@ -709,7 +930,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                     key={cls}
                     type="button"
                     onClick={() => setSelectedClass(cls)}
-                    className={`px-4 py-2.5 min-h-[48px] rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                    className={`px-4 py-2.5 min-h-[48px] rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
                         : 'bg-slate-950/80 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white'
@@ -1253,6 +1474,191 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               <div className="text-base font-bold text-emerald-400">
                 {activeSessionRecords.length} Pelajar Telah Diimbas
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: TETAPAN KELAS MENGIKUT SUBJEK PENSYARAH
+          ======================================================== */}
+      {isClassSettingsModalOpen && (
+        <div
+          id="modal-subject-class-settings"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="class-settings-title"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="class-settings-title" className="text-base sm:text-lg font-bold text-white tracking-tight">
+                    Tetapan Kelas Mengikut Subjek
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Pilih atau ubah kelas yang mengambil subjek pengajaran anda.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsClassSettingsModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Subject Selector Tabs */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Pilih Subjek untuk Ditetapkan:</span>
+              </label>
+
+              <div className="flex flex-wrap gap-2">
+                {availableSubjects.map((sub) => {
+                  const isActiveSub = sub.code.toUpperCase() === editingSubjectCode.toUpperCase();
+                  return (
+                    <button
+                      key={sub.code}
+                      type="button"
+                      onClick={() => handleSwitchEditingSubject(sub.code)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer ${
+                        isActiveSub
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <span>{sub.code}</span>
+                      {isActiveSub && <Check className="w-3.5 h-3.5 text-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Active Subject Info Box */}
+            {editingSubjectCode && (
+              <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-indigo-300 font-mono">
+                    {editingSubjectCode}
+                  </span>
+                  <span className="text-[11px] text-indigo-300/80 font-semibold">
+                    {editingClasses.length} kelas dipilih
+                  </span>
+                </div>
+                <p className="text-xs text-white font-medium">
+                  {subjects.find((s) => s.code.toUpperCase() === editingSubjectCode.toUpperCase())?.name || editingSubjectCode}
+                </p>
+                {editingSubjectCode === 'MPU2412' && (
+                  <p className="text-[11px] text-emerald-300/90 pt-1 flex items-center gap-1 font-medium">
+                    <Info className="w-3.5 h-3.5 text-emerald-400 inline shrink-0" />
+                    <span>Cadangan: Subjek MPU2412 diambil oleh kelas <strong>DIA4A, DIA4B, DIA4C</strong>.</span>
+                  </p>
+                )}
+                {editingSubjectCode === 'MPU2162' && (
+                  <p className="text-[11px] text-emerald-300/90 pt-1 flex items-center gap-1 font-medium">
+                    <Info className="w-3.5 h-3.5 text-emerald-400 inline shrink-0" />
+                    <span>Cadangan: Subjek MPU2162 diambil oleh 1 kelas sahaja iaitu <strong>DIA3A</strong>.</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Class Selection Checkbox / Toggle Grid */}
+            <div className="space-y-2.5">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Tandakan Kelas yang Mengambil Subjek Ini:</span>
+                </span>
+                <span className="text-[11px] text-slate-400 font-normal lowercase">
+                  (klik untuk pilih / batal)
+                </span>
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                {allCollegeClasses.map((cls) => {
+                  const isChecked = editingClasses.some((c) => c.toUpperCase() === cls.toUpperCase());
+                  return (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => handleToggleClassForEditing(cls)}
+                      className={`p-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                        isChecked
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20 ring-1 ring-indigo-400'
+                          : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <span className="font-mono">{cls}</span>
+                      {isChecked ? (
+                        <Check className="w-4 h-4 text-white" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-md border border-slate-700" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Add Custom Class Code input */}
+              <div className="pt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Tambah kod kelas lain (cth: DIA4D)..."
+                  value={newClassInput}
+                  onChange={(e) => setNewClassInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomClass();
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono uppercase"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomClass}
+                  disabled={!newClassInput.trim()}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsClassSettingsModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                id="btn-save-class-settings"
+                onClick={handleSaveClassSettings}
+                disabled={!editingSubjectCode}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-extrabold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Check className="w-4 h-4 text-indigo-200" />
+                <span>Simpan Tetapan Kelas</span>
+              </button>
             </div>
           </div>
         </div>

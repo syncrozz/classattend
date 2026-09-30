@@ -394,6 +394,22 @@ export default function App() {
     });
   };
 
+  // Update classes assigned to a subject
+  const handleUpdateSubjectClasses = (subjectCode: string, classNames: string[]) => {
+    const res = attendanceEngine.updateSubjectClasses(subjectCode, classNames, activeLecturer);
+    setSubjects(res.subjects);
+    setTeachingAssignments(res.teachingAssignments);
+    soundService.playSuccess();
+    auditLogger.log({
+      category: 'MASTER_DATA',
+      action: 'Kemaskini Senarai Kelas Subjek',
+      details: `Kelas bagi subjek ${subjectCode} telah dikemas kini kepada [${classNames.join(', ')}].`,
+      performedBy: activeLecturer?.name || 'Pensyarah',
+      target: subjectCode,
+      severity: 'INFO'
+    });
+  };
+
 
   // Delete Subject
   const handleDeleteSubject = (subjectId: string) => {
@@ -906,6 +922,7 @@ export default function App() {
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
                 onGoToStudents={() => handleTabChange('students')}
                 onGoToReports={() => handleTabChange('reports')}
+                onUpdateSubjectClasses={handleUpdateSubjectClasses}
               />
             ) : (
               <DashboardView

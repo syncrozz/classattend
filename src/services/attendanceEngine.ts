@@ -291,27 +291,89 @@ class AttendanceEngine {
         if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
           this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
           this.saveTeachingAssignmentsLocally();
-        } else {
-          const khairiHasOutdatedTa = this.teachingAssignments.some(
+        }
+
+        // Enforce authoritative subject-class mapping:
+        // MPU2162 is taken ONLY by DIA3A.
+        // MPU2412 is taken ONLY by DIA4A, DIA4B, DIA4C.
+        const invalidMpu2162Ta = this.teachingAssignments.some(
+          (ta) =>
+            ta.subjectCode?.toUpperCase() === 'MPU2162' &&
+            normalizeClassCode(ta.className) !== 'DIA3A'
+        );
+        const invalidMpu2412Ta = this.teachingAssignments.some(
+          (ta) =>
+            ta.subjectCode?.toUpperCase() === 'MPU2412' &&
+            normalizeClassCode(ta.className) === 'DIA3A'
+        );
+        const mpu2412MissingClasses = !['DIA4A', 'DIA4B', 'DIA4C'].every((cls) =>
+          this.teachingAssignments.some(
             (ta) =>
-              (ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI'))) &&
-              ta.subjectCode === 'MPU2162' &&
-              (ta.className === 'DIA_4A' || ta.className === 'DIA_4B')
-          );
-          if (khairiHasOutdatedTa) {
-            this.teachingAssignments = this.teachingAssignments.filter(
-              (ta) => !(ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI')))
-            );
-            this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
-            this.saveTeachingAssignmentsLocally();
-          } else {
-            const hasKhairiTa = this.teachingAssignments.some(
-              (ta) => ta.lecturerId === 'LEC-KHAIRI' || (ta.lecturerName && ta.lecturerName.toUpperCase().includes('AHMAD KHAIRI'))
-            );
-            if (!hasKhairiTa && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
-              this.teachingAssignments.push(...INITIAL_TEACHING_ASSIGNMENTS);
-              this.saveTeachingAssignmentsLocally();
+              ta.subjectCode?.toUpperCase() === 'MPU2412' &&
+              normalizeClassCode(ta.className) === cls
+          )
+        );
+
+        if (this.teachingAssignments.length === 0 || invalidMpu2162Ta || invalidMpu2412Ta || mpu2412MissingClasses) {
+          // Remove any MPU2162 assignment that is NOT DIA3A, and any MPU2412 assignment that is DIA3A
+          this.teachingAssignments = this.teachingAssignments.filter((ta) => {
+            const code = ta.subjectCode?.toUpperCase();
+            const normCls = normalizeClassCode(ta.className);
+            if (code === 'MPU2162') {
+              return normCls === 'DIA3A';
             }
+            if (code === 'MPU2412') {
+              return normCls === 'DIA4A' || normCls === 'DIA4B' || normCls === 'DIA4C';
+            }
+            return true;
+          });
+
+          // Ensure MPU2162 has DIA3A assignment for Khairi
+          if (!this.teachingAssignments.some((ta) => ta.subjectCode?.toUpperCase() === 'MPU2162' && normalizeClassCode(ta.className) === 'DIA3A')) {
+            this.teachingAssignments.push({
+              id: 'TA-KHAIRI-MPU2162-DIA3A',
+              lecturerId: 'LEC-KHAIRI',
+              lecturerName: 'AHMAD KHAIRI BIN MOHD',
+              lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+              subjectId: 'SUB-MPU2162',
+              subjectCode: 'MPU2162',
+              subjectName: 'PENGAJIAN MALAYSIA 2',
+              className: 'DIA3A',
+              status: 'ACTIVE',
+              createdAt: '2025-01-10T08:00:00.000Z'
+            });
+          }
+
+          // Ensure MPU2412 has DIA4A, DIA4B, DIA4C assignments for Khairi
+          ['DIA4A', 'DIA4B', 'DIA4C'].forEach((cls) => {
+            if (!this.teachingAssignments.some((ta) => ta.subjectCode?.toUpperCase() === 'MPU2412' && normalizeClassCode(ta.className) === cls)) {
+              this.teachingAssignments.push({
+                id: `TA-KHAIRI-MPU2412-${cls}`,
+                lecturerId: 'LEC-KHAIRI',
+                lecturerName: 'AHMAD KHAIRI BIN MOHD',
+                lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+                subjectId: 'SUB-MPU2412',
+                subjectCode: 'MPU2412',
+                subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
+                className: cls,
+                status: 'ACTIVE',
+                createdAt: '2025-01-10T08:00:00.000Z'
+              });
+            }
+          });
+
+          this.saveTeachingAssignmentsLocally();
+
+          // Sync clean sections in subjects catalog
+          const mpu2162 = this.subjects.find((s) => s.code.toUpperCase() === 'MPU2162');
+          if (mpu2162) {
+            mpu2162.sections = ['DIA3A'];
+            this.saveSubject(mpu2162);
+          }
+          const mpu2412 = this.subjects.find((s) => s.code.toUpperCase() === 'MPU2412');
+          if (mpu2412) {
+            mpu2412.sections = ['DIA4A', 'DIA4B', 'DIA4C'];
+            this.saveSubject(mpu2412);
           }
         }
 
@@ -346,13 +408,17 @@ class AttendanceEngine {
                   'Jabatan Pengajian Am';
 
                 let subObj = this.subjects.find((s) => s.code.toUpperCase() === code);
+                const isMpu2162 = code === 'MPU2162';
+                const isMpu2412 = code === 'MPU2412';
+                const dedicatedClasses = isMpu2162 ? ['DIA3A'] : isMpu2412 ? ['DIA4A', 'DIA4B', 'DIA4C'] : assignedClasses;
+
                 if (!subObj) {
                   subObj = {
                     id: `SUB-${code}`,
                     code,
                     name: subName,
                     department: subDept,
-                    sections: assignedClasses,
+                    sections: dedicatedClasses,
                     lecturerId: lec.id,
                     lecturerName: lec.name,
                     lecturerEmail: lec.email,
@@ -364,12 +430,20 @@ class AttendanceEngine {
                   subObj.lecturerId = lec.id;
                   subObj.lecturerName = lec.name;
                   subObj.lecturerEmail = lec.email;
-                  subObj.sections = splitClassNames([...(subObj.sections || []), ...assignedClasses].join(', '));
+                  subObj.sections = isMpu2162
+                    ? ['DIA3A']
+                    : isMpu2412
+                    ? ['DIA4A', 'DIA4B', 'DIA4C']
+                    : splitClassNames([...(subObj.sections || []), ...assignedClasses].join(', '));
                   stateNeedsLocalSave = true;
                 }
 
                 const targetClasses =
-                  assignedClasses.length > 0
+                  isMpu2162
+                    ? ['DIA3A']
+                    : isMpu2412
+                    ? ['DIA4A', 'DIA4B', 'DIA4C']
+                    : assignedClasses.length > 0
                     ? assignedClasses
                     : subObj.sections && subObj.sections.length > 0
                     ? subObj.sections
@@ -1002,7 +1076,22 @@ class AttendanceEngine {
             return;
           }
 
-          const data = snapshot.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
+          let data = snapshot.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
+
+          // Authoritative sanitization: Filter out invalid cross-subject class assignments
+          data = data.filter((ta) => {
+            const code = ta.subjectCode?.toUpperCase();
+            const normCls = normalizeClassCode(ta.className);
+            if (code === 'MPU2162' && normCls !== 'DIA3A') {
+              if (db && ta.id) deleteDoc(doc(db, 'teaching_assignments', ta.id)).catch(() => {});
+              return false;
+            }
+            if (code === 'MPU2412' && normCls === 'DIA3A') {
+              if (db && ta.id) deleteDoc(doc(db, 'teaching_assignments', ta.id)).catch(() => {});
+              return false;
+            }
+            return true;
+          });
 
           if (data.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
             this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
@@ -2035,6 +2124,82 @@ class AttendanceEngine {
     if (!lecturer) return [];
     const codes = new Set(this.getLecturerAssignedSubjectCodes(lecturer));
     return this.subjects.filter((s) => codes.has(s.code.trim().toUpperCase()));
+  }
+
+  /**
+   * Updates assigned classes for a specific subject and lecturer, synchronizing both
+   * the subject's section catalog and active Teaching Assignments in real-time.
+   */
+  public updateSubjectClasses(
+    subjectCode: string,
+    newClasses: string[],
+    lecturer?: Lecturer | null
+  ): { subjects: Subject[]; teachingAssignments: TeachingAssignment[] } {
+    const normCode = subjectCode.trim().toUpperCase();
+    const cleanClasses = Array.from(new Set(newClasses.map((c) => c.trim().toUpperCase()).filter(Boolean)));
+
+    // 1. Update subject.sections
+    const subIdx = this.subjects.findIndex((s) => s.code.toUpperCase() === normCode);
+    if (subIdx >= 0) {
+      this.subjects[subIdx] = {
+        ...this.subjects[subIdx],
+        sections: cleanClasses
+      };
+      this.saveSubject(this.subjects[subIdx]);
+    }
+
+    // 2. Update teaching assignments for this subject & lecturer
+    const targetLecturer = lecturer || this.activeLecturer;
+    if (targetLecturer) {
+      const lecId = targetLecturer.id;
+      const lecName = targetLecturer.name;
+      const lecEmail = targetLecturer.email;
+
+      // Keep teaching assignments for other subjects or other lecturers
+      const otherTas = this.teachingAssignments.filter(
+        (ta) =>
+          !(
+            ta.subjectCode?.toUpperCase() === normCode &&
+            (ta.lecturerId === lecId ||
+              (ta.lecturerEmail && ta.lecturerEmail.toLowerCase() === lecEmail.toLowerCase()) ||
+              (ta.lecturerName && ta.lecturerName.toLowerCase() === lecName.toLowerCase()))
+          )
+      );
+
+      // Create new active assignments for each selected class
+      const newTas: TeachingAssignment[] = cleanClasses.map((cls) => ({
+        id: `TA-${lecId}-${normCode}-${cls}`,
+        lecturerId: lecId,
+        lecturerName: lecName,
+        lecturerEmail: lecEmail,
+        subjectId: this.subjects[subIdx]?.id || `SUB-${normCode}`,
+        subjectCode: normCode,
+        subjectName: this.subjects[subIdx]?.name || normCode,
+        className: cls,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString()
+      }));
+
+      this.teachingAssignments = [...otherTas, ...newTas];
+      this.saveTeachingAssignmentsLocally();
+
+      if (db) {
+        try {
+          const batch = writeBatch(db);
+          newTas.forEach((ta) => {
+            batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+          });
+          batch.commit().catch(console.warn);
+        } catch (e) {
+          console.warn('Batch teaching assignments update error:', e);
+        }
+      }
+    }
+
+    return {
+      subjects: [...this.subjects],
+      teachingAssignments: [...this.teachingAssignments]
+    };
   }
 
   public getPendingLecturers(): Lecturer[] {

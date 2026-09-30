@@ -136,9 +136,7 @@ class AuditLoggerService {
     if (db) {
       try {
         const docRef = doc(collection(db, 'audit_logs'), newLog.id);
-        setDoc(docRef, sanitizeForFirestore(newLog)).catch((err) => {
-          console.warn('Silent Firestore audit log sync warning:', err);
-        });
+        setDoc(docRef, sanitizeForFirestore(newLog)).catch(() => {});
       } catch (err) {
         // Silently continue
       }
