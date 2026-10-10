@@ -285,53 +285,5 @@
   thead {
     display: table-header-group !important;
   }
-
-  /* Attendance Matrix Print Rules (A4 Landscape & Crisp Excel Borders) */
-  #attendance-matrix-view-container,
-  #matrix-scroll-wrapper {
-    overflow: visible !important;
-    max-height: none !important;
-    border: none !important;
-    box-shadow: none !important;
-    width: 100% !important;
-    background: #ffffff !important;
-  }
-
-  #attendance-matrix-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 9px !important;
-    page-break-inside: auto !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #attendance-matrix-table th,
-  #attendance-matrix-table td {
-    position: static !important;
-    left: auto !important;
-    top: auto !important;
-    border: 1px solid #000000 !important;
-    padding: 3px 4px !important;
-    font-size: 9px !important;
-    max-width: none !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #attendance-matrix-table th {
-    background-color: #f1f5f9 !important;
-    color: #000000 !important;
-    font-weight: 800 !important;
-  }
-
-  #attendance-matrix-table thead {
-    display: table-header-group !important;
-  }
-
-  #attendance-matrix-table tr {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
 }
 

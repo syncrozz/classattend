@@ -2,16 +2,16 @@ import React, { useState, useMemo } from 'react';
 import {
   Student,
   AttendanceSession,
-  Subject,
   AttendanceRecord,
-  Enrollment,
-  TeachingAssignment,
-  Lecturer
+  Subject,
+  Lecturer,
+  TeachingAssignment
 } from '../types';
-import { areClassesMatching, normalizeClassCode } from '../utils/classHelper';
+import { areClassesMatching } from '../utils/classHelper';
 import {
   buildAttendanceMatrix,
-  AttendanceMatrixData
+  AttendanceMatrixData,
+  getScopedSubjectsForClass
 } from '../utils/attendanceMatrix';
 import {
   exportAttendanceMatrixToCSV,
@@ -24,14 +24,14 @@ import {
   BookOpen,
   Users,
   Search,
-  RotateCcw,
-  CheckCircle2,
+  Filter,
   AlertTriangle,
-  Info,
+  CheckCircle2,
+  XCircle,
   Clock,
+  RotateCcw,
   Sparkles,
-  Layers,
-  FileSpreadsheet
+  ShieldCheck
 } from 'lucide-react';
 
 interface AttendanceMatrixViewProps {
@@ -39,12 +39,11 @@ interface AttendanceMatrixViewProps {
   sessions: AttendanceSession[];
   subjects?: Subject[];
   attendanceRecords: AttendanceRecord[];
-  enrollments?: Enrollment[];
+  uniqueClasses: string[];
   teachingAssignments?: TeachingAssignment[];
   isAdmin?: boolean;
   activeLecturer?: Lecturer | null;
   onRequestAdminAccess?: (actionName?: string) => void;
-  uniqueClasses: string[];
 }
 
 export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
@@ -52,507 +51,301 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
   sessions,
   subjects = [],
   attendanceRecords,
-  enrollments = [],
+  uniqueClasses,
   teachingAssignments = [],
   isAdmin = false,
   activeLecturer = null,
-  onRequestAdminAccess,
-  uniqueClasses
+  onRequestAdminAccess
 }) => {
-  // 1. Initial State: Class, Subject, Date Range, Search
+  // Class selection state (defaults to first available class)
   const [selectedClass, setSelectedClass] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
-  const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
-  // Synchronize selectedClass if uniqueClasses changes
+  // Sync selectedClass if uniqueClasses change
   React.useEffect(() => {
-    if (uniqueClasses.length > 0 && !uniqueClasses.some((c) => areClassesMatching(c, selectedClass))) {
+    if (uniqueClasses.length > 0 && !uniqueClasses.includes(selectedClass)) {
       setSelectedClass(uniqueClasses[0]);
     }
   }, [uniqueClasses, selectedClass]);
 
-  // 2. Discover available subjects taught for the selected class (respecting lecturer scoping)
-  const availableSubjectsForClass = useMemo(() => {
-    // Determine if lecturer privacy scoping is active
-    const isLecturerRestricted = Boolean(
-      activeLecturer && (
-        !isAdmin ||
-        activeLecturer.role !== 'ADMIN' ||
-        activeLecturer.email?.trim().toLowerCase() === 'khairi@bpenawar.kpm.edu.my'
-      )
+  // Determine if lecturer privacy scoping is active
+  const isLecturerRestricted = Boolean(activeLecturer && !isAdmin && activeLecturer.role !== 'ADMIN');
+
+  // Derive subjects available for the selected class, strictly filtered by lecturer permissions
+  const classSubjects = useMemo(() => {
+    return getScopedSubjectsForClass(
+      selectedClass,
+      sessions,
+      teachingAssignments,
+      subjects,
+      activeLecturer,
+      isAdmin
     );
+  }, [selectedClass, sessions, teachingAssignments, subjects, activeLecturer, isAdmin]);
 
-    const lecId = (activeLecturer?.id || '').trim().toLowerCase();
-    const lecEmail = (activeLecturer?.email || '').trim().toLowerCase();
-    const lecName = (activeLecturer?.name || '').trim().toLowerCase();
+  // Selected subject state
+  const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(() => classSubjects[0]?.code || '');
 
-    // Check if an entity belongs to this lecturer
-    const matchesLecturer = (item: {
-      lecturerId?: string;
-      lecturerEmail?: string;
-      lecturerName?: string;
-    }) => {
-      if (!activeLecturer) return true;
-      const mId = Boolean(item.lecturerId && lecId && item.lecturerId.trim().toLowerCase() === lecId);
-      const mEmail = Boolean(item.lecturerEmail && lecEmail && item.lecturerEmail.trim().toLowerCase() === lecEmail);
-      const mName = Boolean(item.lecturerName && lecName && item.lecturerName.trim().toLowerCase() === lecName);
-      return mId || mEmail || mName;
-    };
-
-    // Helper to get course full name from subjects list or lecturer profiles
-    const getSubjectFullName = (code: string, fallbackName?: string) => {
-      const found = subjects.find((s) => s.code.trim().toUpperCase() === code);
-      if (found?.name && found.name.trim() !== code) return found.name.trim();
-      if (fallbackName && fallbackName.trim() && fallbackName.trim().toUpperCase() !== code) {
-        return fallbackName.trim();
-      }
-      if (activeLecturer?.assignedSubjects) {
-        for (const sStr of activeLecturer.assignedSubjects) {
-          if (sStr.includes('-')) {
-            const [c, ...n] = sStr.split('-');
-            if (c.trim().toUpperCase() === code) {
-              return n.join('-').trim();
-            }
-          }
-        }
-      }
-      return code;
-    };
-
-    // When lecturer is restricted, build their authoritative catalog of taught subjects and classes
-    if (isLecturerRestricted && activeLecturer) {
-      const lecturerSubjectDetails = new Map<
-        string,
-        { code: string; name: string; classes: Set<string> }
-      >();
-
-      // A. From teaching assignments (authoritative)
-      (teachingAssignments || []).forEach((ta) => {
-        if (ta.status === 'ACTIVE' && matchesLecturer(ta) && ta.subjectCode) {
-          const code = ta.subjectCode.trim().toUpperCase();
-          if (!lecturerSubjectDetails.has(code)) {
-            lecturerSubjectDetails.set(code, {
-              code,
-              name: getSubjectFullName(code, ta.subjectName),
-              classes: new Set<string>()
-            });
-          }
-          if (ta.className && ta.className !== 'ALL' && ta.className !== 'SEMUA') {
-            lecturerSubjectDetails.get(code)!.classes.add(ta.className.trim());
-          }
-        }
-      });
-
-      // B. From activeLecturer.assignedSubjects (e.g. 'MPU2162 - PENGAJIAN MALAYSIA 2')
-      (activeLecturer.assignedSubjects || []).forEach((subStr) => {
-        const rawCode = subStr.includes('-')
-          ? subStr.split('-')[0].trim().toUpperCase()
-          : subStr.trim().toUpperCase();
-        const rawName = subStr.includes('-')
-          ? subStr.split('-').slice(1).join('-').trim()
-          : subStr.trim();
-        if (rawCode) {
-          if (!lecturerSubjectDetails.has(rawCode)) {
-            lecturerSubjectDetails.set(rawCode, {
-              code: rawCode,
-              name: getSubjectFullName(rawCode, rawName),
-              classes: new Set<string>()
-            });
-          }
-        }
-      });
-
-      // C. From master subjects catalog where this lecturer is assigned
-      subjects.forEach((sub) => {
-        if (matchesLecturer(sub) && sub.code) {
-          const code = sub.code.trim().toUpperCase();
-          if (!lecturerSubjectDetails.has(code)) {
-            lecturerSubjectDetails.set(code, {
-              code,
-              name: sub.name?.trim() || code,
-              classes: new Set<string>()
-            });
-          }
-          (sub.sections || []).forEach((sec) => {
-            if (sec && sec.trim()) {
-              lecturerSubjectDetails.get(code)!.classes.add(sec.trim());
-            }
-          });
-        }
-      });
-
-      // D. From authorized sessions
-      sessions.forEach((s) => {
-        if (matchesLecturer(s) && s.subjectCode) {
-          const code = s.subjectCode.trim().toUpperCase();
-          if (!lecturerSubjectDetails.has(code)) {
-            lecturerSubjectDetails.set(code, {
-              code,
-              name: getSubjectFullName(code, s.subjectName || s.sessionName),
-              classes: new Set<string>()
-            });
-          }
-          if (s.className && s.className !== 'ALL' && s.className !== 'SEMUA') {
-            lecturerSubjectDetails.get(code)!.classes.add(s.className.trim());
-          }
-        }
-      });
-
-      // Filter down to subjects taught for the selectedClass
-      const classMatchingSubjects = new Map<string, { code: string; name: string }>();
-
-      lecturerSubjectDetails.forEach((info, code) => {
-        // If subject has explicit classes registered, check if any matches selectedClass
-        const hasMatchingClass = Array.from(info.classes).some(
-          (cls) => areClassesMatching(cls, selectedClass) || cls === 'ALL' || cls === 'SEMUA'
-        );
-
-        if (hasMatchingClass) {
-          classMatchingSubjects.set(code, { code: info.code, name: info.name });
-        }
-      });
-
-      // 1. If we have subjects specifically matched to this selected class, return strictly those!
-      if (classMatchingSubjects.size > 0) {
-        return Array.from(classMatchingSubjects.values()).sort((a, b) => a.code.localeCompare(b.code));
-      }
-
-      // 2. If no explicit class mapping exists, check if there are subjects with unrestricted classes
-      const unconstrainedSubjects = new Map<string, { code: string; name: string }>();
-      lecturerSubjectDetails.forEach((info, code) => {
-        if (info.classes.size === 0) {
-          unconstrainedSubjects.set(code, { code: info.code, name: info.name });
-        }
-      });
-
-      if (unconstrainedSubjects.size > 0) {
-        return Array.from(unconstrainedSubjects.values()).sort((a, b) => a.code.localeCompare(b.code));
-      }
-
-      // 3. Fallback strictly to all subjects taught by this lecturer (NEVER any other lecturer's subjects)
-      return Array.from(lecturerSubjectDetails.values()).map((info) => ({
-        code: info.code,
-        name: info.name
-      })).sort((a, b) => a.code.localeCompare(b.code));
-    }
-
-    // Admin / Unrestricted Mode: Collect all subjects available for selectedClass
-    const subjMap = new Map<string, { code: string; name: string }>();
-
-    // A. From teaching assignments (authoritative)
-    (teachingAssignments || []).forEach((ta) => {
-      const matchClass =
-        !ta.className ||
-        ta.className === 'ALL' ||
-        areClassesMatching(ta.className, selectedClass);
-      const isActive = ta.status === 'ACTIVE';
-
-      if (matchClass && isActive && ta.subjectCode) {
-        const cleanCode = ta.subjectCode.trim().toUpperCase();
-        if (!subjMap.has(cleanCode)) {
-          subjMap.set(cleanCode, {
-            code: cleanCode,
-            name: getSubjectFullName(cleanCode, ta.subjectName)
-          });
-        }
-      }
-    });
-
-    // B. From sessions for this class
-    sessions.forEach((s) => {
-      const matchClass =
-        !s.className ||
-        s.className === 'ALL' ||
-        areClassesMatching(s.className, selectedClass);
-      if (matchClass && s.subjectCode) {
-        const cleanCode = s.subjectCode.trim().toUpperCase();
-        if (!subjMap.has(cleanCode)) {
-          subjMap.set(cleanCode, {
-            code: cleanCode,
-            name: getSubjectFullName(cleanCode, s.subjectName || s.sessionName)
-          });
-        }
-      }
-    });
-
-    // C. From general subjects list with matching sections
-    subjects.forEach((sub) => {
-      const matchClass = (sub.sections || []).some((sec) => areClassesMatching(sec, selectedClass));
-      if (matchClass && sub.code) {
-        const cleanCode = sub.code.trim().toUpperCase();
-        if (!subjMap.has(cleanCode)) {
-          subjMap.set(cleanCode, {
-            code: cleanCode,
-            name: sub.name || cleanCode
-          });
-        }
-      }
-    });
-
-    return Array.from(subjMap.values()).sort((a, b) => a.code.localeCompare(b.code));
-  }, [selectedClass, teachingAssignments, sessions, subjects, activeLecturer, isAdmin]);
-
-  // Synchronize selectedSubjectCode when available subjects change
+  // Keep selectedSubjectCode in sync when class changes
   React.useEffect(() => {
-    if (availableSubjectsForClass.length > 0) {
-      const exists = availableSubjectsForClass.some((s) => s.code === selectedSubjectCode);
+    if (classSubjects.length > 0) {
+      const exists = classSubjects.some((s) => s.code === selectedSubjectCode);
       if (!exists) {
-        setSelectedSubjectCode(availableSubjectsForClass[0].code);
+        setSelectedSubjectCode(classSubjects[0].code);
       }
     } else {
       setSelectedSubjectCode('');
     }
-  }, [availableSubjectsForClass, selectedSubjectCode]);
+  }, [classSubjects, selectedSubjectCode]);
 
-  // 3. Compute Attendance Matrix using useMemo
+  // Date range filters
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+
+  // Search filter for students
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Selected subject name
+  const selectedSubject = classSubjects.find((s) => s.code === selectedSubjectCode);
+  const selectedSubjectName = selectedSubject?.name || selectedSubjectCode;
+
+  // Filter sessions matching class, subject, and date range
+  const filteredSessions = useMemo(() => {
+    // If lecturer is restricted and has no assigned subjects for this class, strictly return empty
+    if (isLecturerRestricted && (!selectedSubjectCode || classSubjects.length === 0)) {
+      return [];
+    }
+
+    return sessions.filter((s) => {
+      const matchClass = areClassesMatching(s.className, selectedClass);
+      const matchSubject = !selectedSubjectCode
+        ? !isLecturerRestricted
+        : (s.subjectCode || '').trim().toUpperCase() === selectedSubjectCode.trim().toUpperCase();
+      
+      const sDate = s.date ? s.date.split('T')[0] : '';
+      const matchStart = !startDate || (sDate && sDate >= startDate);
+      const matchEnd = !endDate || (sDate && sDate <= endDate);
+
+      return matchClass && matchSubject && matchStart && matchEnd;
+    });
+  }, [sessions, selectedClass, selectedSubjectCode, startDate, endDate, isLecturerRestricted, classSubjects]);
+
+  // Target students for the selected class (with optional search query filter)
+  const targetStudents = useMemo(() => {
+    return students.filter((st) => {
+      const matchClass = areClassesMatching(st.className, selectedClass);
+      if (!matchClass) return false;
+
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      const name = (st.name || '').toLowerCase();
+      const id = (st.studentId || st.id || '').toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }, [students, selectedClass, searchQuery]);
+
+  // Calculate complete Attendance Matrix data
   const matrixData: AttendanceMatrixData = useMemo(() => {
-    return buildAttendanceMatrix({
+    return buildAttendanceMatrix(
+      targetStudents,
+      filteredSessions,
+      attendanceRecords,
       selectedClass,
       selectedSubjectCode,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-      students,
-      sessions,
-      attendanceRecords,
-      enrollments
-    });
+      selectedSubjectName
+    );
   }, [
+    targetStudents,
+    filteredSessions,
+    attendanceRecords,
     selectedClass,
     selectedSubjectCode,
-    startDate,
-    endDate,
-    students,
-    sessions,
-    attendanceRecords,
-    enrollments
+    selectedSubjectName
   ]);
 
-  // Filter rows by search query
-  const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return matrixData.rows;
-    const q = searchQuery.toLowerCase().trim();
-    return matrixData.rows.filter(
-      (r) =>
-        (r.student.name || '').toLowerCase().includes(q) ||
-        (r.student.studentId || '').toLowerCase().includes(q) ||
-        (r.student.id || '').toLowerCase().includes(q)
-    );
-  }, [matrixData.rows, searchQuery]);
+  // Print Handler: Automatically sets landscape format
+  const handlePrint = () => {
+    const style = document.createElement('style');
+    style.id = 'matrix-print-page-style';
+    style.textContent = `
+      @media print {
+        @page {
+          size: A4 landscape !important;
+          margin: 6mm 8mm !important;
+        }
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
 
-  // Current Subject Display Name
-  const selectedSubjectObj = availableSubjectsForClass.find((s) => s.code === selectedSubjectCode);
-  const currentSubjectName = selectedSubjectObj?.name || matrixData.subjectName || selectedSubjectCode;
+    window.print();
 
-  // 4. Export CSV Action
+    setTimeout(() => {
+      const el = document.getElementById('matrix-print-page-style');
+      if (el) el.remove();
+    }, 1200);
+  };
+
+  // CSV Export Handler with UTF-8 BOM
   const handleExportCSV = () => {
     if (!isAdmin && !activeLecturer && onRequestAdminAccess) {
-      onRequestAdminAccess(`Eksport Matriks Kehadiran (${selectedClass} - ${selectedSubjectCode})`);
+      onRequestAdminAccess(`Eksport Matriks Kehadiran (Kelas ${selectedClass} - ${selectedSubjectCode})`);
       return;
     }
 
-    if (matrixData.rows.length === 0) {
-      setExportNotice('Tiada data pelajar untuk dieksport.');
-      setTimeout(() => setExportNotice(null), 3000);
-      return;
-    }
-
-    try {
-      const csvContent = exportAttendanceMatrixToCSV({
-        className: matrixData.className,
-        subjectCode: matrixData.subjectCode,
-        subjectName: currentSubjectName,
-        sessionColumns: matrixData.sessionColumns,
-        rows: matrixData.rows
-      });
-
-      const dateStr = new Date().toISOString().split('T')[0];
-      const safeClass = matrixData.className.replace(/[\s/]/g, '_');
-      const safeSub = (matrixData.subjectCode || 'Subjek').replace(/[\s/]/g, '_');
-      const filename = `Matriks_Kehadiran_${safeClass}_${safeSub}_${dateStr}.csv`;
-
-      downloadCSV(csvContent, filename);
-      setExportNotice(`Fail CSV (${matrixData.rows.length} pelajar) berjaya dimuat turun!`);
-      setTimeout(() => setExportNotice(null), 4000);
-    } catch (err) {
-      console.error('Error exporting matrix CSV:', err);
-      setExportNotice('Ralat semasa mengeksport fail CSV.');
-      setTimeout(() => setExportNotice(null), 4000);
-    }
+    const csvContent = exportAttendanceMatrixToCSV(matrixData);
+    const safeClass = selectedClass.replace(/[\s/]/g, '_');
+    const safeSubject = (selectedSubjectCode || 'Subjek').replace(/[\s/]/g, '_');
+    downloadCSV(csvContent, `Matriks_Kehadiran_${safeClass}_${safeSubject}.csv`);
   };
 
-  // 5. Print Action
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleResetDates = () => {
+  const handleResetFilters = () => {
     setStartDate('');
     setEndDate('');
+    setSearchQuery('');
   };
 
   return (
-    <div id="attendance-matrix-view-container" className="space-y-6 animate-fadeIn pb-12">
-      {/* =========================================================================
-          PRINT-ONLY BANNER HEADER (Visible exclusively when printing / PDF export)
-          ========================================================================= */}
-      <div className="hidden print:block mb-4 border-b-2 border-black pb-3 text-slate-900">
+    <div className="space-y-5 printable-report-container">
+      {/* Printable Official Header (Visible ONLY on print) */}
+      <div className="hidden print:block mb-4 pb-3 border-b-2 border-slate-900 text-slate-900">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">
-              KOLEJ PROFESIONAL MARA BANDAR PENAWAR
+            <h1 className="text-base font-extrabold tracking-tight uppercase">
+              Kolej Profesional MARA Bandar Penawar
             </h1>
-            <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide mt-0.5">
-              LAPORAN MATRIKS KEHADIRAN KULIAH
+            <h2 className="text-sm font-bold text-slate-800 uppercase mt-0.5">
+              Laporan Matriks Kehadiran Kuliah Pelajar
             </h2>
           </div>
-          <div className="text-right text-[11px] font-mono">
-            <div>Tarikh Cetak: {new Date().toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-            <div>Masa: {new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div className="text-right text-[10px] text-slate-600 font-mono">
+            <div>Dicetak Pada: {new Date().toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+            <div>Sistem: ClassAttend KPMBP</div>
           </div>
         </div>
+
         <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-slate-300 text-xs">
           <div>
-            <span className="font-bold text-slate-700">Kelas:</span>{' '}
-            <strong className="text-slate-900 font-extrabold">{selectedClass}</strong>
-          </div>
-          <div className="col-span-2">
-            <span className="font-bold text-slate-700">Subjek:</span>{' '}
-            <strong className="text-slate-900 font-extrabold">{selectedSubjectCode} {currentSubjectName ? `- ${currentSubjectName}` : ''}</strong>
-          </div>
-          <div className="text-right">
-            <span className="font-bold text-slate-700">Jumlah Sesi:</span>{' '}
-            <strong className="text-slate-900 font-extrabold">{matrixData.totalSessions}</strong> |{' '}
-            <span className="font-bold text-slate-700">Pelajar:</span>{' '}
-            <strong className="text-slate-900 font-extrabold">{matrixData.totalStudents}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          SCREEN HEADER & EXPORT ACTIONS (Hidden during print)
-          ========================================================================= */}
-      <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-teal-500/20 to-emerald-500/20 text-teal-300 border border-teal-500/30 flex items-center justify-center shrink-0 shadow-inner">
-            <FileSpreadsheet className="w-6 h-6" />
+            <span className="text-slate-500 font-medium">Kelas:</span>{' '}
+            <strong className="font-bold">{selectedClass}</strong>
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-white tracking-tight">
-                Laporan Matriks Kehadiran Kuliah
-              </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-500/20 text-teal-300 border border-teal-500/40 uppercase tracking-wider">
-                Format Lembaran
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Paparan matriks semua sesi kuliah dalam satu jadual menyeluruh (Gaya Lembaran Excel).
-            </p>
+            <span className="text-slate-500 font-medium">Kod & Kursus:</span>{' '}
+            <strong className="font-bold">{selectedSubjectCode} — {selectedSubjectName}</strong>
           </div>
-        </div>
-
-        {/* Action Buttons: Print & CSV Export */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            type="button"
-            id="btn-print-matrix-report"
-            onClick={handlePrint}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 text-xs font-bold border border-slate-700 transition-all shadow-sm cursor-pointer active:scale-95"
-            title="Cetak jadual matriks ini dalam kertas A4 Landscape atau simpan sebagai fail PDF"
-          >
-            <Printer className="w-4 h-4 text-slate-300" />
-            <span>Cetak / PDF (A4 Landscape)</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-export-matrix-csv"
-            onClick={handleExportCSV}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-teal-900/30 border border-teal-500/40 transition-all cursor-pointer active:scale-95"
-            title="Eksport data matriks ini ke fail CSV dengan pengekodan UTF-8 BOM untuk Microsoft Excel"
-          >
-            <Download className="w-4 h-4" />
-            <span>Eksport CSV (Excel)</span>
-          </button>
+          <div>
+            <span className="text-slate-500 font-medium">Jumlah Sesi Kuliah:</span>{' '}
+            <strong className="font-bold">{matrixData.columns.length} Sesi</strong>
+          </div>
+          <div>
+            <span className="text-slate-500 font-medium">Jumlah Pelajar:</span>{' '}
+            <strong className="font-bold">{matrixData.rows.length} Orang</strong>
+          </div>
         </div>
       </div>
 
-      {/* Export Toast Notification */}
-      {exportNotice && (
-        <div className="no-print p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{exportNotice}</span>
+      {/* Control Panel: Filters, Actions & Summary (Hidden in print) */}
+      <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4 shadow-lg no-print">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-bold tracking-wide">
+                Jadual Penuh Kehadiran
+              </span>
+              <span className="text-xs text-slate-400">• Satu Jadual Merangkumi Semua Sesi</span>
+            </div>
+            <h3 className="text-lg font-bold text-white tracking-tight mt-1">
+              Matriks Kehadiran Kuliah & Seksyen
+            </h3>
+            {isLecturerRestricted && activeLecturer ? (
+              <p className="text-xs text-indigo-300/90 mt-1 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" />
+                <span>
+                  Mod Pensyarah: Hanya memaparkan subjek yang ditugaskan kepada <strong>{activeLecturer.name}</strong> bagi kelas yang dipilih.
+                </span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-400 mt-0.5">
+                Paparan grid visual status kehadiran setiap pelajar bagi setiap sesi kuliah secara bersiri mengikut tarikh.
+              </p>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* =========================================================================
-          FILTERS SECTION (Hidden during print)
-          ========================================================================= */}
-      <div className="no-print p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Layers className="w-4 h-4 text-teal-400" />
-            <span>Penapis Matriks Kehadiran</span>
-          </span>
-          {(startDate || endDate || searchQuery) && (
+          {/* Action Buttons: Cetak PDF & Eksport CSV */}
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => {
-                handleResetDates();
-                setSearchQuery('');
-              }}
-              className="text-[11px] font-semibold text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+              id="btn-print-matrix-pdf"
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-bold transition-all shadow-sm cursor-pointer hover:border-slate-600"
+              title="Cetak jadual matriks ini dalam saiz kertas A4 Landskap atau simpan sebagai PDF"
             >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset Semua Penapis</span>
+              <Printer className="w-4 h-4 text-indigo-400" />
+              <span>Cetak / PDF (A4 Landskap)</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              id="btn-export-matrix-csv"
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm shadow-emerald-950/40 cursor-pointer"
+              title="Eksport data jadual matriks ini ke fail CSV format Excel dengan sokongan UTF-8 BOM"
+            >
+              <Download className="w-4 h-4 text-emerald-100" />
+              <span>Eksport CSV</span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {/* 1. Dropdown Pilih Kelas */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+        {/* Filters Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-slate-800">
+          {/* Dropdown 1: Kelas */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Pilih Kelas:</span>
+              <span>1. Pilih Kelas / Seksyen</span>
             </label>
             <select
-              id="select-matrix-class"
+              id="matrix-select-class"
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-teal-500 text-white rounded-xl px-3.5 py-2 text-xs font-semibold outline-none transition-colors"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
               {uniqueClasses.map((cls) => (
-                <option key={`matrix-cls-opt-${cls}`} value={cls}>
+                <option key={`matrix-class-${cls}`} value={cls}>
                   Kelas {cls}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* 2. Dropdown Pilih Subjek */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Pilih Subjek / Kursus:</span>
+          {/* Dropdown 2: Subjek */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between gap-1.5">
+              <span className="flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                <span>2. Pilih Kursus / Subjek</span>
+              </span>
+              {isLecturerRestricted && (
+                <span className="text-[10px] text-indigo-300 font-semibold bg-indigo-950/80 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                  Subjek Anda
+                </span>
+              )}
             </label>
             <select
-              id="select-matrix-subject"
+              id="matrix-select-subject"
               value={selectedSubjectCode}
               onChange={(e) => setSelectedSubjectCode(e.target.value)}
-              disabled={availableSubjectsForClass.length === 0}
-              className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-teal-500 text-white rounded-xl px-3.5 py-2 text-xs font-semibold outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={classSubjects.length === 0}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer truncate disabled:opacity-50"
             >
-              {availableSubjectsForClass.length === 0 ? (
+              {classSubjects.length === 0 ? (
                 <option value="">Tiada Subjek Ditugaskan</option>
               ) : (
-                availableSubjectsForClass.map((sub) => (
-                  <option key={`matrix-sub-opt-${sub.code}`} value={sub.code}>
+                classSubjects.map((sub) => (
+                  <option key={`matrix-sub-${sub.code}`} value={sub.code}>
                     {sub.code} — {sub.name}
                   </option>
                 ))
@@ -560,395 +353,388 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
             </select>
           </div>
 
-          {/* 3. Dari Tarikh (Pilihan) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
-              <span>Dari Tarikh (Pilihan):</span>
+          {/* Date Range: Dari & Hingga */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <span>3. Julat Tarikh (Pilihan)</span>
             </label>
-            <input
-              type="date"
-              id="input-matrix-start-date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-teal-500 text-white rounded-xl px-3.5 py-2 text-xs outline-none transition-colors"
-            />
+            <div className="grid grid-cols-2 gap-1.5">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                placeholder="Dari"
+                className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                title="Tarikh Mula"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                placeholder="Hingga"
+                className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                title="Tarikh Hingga"
+              />
+            </div>
           </div>
 
-          {/* 4. Hingga Tarikh (Pilihan) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
-              <span>Hingga Tarikh (Pilihan):</span>
+          {/* Search Box & Reset */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-indigo-400" />
+              <span>4. Cari Pelajar</span>
             </label>
-            <input
-              type="date"
-              id="input-matrix-end-date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-teal-500 text-white rounded-xl px-3.5 py-2 text-xs outline-none transition-colors"
-            />
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Nama / No. ID..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+              </div>
+              {(startDate || endDate || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs cursor-pointer shrink-0"
+                  title="Set semula penapis"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Search bar inside filter box */}
-        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              id="input-search-matrix-student"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nama atau no. matrik pelajar dalam matriks..."
-              className="w-full bg-slate-950 border border-slate-800 focus:border-teal-500 text-white rounded-xl pl-9 pr-3.5 py-1.5 text-xs outline-none transition-colors placeholder:text-slate-500"
-            />
+        {/* Quick Matrix Overview Badges */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-300 border border-slate-700 font-medium">
+              Pelajar: <strong className="text-white">{matrixData.rows.length} orang</strong>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-300 border border-slate-700 font-medium">
+              Sesi Kuliah: <strong className="text-indigo-300">{matrixData.columns.length} sesi</strong>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-300 border border-slate-700 font-medium">
+              Purata Kelas:{' '}
+              <strong className={matrixData.classAveragePercentage >= 80 ? 'text-emerald-400' : 'text-rose-400'}>
+                {matrixData.classAveragePercentage}%
+              </strong>
+            </span>
+            {matrixData.studentsBelow80Count > 0 && (
+              <span className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                <span>{matrixData.studentsBelow80Count} pelajar bawah 80%</span>
+              </span>
+            )}
           </div>
 
-          <div className="text-xs text-slate-400">
-            <span>Memaparkan: </span>
-            <strong className="text-white font-bold">{filteredRows.length}</strong>
-            <span> daripada {matrixData.totalStudents} pelajar</span>
+          <div className="text-[11px] text-slate-400">
+            Subjek: <strong className="text-slate-200">{selectedSubjectCode}</strong> — {selectedSubjectName}
           </div>
         </div>
       </div>
 
-      {/* =========================================================================
-          SUMMARY METRIC CARDS (Hidden during print)
-          ========================================================================= */}
-      <div className="no-print grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Subjek & Kelas</div>
-          <div className="text-sm font-extrabold text-white truncate" title={`${selectedSubjectCode} (${selectedClass})`}>
-            {selectedSubjectCode || 'Tiada Subjek'} <span className="text-teal-400 font-mono">({selectedClass})</span>
-          </div>
-          <div className="text-[10px] text-slate-500 truncate">{currentSubjectName}</div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Jumlah Sesi Kuliah</div>
-          <div className="text-xl font-black text-white">
-            {matrixData.totalSessions} <span className="text-xs text-slate-400 font-normal">Sesi</span>
-          </div>
-          <div className="text-[10px] text-slate-500">
-            {matrixData.totalSessions > 0
-              ? `${matrixData.sessionColumns[0]?.displayDate} — ${matrixData.sessionColumns[matrixData.sessionColumns.length - 1]?.displayDate}`
-              : 'Tiada sesi'}
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Purata Kehadiran</div>
-          <div className="text-xl font-black text-white flex items-baseline gap-1.5">
-            <span className={matrixData.averageAttendanceRate >= 80 ? 'text-emerald-400' : 'text-rose-400'}>
-              {matrixData.averageAttendanceRate}%
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-500">
-            {matrixData.averageAttendanceRate >= 80 ? '✅ Melepasi KPI Kolej' : '⚠️ Di Bawah Sasaran KPI'}
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Amaran Kehadiran</div>
-          <div className="text-xl font-black text-white">
-            <span className={matrixData.belowKpiCount > 0 ? 'text-rose-400' : 'text-slate-300'}>
-              {matrixData.belowKpiCount}
-            </span>
-            <span className="text-xs text-slate-400 font-normal"> Pelajar (&lt; 80%)</span>
-          </div>
-          <div className="text-[10px] text-slate-500">
-            {matrixData.belowKpiCount > 0 ? 'Perlu tindakan / surat amaran' : 'Semua pelajar memenuhi KPI'}
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          THE EXCEL-STYLE MATRIX TABLE
-          ========================================================================= */}
-      {availableSubjectsForClass.length === 0 ? (
-        <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto">
-            <BookOpen className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-white">Tiada Subjek Didaftarkan Bagi Kelas {selectedClass}</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Sila pastikan jadual pengajaran telah ditetapkan untuk kelas ini atau pilih kelas lain daripada senarai.
+      {/* Main Excel-Style Matrix Table */}
+      {matrixData.rows.length === 0 ? (
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-12 text-center text-slate-400 space-y-3">
+          <Users className="w-12 h-12 text-slate-600 mx-auto" />
+          <h4 className="text-base font-bold text-white">Tiada Rekod Pelajar Ditemui</h4>
+          <p className="text-xs max-w-md mx-auto">
+            Tiada pelajar yang sepadan dengan kelas <strong>{selectedClass}</strong> atau penapis carian yang anda masukkan.
           </p>
         </div>
-      ) : matrixData.totalStudents === 0 ? (
-        <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-            <Users className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-white">Tiada Pelajar Dijumpai Bagi Kelas {selectedClass}</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Tiada senarai nama pelajar aktif yang dipadankan dengan kelas ini dalam pangkalan data.
+      ) : classSubjects.length === 0 ? (
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-12 text-center text-slate-400 space-y-3">
+          <BookOpen className="w-12 h-12 text-indigo-400/80 mx-auto" />
+          <h4 className="text-base font-bold text-white">Tiada Subjek Ditugaskan</h4>
+          <p className="text-xs max-w-md mx-auto">
+            {isLecturerRestricted ? (
+              <>Anda tidak mempunyai sebarang subjek yang ditugaskan untuk kelas <strong>{selectedClass}</strong>. Hanya subjek di bawah ketetapan pengajaran anda sahaja yang dipaparkan dalam ruang akaun anda.</>
+            ) : (
+              <>Tiada subjek ditemui bagi kelas <strong>{selectedClass}</strong>.</>
+            )}
           </p>
         </div>
-      ) : matrixData.totalSessions === 0 ? (
-        <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center mx-auto">
-            <Calendar className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-white">
-            Tiada Sesi Kuliah Direkodkan untuk {selectedSubjectCode} ({selectedClass})
-          </h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Belum ada sesi kehadiran yang dibuka bagi kombinasi kelas dan subjek ini dalam julat tarikh yang dipilih.
-            {startDate || endDate ? ' Cuba bersihkan julat tarikh untuk melihat semua sesi.' : ''}
+      ) : matrixData.columns.length === 0 ? (
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-12 text-center text-slate-400 space-y-3">
+          <Calendar className="w-12 h-12 text-slate-600 mx-auto" />
+          <h4 className="text-base font-bold text-white">Tiada Sesi Kuliah Direkodkan</h4>
+          <p className="text-xs max-w-md mx-auto">
+            Belum ada sebarang sesi kuliah yang didaftarkan untuk subjek <strong>{selectedSubjectCode}</strong> bagi kelas <strong>{selectedClass}</strong>. Sila cipta sesi baharu di menu Pengurusan Acara atau semak julat tarikh.
           </p>
-          {(startDate || endDate) && (
-            <button
-              type="button"
-              onClick={handleResetDates}
-              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors cursor-pointer"
-            >
-              Reset Julat Tarikh
-            </button>
-          )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {/* Table Container: Horizontal & Vertical Scrolling with Sticky Header & 4 Left Columns */}
-          <div
-            id="matrix-scroll-wrapper"
-            className="overflow-x-auto overflow-y-auto max-h-[72vh] border border-black rounded-xl bg-white shadow-lg printable-report-container"
-          >
-            <table
-              id="attendance-matrix-table"
-              className="w-full text-slate-900 border-collapse select-text text-xs"
-              style={{
-                fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-              }}
-            >
-              {/* =============================================================
-                  TABLE HEADER (STICKY TOP & LEFT)
-                  ============================================================= */}
-              <thead className="sticky top-0 z-20 bg-slate-100 text-slate-900">
-                <tr className="border-b border-black">
-                  {/* 1. NO. (Sticky Col 1, width: 48px) */}
+        <div className="rounded-2xl border border-slate-700 bg-white shadow-xl overflow-hidden">
+          {/* Scrollable Container with sticky headers and sticky left columns */}
+          <div className="overflow-x-auto max-w-full max-h-[72vh] relative">
+            <table className="w-full border-collapse text-xs text-slate-900 border border-slate-400">
+              <thead className="sticky top-0 z-20 bg-slate-100 uppercase text-[11px] font-bold text-slate-800 select-none shadow-sm">
+                <tr>
+                  {/* Sticky Column 1: NO. */}
                   <th
                     scope="col"
-                    className="sticky left-0 z-30 bg-slate-100 border-r border-black p-2 text-center font-extrabold w-12 min-w-[48px] max-w-[48px]"
+                    style={{ left: 0 }}
+                    className="sticky z-30 bg-slate-200 border border-slate-400 px-2 py-3 text-center min-w-[46px] w-[46px] font-black"
                   >
                     NO.
                   </th>
 
-                  {/* 2. Class (Sticky Col 2, width: 88px) */}
+                  {/* Sticky Column 2: Class (Pink background header) */}
                   <th
                     scope="col"
-                    className="sticky left-[48px] z-30 bg-slate-100 border-r border-black p-2 text-center font-extrabold w-22 min-w-[88px] max-w-[88px]"
+                    style={{ left: 46 }}
+                    className="sticky z-30 bg-pink-200 text-pink-950 border border-slate-400 px-2.5 py-3 text-center min-w-[76px] w-[76px] font-black tracking-wider"
                   >
                     Class
                   </th>
 
-                  {/* 3. NAME (Sticky Col 3, width: 260px) */}
+                  {/* Sticky Column 3: NAME */}
                   <th
                     scope="col"
-                    className="sticky left-[136px] z-30 bg-slate-100 border-r border-black px-3 py-2 text-left font-extrabold w-64 min-w-[260px] max-w-[340px]"
+                    style={{ left: 122 }}
+                    className="sticky z-30 bg-slate-200 border border-slate-400 px-3.5 py-3 text-left min-w-[220px] max-w-[320px] font-black"
                   >
                     NAME
                   </th>
 
-                  {/* 4. ID NUMBER (Sticky Col 4, width: 130px) */}
+                  {/* Sticky Column 4: ID NUMBER */}
                   <th
                     scope="col"
-                    className="sticky left-[396px] z-30 bg-slate-100 border-r border-black p-2 text-center font-extrabold w-32 min-w-[130px] max-w-[130px]"
+                    style={{ left: 342 }}
+                    className="sticky z-30 bg-slate-200 border border-slate-400 px-2.5 py-3 text-center min-w-[125px] w-[125px] font-black whitespace-nowrap"
                   >
                     ID NUMBER
                   </th>
 
-                  {/* 5. DYNAMIC SESSION DATES (Scrollable Horizontally) */}
-                  {matrixData.sessionColumns.map((col, cIdx) => (
+                  {/* Dynamic Session Date Columns */}
+                  {matrixData.columns.map((col, cIdx) => (
                     <th
-                      key={`matrix-col-header-${col.session.id}-${cIdx}`}
+                      key={`matrix-col-${col.session.id}-${cIdx}`}
                       scope="col"
-                      className="border-r border-black px-2 py-2 text-center font-extrabold w-16 min-w-[62px] max-w-[70px] bg-slate-100 whitespace-nowrap"
-                      title={`Sesi: ${col.session.sessionName || col.session.subjectCode} (${col.session.date} ${col.session.startTime || ''}) - Status: ${col.session.status}`}
+                      className="border border-slate-400 px-2 py-2 text-center min-w-[64px] max-w-[72px] bg-slate-100 font-bold text-slate-900"
+                      title={`${col.session.sessionName} (${col.session.date} ${col.session.startTime || ''}) - Status: ${col.session.status}`}
                     >
-                      <div className="font-extrabold leading-tight text-slate-900">{col.displayDate}</div>
-                      {col.subLabel && (
-                        <div className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1 mt-0.5 inline-block">
+                      <div className="font-extrabold text-[11px] tracking-tight">{col.dateFormatted}</div>
+                      {col.subLabel ? (
+                        <div className="text-[10px] font-bold text-indigo-800 bg-indigo-100 rounded px-1.5 py-0.2 mt-0.5 inline-block border border-indigo-200">
                           {col.subLabel}
+                        </div>
+                      ) : (
+                        <div className="text-[9px] font-normal text-slate-500 mt-0.5">
+                          {col.session.status === 'OPEN' ? '🟢 Aktif' : 'Kuliah'}
                         </div>
                       )}
                     </th>
                   ))}
 
-                  {/* 6. SUMMARY HEADERS */}
+                  {/* Right Summary Columns */}
                   <th
                     scope="col"
-                    className="border-r border-black px-3 py-2 text-center font-black w-24 min-w-[85px] bg-slate-100 text-slate-900"
-                    title="Jumlah Sesi Hadir bagi pelajar ini"
+                    className="border border-slate-400 px-2.5 py-3 text-center min-w-[80px] bg-slate-200 font-black text-slate-900"
                   >
                     Jumlah Hadir
                   </th>
                   <th
                     scope="col"
-                    className="border-r border-black px-3 py-2 text-center font-black w-24 min-w-[85px] bg-slate-100 text-slate-900"
-                    title="Jumlah Keseluruhan Sesi Kuliah"
+                    className="border border-slate-400 px-2.5 py-3 text-center min-w-[75px] bg-slate-200 font-black text-slate-900"
                   >
                     Jumlah Sesi
                   </th>
                   <th
                     scope="col"
-                    className="border-r border-black px-3 py-2 text-center font-black w-20 min-w-[70px] bg-slate-100 text-slate-900"
-                    title="Peratusan Kehadiran (KPI ≥ 80%)"
+                    className="border border-slate-400 px-2.5 py-3 text-center min-w-[65px] bg-slate-300 font-black text-slate-950"
                   >
                     %
                   </th>
                 </tr>
               </thead>
 
-              {/* =============================================================
-                  TABLE BODY
-                  ============================================================= */}
-              <tbody className="divide-y divide-black">
-                {filteredRows.map((row) => (
-                  <tr
-                    key={`matrix-row-${row.student.id}`}
-                    className="hover:bg-amber-50/50 transition-colors"
-                  >
-                    {/* 1. NO. (Sticky Col 1) */}
-                    <td
-                      className="sticky left-0 z-10 bg-white border-r border-black p-2 text-center font-mono font-bold text-slate-800 text-xs w-12 min-w-[48px] max-w-[48px]"
+              <tbody>
+                {matrixData.rows.map((row, rIdx) => {
+                  const isEven = rIdx % 2 === 0;
+                  const rowBg = isEven ? 'bg-white' : 'bg-slate-50/60';
+
+                  return (
+                    <tr
+                      key={`matrix-row-${row.student.id}-${rIdx}`}
+                      className="hover:bg-amber-50/40 transition-colors"
                     >
-                      {row.index}
-                    </td>
+                      {/* Sticky 1: NO. */}
+                      <td
+                        style={{ left: 0 }}
+                        className={`sticky z-10 ${rowBg} border border-slate-400 px-2 py-2 text-center font-bold text-slate-700 min-w-[46px] w-[46px]`}
+                      >
+                        {row.no}
+                      </td>
 
-                    {/* 2. Class (Sticky Col 2, Soft Pink Background as requested!) */}
-                    <td
-                      className="sticky left-[48px] z-10 border-r border-black p-2 text-center font-extrabold text-slate-900 text-xs w-22 min-w-[88px] max-w-[88px]"
-                      style={{
-                        backgroundColor: '#ffe4e6' /* Soft pink matching sample image */
-                      }}
-                    >
-                      {row.className}
-                    </td>
+                      {/* Sticky 2: Class (Soft Pink Background / Merah Jambu Lembut) */}
+                      <td
+                        style={{ left: 46 }}
+                        className="sticky z-10 bg-[#fce7f3] text-pink-950 border border-slate-400 px-2.5 py-2 text-center font-black min-w-[76px] w-[76px] tracking-wide"
+                      >
+                        {row.className}
+                      </td>
 
-                    {/* 3. NAME (Sticky Col 3) */}
-                    <td
-                      className="sticky left-[136px] z-10 bg-white border-r border-black px-3 py-2 text-left font-bold text-slate-900 text-xs uppercase w-64 min-w-[260px] max-w-[340px] whitespace-normal leading-snug"
-                    >
-                      {row.student.name}
-                    </td>
+                      {/* Sticky 3: NAME (Uppercase, does not cut off) */}
+                      <td
+                        style={{ left: 122 }}
+                        className={`sticky z-10 ${rowBg} border border-slate-400 px-3 py-2 text-left font-bold text-slate-950 min-w-[220px] max-w-[320px] break-words uppercase leading-tight`}
+                      >
+                        {row.name}
+                      </td>
 
-                    {/* 4. ID NUMBER (Sticky Col 4) */}
-                    <td
-                      className="sticky left-[396px] z-10 bg-white border-r border-black p-2 text-center font-mono font-bold text-slate-800 text-xs w-32 min-w-[130px] max-w-[130px]"
-                    >
-                      {row.student.studentId || row.student.id}
-                    </td>
+                      {/* Sticky 4: ID NUMBER */}
+                      <td
+                        style={{ left: 342 }}
+                        className={`sticky z-10 ${rowBg} border border-slate-400 px-2.5 py-2 text-center font-mono text-[11px] font-bold text-slate-800 min-w-[125px] w-[125px] whitespace-nowrap`}
+                      >
+                        {row.studentId}
+                      </td>
 
-                    {/* 5. SESSION ATTENDANCE CELLS */}
-                    {matrixData.sessionColumns.map((col, cIdx) => {
-                      const cell = row.cells[col.session.id];
-                      const symbol = cell ? cell.symbol : '';
-                      const colorClass = cell ? cell.colorClass : '';
-                      const tooltip = cell ? cell.tooltipText : '';
+                      {/* Dynamic Session Cells */}
+                      {matrixData.columns.map((col, cIdx) => {
+                        const cell = row.cells[col.session.id];
+                        if (!cell) {
+                          return (
+                            <td
+                              key={`cell-${row.student.id}-${cIdx}`}
+                              className="border border-slate-400 px-1.5 py-2 text-center text-slate-300"
+                            >
+                              -
+                            </td>
+                          );
+                        }
 
-                      return (
-                        <td
-                          key={`matrix-cell-${row.student.id}-${col.session.id}-${cIdx}`}
-                          className="border-r border-black p-1 text-center align-middle w-16 min-w-[62px] max-w-[70px] select-none"
-                          title={`${row.student.name}: ${tooltip}`}
-                          style={{
-                            backgroundColor:
-                              cell?.status === 'ABSENT'
-                                ? '#fff1f2' /* Light soft rose tint for absent */
-                                : cell?.status === 'PRESENT'
-                                ? '#f0fdf4' /* Light soft emerald tint for present */
-                                : undefined
-                          }}
-                        >
-                          <span className={colorClass}>{symbol}</span>
-                        </td>
-                      );
-                    })}
+                        return (
+                          <td
+                            key={`cell-${row.student.id}-${col.session.id}`}
+                            className={`border border-slate-400 px-1 py-1 text-center select-none ${cell.bgClass}`}
+                            title={`${row.name} - ${col.dateFormatted}: ${cell.label}`}
+                          >
+                            <span
+                              className={`inline-block ${
+                                cell.symbol === '✓'
+                                  ? 'text-emerald-700 font-black text-sm'
+                                  : cell.symbol === 'L'
+                                  ? 'text-amber-700 font-black text-xs'
+                                  : cell.symbol === 'E'
+                                  ? 'text-blue-700 font-black text-xs'
+                                  : cell.symbol === 'A'
+                                  ? 'text-rose-700 font-black text-xs'
+                                  : 'text-slate-300 font-normal'
+                              }`}
+                            >
+                              {cell.symbol}
+                            </span>
+                          </td>
+                        );
+                      })}
 
-                    {/* 6. SUMMARY CELLS */}
-                    {/* Jumlah Hadir */}
-                    <td className="border-r border-black px-3 py-2 text-center font-black text-slate-900 text-xs">
-                      {row.presentCount}
-                    </td>
+                      {/* Summary Cell: Jumlah Hadir */}
+                      <td className="border border-slate-400 px-2 py-2 text-center font-black text-slate-900 bg-slate-100">
+                        {row.presentCount}
+                      </td>
 
-                    {/* Jumlah Sesi */}
-                    <td className="border-r border-black px-3 py-2 text-center font-semibold text-slate-700 text-xs">
-                      {row.totalSessions}
-                    </td>
+                      {/* Summary Cell: Jumlah Sesi */}
+                      <td className="border border-slate-400 px-2 py-2 text-center font-bold text-slate-700 bg-slate-100">
+                        {row.totalSessions}
+                      </td>
 
-                    {/* % Kehadiran */}
-                    <td
-                      className={`border-r border-black px-3 py-2 text-center text-xs font-black ${
-                        row.isBelowKPI
-                          ? 'text-rose-600 bg-rose-50 font-black'
-                          : 'text-emerald-700 font-black'
-                      }`}
-                      style={{
-                        backgroundColor: row.isBelowKPI ? '#ffe4e6' : undefined
-                      }}
-                    >
-                      {row.rate}%
-                    </td>
-                  </tr>
-                ))}
+                      {/* Summary Cell: % Kehadiran (Red if < 80%) */}
+                      <td
+                        className={`border border-slate-400 px-2 py-2 text-center font-black ${
+                          row.isWarning
+                            ? 'text-rose-700 bg-rose-100 font-black text-[12px]'
+                            : 'text-emerald-800 bg-emerald-50'
+                        }`}
+                      >
+                        {row.percentage}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
 
-          {/* =========================================================================
-              PETUNJUK / LEGEND SECTION
-              ========================================================================= */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="font-extrabold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-teal-400" />
-                <span>Petunjuk Simbol:</span>
-              </span>
+      {/* Legend & Summary Notes */}
+      <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4.5 space-y-3 text-xs text-slate-300 shadow-md">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+          <div className="font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-400" />
+            <span>Petunjuk Status Kehadiran (Legend):</span>
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Format Pengepala Tarikh: <strong>DD-MMM</strong> (Contoh: 10-Oct, 12-Oct). Penanda <strong>S2</strong> menunjukkan sesi kedua pada tarikh yang sama.
+          </div>
+        </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 rounded border border-emerald-500/40 bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-sm shadow-sm">
-                  /
-                </span>
-                <span className="text-slate-300 font-medium">Hadir (Present)</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 rounded border border-amber-500/40 bg-amber-500/20 text-amber-400 font-black flex items-center justify-center text-xs shadow-sm">
-                  L
-                </span>
-                <span className="text-slate-300 font-medium">Hadir Lewat (Late)</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 rounded border border-blue-500/40 bg-blue-500/20 text-blue-400 font-black flex items-center justify-center text-xs shadow-sm">
-                  E
-                </span>
-                <span className="text-slate-300 font-medium">Kebenaran (Excused)</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 rounded border border-rose-500/40 bg-rose-500/20 text-rose-400 font-black flex items-center justify-center text-xs shadow-sm">
-                  A
-                </span>
-                <span className="text-slate-300 font-medium">Tidak Hadir (Absent)</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 rounded border border-slate-700 bg-slate-800 text-slate-500 font-bold flex items-center justify-center text-xs">
-                  -
-                </span>
-                <span className="text-slate-400 font-medium">Sesi Sedang Berlangsung (OPEN)</span>
-              </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="w-6 h-6 flex items-center justify-center font-black text-emerald-700 bg-emerald-100 rounded-lg border border-emerald-300 text-sm">
+              ✓
+            </span>
+            <div>
+              <div className="font-bold text-emerald-300">Hadir (Present)</div>
+              <div className="text-[10px] text-slate-400">Diimbas / Direkod</div>
             </div>
+          </div>
 
-            <div className="text-[11px] text-slate-400">
-              <span className="text-rose-400 font-bold">* % Merah</span> menandakan kehadiran di bawah sasaran KPI (80%).
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="w-6 h-6 flex items-center justify-center font-black text-amber-700 bg-amber-100 rounded-lg border border-amber-300 text-xs">
+              L
+            </span>
+            <div>
+              <div className="font-bold text-amber-300">Lewat (Late)</div>
+              <div className="text-[10px] text-slate-400">Hadir Selepas Masa</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="w-6 h-6 flex items-center justify-center font-black text-blue-700 bg-blue-100 rounded-lg border border-blue-300 text-xs">
+              E
+            </span>
+            <div>
+              <div className="font-bold text-blue-300">Kebenaran (Excused)</div>
+              <div className="text-[10px] text-slate-400">MC / Surat Kebenaran</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="w-6 h-6 flex items-center justify-center font-black text-rose-700 bg-rose-100 rounded-lg border border-rose-300 text-xs">
+              A
+            </span>
+            <div>
+              <div className="font-bold text-rose-300">Tidak Hadir (Absent)</div>
+              <div className="text-[10px] text-slate-400">Tiada Rekod (Sesi Closed)</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="w-6 h-6 flex items-center justify-center font-bold text-slate-400 bg-slate-800 rounded-lg border border-slate-700 text-xs">
+              -
+            </span>
+            <div>
+              <div className="font-bold text-slate-300">(Kosong)</div>
+              <div className="text-[10px] text-slate-400">Sesi Masih Aktif (OPEN)</div>
             </div>
           </div>
         </div>
-      )}
+
+        <div className="text-[11px] text-slate-400 pt-2 border-t border-slate-800/80 flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>
+            <strong>Perhatian:</strong> Peratusan kehadiran pelajar yang berada di bawah <strong>80%</strong> ditandakan merah mengikut syarat ketetapan peperiksaan Kolej Profesional MARA.
+          </span>
+        </div>
+      </div>
     </div>
   );
 };

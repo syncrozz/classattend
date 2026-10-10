@@ -1,6 +1,7 @@
 import { Student, AttendanceRecord, AttendanceSession, Lecturer, Subject } from '../types';
 import { normalizePhoneNumber } from './phoneHelper';
 import { splitClassNames, normalizeClassCode } from './classHelper';
+import type { AttendanceMatrixData } from './attendanceMatrix';
 
 export * from './phoneHelper';
 export * from './classHelper';
@@ -1027,74 +1028,48 @@ export const downloadJSON = (content: string, filename: string) => {
   document.body.removeChild(link);
 };
 
-export interface MatrixExportCellInput {
-  symbol: string;
-}
-
-export interface MatrixExportRowInput {
-  index: number;
-  student: { name?: string; studentId?: string; id?: string };
-  className: string;
-  cells: Record<string, MatrixExportCellInput>;
-  presentCount: number;
-  totalSessions: number;
-  rate: number;
-}
-
-export interface MatrixExportDataInput {
-  className: string;
-  subjectCode: string;
-  subjectName?: string;
-  sessionColumns: Array<{ session: { id: string }; displayDate: string; subLabel?: string }>;
-  rows: MatrixExportRowInput[];
-}
-
 /**
- * Export Attendance Matrix to standard Excel-compatible CSV.
- * CRITICAL: Prepends UTF-8 BOM (\uFEFF) so special characters (e.g. apostrophes in names like "SA'ADI")
- * do not get corrupted into "SAâ€™ADI" when opened in Microsoft Excel.
+ * Export Attendance Matrix to CSV matching the exact table layout:
+ * NO., Class, NAME, ID NUMBER, [Session Dates...], Jumlah Hadir, Jumlah Sesi, %
+ * Includes UTF-8 BOM (\uFEFF) to ensure special characters like apostrophe in "SA'ADI"
+ * display correctly in Microsoft Excel.
  */
-export const exportAttendanceMatrixToCSV = (matrixData: MatrixExportDataInput): string => {
-  const sessionHeaders = matrixData.sessionColumns.map((col) => {
-    return col.subLabel ? `"${col.displayDate} (${col.subLabel})"` : `"${col.displayDate}"`;
+export const exportAttendanceMatrixToCSV = (matrixData: AttendanceMatrixData): string => {
+  const baseHeaders = ['"NO."', '"Class"', '"NAME"', '"ID NUMBER"'];
+
+  const sessionHeaders = matrixData.columns.map((col) => {
+    const label = col.subLabel ? `${col.dateFormatted} (${col.subLabel})` : col.dateFormatted;
+    return `"${label}"`;
   });
 
-  const headers = [
-    'NO.',
-    'Class',
-    'NAME',
-    'ID NUMBER',
-    ...sessionHeaders,
-    'Jumlah Hadir',
-    'Jumlah Sesi',
-    '%'
-  ];
+  const summaryHeaders = ['"Jumlah Hadir"', '"Jumlah Sesi"', '"%"'];
+  const fullHeaderRow = [...baseHeaders, ...sessionHeaders, ...summaryHeaders].join(',');
 
-  const rows = matrixData.rows.map((row) => {
-    const studentName = (row.student.name || '').replace(/"/g, '""').toUpperCase();
-    const studentId = (row.student.studentId || row.student.id || '').replace(/"/g, '""');
-    const className = (row.className || matrixData.className || '').replace(/"/g, '""');
+  const dataRows = matrixData.rows.map((row) => {
+    const baseCols = [
+      row.no,
+      `"${(row.className || '').replace(/"/g, '""')}"`,
+      `"${(row.name || '').replace(/"/g, '""')}"`,
+      `"${(row.studentId || '').replace(/"/g, '""')}"`
+    ];
 
-    const sessionCells = matrixData.sessionColumns.map((col) => {
+    const sessionCols = matrixData.columns.map((col) => {
       const cell = row.cells[col.session.id];
-      const val = cell ? cell.symbol : '';
-      return `"${val}"`;
+      const symbol = cell ? cell.symbol : '';
+      return `"${symbol}"`;
     });
 
-    return [
-      row.index,
-      `"${className}"`,
-      `"${studentName}"`,
-      `"${studentId}"`,
-      ...sessionCells,
+    const summaryCols = [
       row.presentCount,
       row.totalSessions,
-      `"${row.rate}%"`
-    ].join(',');
+      `"${row.percentage}%"`
+    ];
+
+    return [...baseCols, ...sessionCols, ...summaryCols].join(',');
   });
 
-  const csvBody = [headers.join(','), ...rows].join('\n');
-  return '\uFEFF' + csvBody;
+  // Prepend UTF-8 BOM (\uFEFF) for Excel compatibility with special characters
+  return '\uFEFF' + [fullHeaderRow, ...dataRows].join('\n');
 };
 
 
