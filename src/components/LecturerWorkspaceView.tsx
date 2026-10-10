@@ -548,9 +548,18 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
       return;
     }
 
-    // 2. Activate session via authoritative engine
-    // Single Active Session Invariant (1 Pensyarah = 1 Sesi Aktif):
-    // If another session was open for this lecturer, activateClassSession automatically concludes it safely.
+    // 2. If another session is currently open for this lecturer, do NOT automatically close it.
+    // Explicitly require the lecturer to press "Tutup Sesi Tersebut" first before starting a new session.
+    if (isAnotherSessionOpen && currentOpenSession) {
+      setConfirmCloseOtherSessionId(currentOpenSession.id);
+      setActionNotice({
+        type: 'warning',
+        message: `Sesi "${currentOpenSession.subjectCode} (${currentOpenSession.className})" masih aktif. Sila tekan butang "Tutup Sesi Tersebut" terlebih dahulu untuk menamatkan sesi ini sebelum memulakan sesi baharu.`
+      });
+      return;
+    }
+
+    // 3. Activate session via authoritative engine
     try {
       const res = attendanceEngine.activateClassSession(
         selectedSubject,
@@ -774,7 +783,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                 Perhatian: Sesi "{currentOpenSession.subjectCode} - {currentOpenSession.className}" sedang aktif.
               </p>
               <p className="text-xs text-amber-300/80 mt-0.5">
-                Memulakan sesi bagi kelas ini akan menamatkan sesi terdahulu secara automatik (1 Pensyarah = 1 Sesi Aktif).
+                Sesi tidak akan ditutup secara automatik. Sila tekan butang "Tutup Sesi Tersebut" jika anda ingin menamatkan sesi ini sebelum memulakan sesi kelas baharu.
               </p>
             </div>
           </div>

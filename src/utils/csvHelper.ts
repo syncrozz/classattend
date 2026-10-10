@@ -1027,4 +1027,74 @@ export const downloadJSON = (content: string, filename: string) => {
   document.body.removeChild(link);
 };
 
+export interface MatrixExportCellInput {
+  symbol: string;
+}
+
+export interface MatrixExportRowInput {
+  index: number;
+  student: { name?: string; studentId?: string; id?: string };
+  className: string;
+  cells: Record<string, MatrixExportCellInput>;
+  presentCount: number;
+  totalSessions: number;
+  rate: number;
+}
+
+export interface MatrixExportDataInput {
+  className: string;
+  subjectCode: string;
+  subjectName?: string;
+  sessionColumns: Array<{ session: { id: string }; displayDate: string; subLabel?: string }>;
+  rows: MatrixExportRowInput[];
+}
+
+/**
+ * Export Attendance Matrix to standard Excel-compatible CSV.
+ * CRITICAL: Prepends UTF-8 BOM (\uFEFF) so special characters (e.g. apostrophes in names like "SA'ADI")
+ * do not get corrupted into "SAâ€™ADI" when opened in Microsoft Excel.
+ */
+export const exportAttendanceMatrixToCSV = (matrixData: MatrixExportDataInput): string => {
+  const sessionHeaders = matrixData.sessionColumns.map((col) => {
+    return col.subLabel ? `"${col.displayDate} (${col.subLabel})"` : `"${col.displayDate}"`;
+  });
+
+  const headers = [
+    'NO.',
+    'Class',
+    'NAME',
+    'ID NUMBER',
+    ...sessionHeaders,
+    'Jumlah Hadir',
+    'Jumlah Sesi',
+    '%'
+  ];
+
+  const rows = matrixData.rows.map((row) => {
+    const studentName = (row.student.name || '').replace(/"/g, '""').toUpperCase();
+    const studentId = (row.student.studentId || row.student.id || '').replace(/"/g, '""');
+    const className = (row.className || matrixData.className || '').replace(/"/g, '""');
+
+    const sessionCells = matrixData.sessionColumns.map((col) => {
+      const cell = row.cells[col.session.id];
+      const val = cell ? cell.symbol : '';
+      return `"${val}"`;
+    });
+
+    return [
+      row.index,
+      `"${className}"`,
+      `"${studentName}"`,
+      `"${studentId}"`,
+      ...sessionCells,
+      row.presentCount,
+      row.totalSessions,
+      `"${row.rate}%"`
+    ].join(',');
+  });
+
+  const csvBody = [headers.join(','), ...rows].join('\n');
+  return '\uFEFF' + csvBody;
+};
+
 

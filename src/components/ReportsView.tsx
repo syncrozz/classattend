@@ -24,6 +24,7 @@ import {
   downloadCSV,
   downloadJSON
 } from '../utils/csvHelper';
+import { AttendanceMatrixView } from './AttendanceMatrixView';
 import {
   generateWhatsAppWarningLink
 } from '../utils/whatsappHelper';
@@ -42,7 +43,6 @@ import {
   Lock,
   FileSpreadsheet,
   HardDrive,
-  ShieldCheck,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -81,7 +81,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   onRequestAdminAccess
 }) => {
   // Determine if lecturer privacy scoping is active (True when lecturer is logged in and not an Admin)
-  const isLecturerRestricted = Boolean(activeLecturer && !isAdmin && activeLecturer.role !== 'ADMIN');
+  const isLecturerRestricted = Boolean(
+    activeLecturer && (
+      !isAdmin ||
+      activeLecturer.role !== 'ADMIN' ||
+      activeLecturer.email?.trim().toLowerCase() === 'khairi@bpenawar.kpm.edu.my'
+    )
+  );
 
   // Authorized sessions: When restricted, only sessions belonging to this lecturer are accessible
   const authorizedSessions = useMemo(() => {
@@ -175,7 +181,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return attendanceRecords.filter((r) => authorizedSessionIds.has(r.sessionId));
   }, [attendanceRecords, authorizedSessions, isLecturerRestricted]);
 
-  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT'>('CLASS');
+  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT' | 'MATRIX'>('CLASS');
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => authorizedSessions[0]?.id || '');
   const [selectedClassSection, setSelectedClassSection] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
@@ -432,12 +438,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
               <span>Laporan & Analitik Kehadiran Pelajar</span>
             </h2>
-            {isLecturerRestricted && activeLecturer && (
-              <p className="text-xs text-indigo-300/90 mt-1 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" />
-                <span>Mod Pensyarah: Hanya memaparkan subjek & kelas yang diajar oleh <strong>{activeLecturer.name}</strong> ({uniqueClasses.length > 0 ? uniqueClasses.join(', ') : 'Tiada Kelas Ditugaskan'}).</span>
-              </p>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -465,8 +465,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </button>
             </div>
 
-            {/* Perspective Toggle (3 Perspectives: CLASS, SESSION, STUDENT) */}
-            <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1">
+            {/* Perspective Toggle (4 Perspectives: CLASS, SESSION, STUDENT, MATRIX) */}
+            <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1 flex-wrap">
               <button
                 id="btn-report-perspective-class"
                 onClick={() => setReportPerspective('CLASS')}
@@ -500,118 +500,132 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               >
                 🎓 Pelajar
               </button>
+              <button
+                id="btn-report-perspective-matrix"
+                onClick={() => setReportPerspective('MATRIX')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  reportPerspective === 'MATRIX'
+                    ? 'bg-teal-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-300" />
+                <span>Matriks Kehadiran</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Filters Row */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
-          <div className="flex flex-wrap items-center gap-2.5">
-            {reportPerspective === 'CLASS' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-semibold">Pilih Kelas:</span>
+        {/* Filters Row (Active for CLASS, SESSION, STUDENT perspectives) */}
+        {reportPerspective !== 'MATRIX' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {reportPerspective === 'CLASS' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-semibold">Pilih Kelas:</span>
+                  <select
+                    value={selectedClassSection}
+                    onChange={(e) => setSelectedClassSection(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {uniqueClasses.map((cls, clsIdx) => (
+                      <option key={`report-class-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {reportPerspective === 'SESSION' && (
                 <select
-                  value={selectedClassSection}
-                  onChange={(e) => setSelectedClassSection(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  id="report-select-session"
+                  value={selectedSessionId}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer max-w-md"
                 >
+                  {authorizedSessions.map((s) => {
+                    const subjectDetail = s.subjectCode ? `[${s.subjectCode}] ` : '';
+                    const classDetail = s.className ? ` (${s.className})` : '';
+                    const dateDetail = s.date ? ` • ${s.date}` : '';
+                    const statusPrefix = s.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
+
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {statusPrefix}{subjectDetail}{s.sessionName}{classDetail}{dateDetail}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+
+              {reportPerspective !== 'CLASS' && (
+                <select
+                  value={filterSet}
+                  onChange={(e) => setFilterSet(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="ALL">Semua Kelas</option>
                   {uniqueClasses.map((cls, clsIdx) => (
-                    <option key={`report-class-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
+                    <option key={`report-filter-set-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
                   ))}
                 </select>
-              </div>
-            )}
+              )}
 
-            {reportPerspective === 'SESSION' && (
-              <select
-                id="report-select-session"
-                value={selectedSessionId}
-                onChange={(e) => setSelectedSessionId(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer max-w-md"
-              >
-                {authorizedSessions.map((s) => {
-                  const subjectDetail = s.subjectCode ? `[${s.subjectCode}] ` : '';
-                  const classDetail = s.className ? ` (${s.className})` : '';
-                  const dateDetail = s.date ? ` • ${s.date}` : '';
-                  const statusPrefix = s.status === 'OPEN' ? '🟢 [AKTIF] ' : '🔵 ';
-
-                  return (
-                    <option key={s.id} value={s.id}>
-                      {statusPrefix}{subjectDetail}{s.sessionName}{classDetail}{dateDetail}
-                    </option>
-                  );
-                })}
-              </select>
-            )}
-
-            {reportPerspective !== 'CLASS' && (
-              <select
-                value={filterSet}
-                onChange={(e) => setFilterSet(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="ALL">Semua Kelas</option>
-                {uniqueClasses.map((cls, clsIdx) => (
-                  <option key={`report-filter-set-opt-${cls}-${clsIdx}`} value={cls}>Kelas {cls}</option>
-                ))}
-              </select>
-            )}
-
-            {reportPerspective === 'SESSION' && (
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="ALL">Semua Status</option>
-                <option value="PRESENT">Hadir Sahaja</option>
-                <option value="ABSENT">Tidak Hadir Sahaja</option>
-              </select>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Cari nama atau No. Pelajar..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-48 sm:w-56"
-              />
+              {reportPerspective === 'SESSION' && (
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="PRESENT">Hadir Sahaja</option>
+                  <option value="ABSENT">Tidak Hadir Sahaja</option>
+                </select>
+              )}
             </div>
 
-            {reportPerspective === 'CLASS' ? (
-              <button
-                onClick={handleExportClassCSV}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV Kelas Ini'}
-              >
-                {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Eksport Kelas</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleExportSessionCSV}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV'}
-              >
-                {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Eksport</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Cari nama atau No. Pelajar..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-48 sm:w-56"
+                />
+              </div>
 
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
-              title="Cetak Lembaran Laporan"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Cetak</span>
-            </button>
+              {reportPerspective === 'CLASS' ? (
+                <button
+                  onClick={handleExportClassCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                  title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV Kelas Ini'}
+                >
+                  {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">Eksport Kelas</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleExportSessionCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                  title={!isAdmin && !activeLecturer ? 'Perlu pengesahan Pensyarah/Admin untuk eksport CSV' : 'Eksport Fail CSV'}
+                >
+                  {!isAdmin && !activeLecturer ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Download className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">Eksport</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                title="Cetak Lembaran Laporan"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Cetak</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* PERSPECTIVE 1: CLASS-CENTRIC (MENGIKUT KELAS MASING-MASING) */}
@@ -1199,6 +1213,23 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* PERSPECTIVE 4: ATTENDANCE MATRIX (MATRIKS KEHADIRAN MENYELURUH) */}
+      {reportPerspective === 'MATRIX' && (
+        <AttendanceMatrixView
+          students={scopedStudents}
+          sessions={authorizedSessions}
+          subjects={subjects}
+          attendanceRecords={scopedAttendanceRecords}
+          enrollments={enrollments}
+          teachingAssignments={teachingAssignments}
+          isAdmin={isAdmin}
+          activeLecturer={activeLecturer}
+          onRequestAdminAccess={onRequestAdminAccess}
+          uniqueClasses={uniqueClasses}
+        />
+      )}
+
       {/* Toast Notification */}
       {backupToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
