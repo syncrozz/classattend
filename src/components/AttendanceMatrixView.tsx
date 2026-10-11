@@ -637,38 +637,34 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
             <table className="w-full border-collapse text-xs text-slate-900 border border-slate-400">
               <thead className="sticky top-0 z-20 bg-slate-100 uppercase text-[11px] font-bold text-slate-800 select-none shadow-sm">
                 <tr>
-                  {/* Sticky Column 1: NO. */}
+                  {/* Column 1: NO. */}
                   <th
                     scope="col"
-                    style={{ left: 0 }}
-                    className="sticky z-30 bg-slate-200 border border-slate-400 px-2 py-3 text-center min-w-[46px] w-[46px] font-black"
+                    className="bg-slate-200 border border-slate-400 px-2 py-3 text-center min-w-[46px] w-[46px] font-black"
                   >
                     NO.
                   </th>
 
-                  {/* Sticky Column 2: Class (Pink background header) */}
+                  {/* Column 2: Class (Pink background header) */}
                   <th
                     scope="col"
-                    style={{ left: 46 }}
-                    className="sticky z-30 bg-pink-200 text-pink-950 border border-slate-400 px-2.5 py-3 text-center min-w-[76px] w-[76px] font-black tracking-wider"
+                    className="bg-pink-200 text-pink-950 border border-slate-400 px-2.5 py-3 text-center min-w-[76px] w-[76px] font-black tracking-wider"
                   >
                     Class
                   </th>
 
-                  {/* Sticky Column 3: NAME */}
+                  {/* Column 3: NAME */}
                   <th
                     scope="col"
-                    style={{ left: 122 }}
-                    className="sticky z-30 bg-slate-200 border border-slate-400 px-3.5 py-3 text-left min-w-[220px] max-w-[320px] font-black"
+                    className="bg-slate-200 border border-slate-400 px-3.5 py-3 text-left min-w-[200px] max-w-[320px] font-black"
                   >
                     NAME
                   </th>
 
-                  {/* Sticky Column 4: ID NUMBER */}
+                  {/* Column 4: ID NUMBER */}
                   <th
                     scope="col"
-                    style={{ left: 342 }}
-                    className="sticky z-30 bg-slate-200 border border-slate-400 px-2.5 py-3 text-center min-w-[125px] w-[125px] font-black whitespace-nowrap"
+                    className="bg-slate-200 border border-slate-400 px-2.5 py-3 text-center min-w-[125px] w-[125px] font-black whitespace-nowrap"
                   >
                     ID NUMBER
                   </th>
@@ -765,26 +761,23 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                       key={`matrix-row-${row.student.id}-${rIdx}`}
                       className="hover:bg-amber-50/40 transition-colors"
                     >
-                      {/* Sticky 1: NO. */}
+                      {/* Column 1: NO. */}
                       <td
-                        style={{ left: 0 }}
-                        className={`sticky z-10 ${rowBg} border border-slate-400 px-2 py-2 text-center font-bold text-slate-700 min-w-[46px] w-[46px]`}
+                        className={`${rowBg} border border-slate-400 px-2 py-2 text-center font-bold text-slate-700 min-w-[46px] w-[46px]`}
                       >
                         {row.no}
                       </td>
 
-                      {/* Sticky 2: Class (Soft Pink Background / Merah Jambu Lembut) */}
+                      {/* Column 2: Class (Soft Pink Background / Merah Jambu Lembut) */}
                       <td
-                        style={{ left: 46 }}
-                        className="sticky z-10 bg-[#fce7f3] text-pink-950 border border-slate-400 px-2.5 py-2 text-center font-black min-w-[76px] w-[76px] tracking-wide"
+                        className="bg-[#fce7f3] text-pink-950 border border-slate-400 px-2.5 py-2 text-center font-black min-w-[76px] w-[76px] tracking-wide"
                       >
                         {row.className}
                       </td>
 
-                      {/* Sticky 3: NAME (Uppercase, does not cut off, with Edit trigger) */}
+                      {/* Column 3: NAME (Uppercase, does not cut off, with Edit trigger) */}
                       <td
-                        style={{ left: 122 }}
-                        className={`sticky z-10 ${rowBg} border border-slate-400 px-3 py-2 text-left font-bold text-slate-950 min-w-[220px] max-w-[320px] break-words uppercase leading-tight group/strow`}
+                        className={`${rowBg} border border-slate-400 px-3 py-2 text-left font-bold text-slate-950 min-w-[200px] max-w-[320px] break-words uppercase leading-tight group/strow`}
                       >
                         <div className="flex items-center justify-between gap-1.5">
                           <span
@@ -808,10 +801,9 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Sticky 4: ID NUMBER */}
+                      {/* Column 4: ID NUMBER */}
                       <td
-                        style={{ left: 342 }}
-                        className={`sticky z-10 ${rowBg} border border-slate-400 px-2.5 py-2 text-center font-mono text-[11px] font-bold text-slate-800 min-w-[125px] w-[125px] whitespace-nowrap`}
+                        className={`${rowBg} border border-slate-400 px-2.5 py-2 text-center font-mono text-[11px] font-bold text-slate-800 min-w-[125px] w-[125px] whitespace-nowrap`}
                       >
                         {row.studentId}
                       </td>
