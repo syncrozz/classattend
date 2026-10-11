@@ -368,6 +368,7 @@ export default function App() {
     const sessionToDelete = sessions.find((s) => s.id === sessionId);
     const updated = attendanceEngine.deleteSession(sessionId);
     setSessions(updated);
+    setAttendanceRecords(attendanceEngine.getAttendanceRecords());
     soundService.playClick();
     auditLogger.log({
       category: 'SESSION_MGMT',
@@ -593,6 +594,20 @@ export default function App() {
       performedBy: activeLecturer?.name || 'Pentadbir Sistem',
       target: studentToDelete?.name || studentId,
       severity: 'WARNING'
+    });
+  };
+
+  // Update / Edit Student
+  const handleUpdateStudent = (updatedStudent: Student) => {
+    attendanceEngine.updateStudent(updatedStudent);
+    setStudents(attendanceEngine.getStudents());
+    auditLogger.log({
+      category: 'STUDENT_MGMT',
+      action: 'Kemaskini Rekod Pelajar',
+      details: `Maklumat pelajar ${updatedStudent.name} (${updatedStudent.studentId || updatedStudent.id}) telah dikemaskini (Kelas: ${updatedStudent.className}).`,
+      performedBy: activeLecturer?.name || 'Pentadbir Sistem',
+      target: updatedStudent.name,
+      severity: 'INFO'
     });
   };
 
@@ -920,6 +935,7 @@ export default function App() {
                 onCreateSession={handleCreateSession}
                 onSetSessionStatus={handleSetSessionStatus}
                 onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
+                onDeleteSession={handleDeleteSession}
                 onGoToStudents={() => handleTabChange('students')}
                 onGoToReports={() => handleTabChange('reports')}
                 onUpdateSubjectClasses={handleUpdateSubjectClasses}
@@ -1044,6 +1060,10 @@ export default function App() {
               isAdmin={isAdmin}
               activeLecturer={activeLecturer}
               onRequestAdminAccess={handleRequestAdminAccess}
+              onDeleteSession={handleDeleteSession}
+              onAddStudent={handleAddStudent}
+              onUpdateStudent={handleUpdateStudent}
+              onDeleteStudent={handleDeleteStudent}
             />
           )}
 

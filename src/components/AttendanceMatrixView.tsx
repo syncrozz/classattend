@@ -31,8 +31,17 @@ import {
   Clock,
   RotateCcw,
   Sparkles,
-  ShieldCheck
+  Trash2,
+  UserPlus,
+  Pencil,
+  Save,
+  X,
+  Check,
+  Phone,
+  Mail,
+  UserCheck
 } from 'lucide-react';
+import { attendanceEngine } from '../services/attendanceEngine';
 
 interface AttendanceMatrixViewProps {
   students: Student[];
@@ -44,6 +53,10 @@ interface AttendanceMatrixViewProps {
   isAdmin?: boolean;
   activeLecturer?: Lecturer | null;
   onRequestAdminAccess?: (actionName?: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+  onAddStudent?: (student: Student) => void;
+  onUpdateStudent?: (student: Student) => void;
+  onDeleteStudent?: (studentId: string) => void;
 }
 
 export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
@@ -55,7 +68,11 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
   teachingAssignments = [],
   isAdmin = false,
   activeLecturer = null,
-  onRequestAdminAccess
+  onRequestAdminAccess,
+  onDeleteSession,
+  onAddStudent,
+  onUpdateStudent,
+  onDeleteStudent
 }) => {
   // Class selection state (defaults to first available class)
   const [selectedClass, setSelectedClass] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
@@ -103,6 +120,142 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
 
   // Search filter for students
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Delete session modal state (for test platform sessions)
+  const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
+
+  // Student Editing & Adding States
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editStudentForm, setEditStudentForm] = useState({
+    name: '',
+    studentId: '',
+    className: '',
+    phone: '',
+    email: ''
+  });
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState<boolean>(false);
+  const [addStudentForm, setAddStudentForm] = useState({
+    name: '',
+    studentId: '',
+    className: '',
+    phone: '',
+    email: ''
+  });
+
+  // Cell-level Attendance Editing State
+  const [editingAttendanceCell, setEditingAttendanceCell] = useState<{
+    student: Student;
+    session: AttendanceSession;
+    currentStatus: string;
+    remarks: string;
+  } | null>(null);
+
+  // Toast notification for user action feedback
+  const [matrixToast, setMatrixToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setMatrixToast(msg);
+    setTimeout(() => setMatrixToast(null), 3500);
+  };
+
+  const handleOpenEditStudent = (st: Student) => {
+    setEditingStudent(st);
+    setEditStudentForm({
+      name: st.name || '',
+      studentId: st.studentId || st.id || '',
+      className: st.className || selectedClass,
+      phone: st.phone || '',
+      email: st.email || ''
+    });
+  };
+
+  const handleSaveStudentEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    if (!editStudentForm.name.trim() || !editStudentForm.studentId.trim()) {
+      showToast('Sila isikan Nama Pelajar dan No. Matrik/ID.');
+      return;
+    }
+
+    const updated: Student = {
+      ...editingStudent,
+      name: editStudentForm.name.trim().toUpperCase(),
+      studentId: editStudentForm.studentId.trim().toUpperCase(),
+      className: (editStudentForm.className || selectedClass).trim().toUpperCase(),
+      phone: editStudentForm.phone.trim() || undefined,
+      email: editStudentForm.email.trim() || undefined
+    };
+
+    if (onUpdateStudent) {
+      onUpdateStudent(updated);
+    }
+    attendanceEngine.updateStudent(updated);
+    showToast(`Rekod pelajar ${updated.name} (${updated.studentId}) berjaya dikemaskini!`);
+    setEditingStudent(null);
+  };
+
+  const handleDeleteStudentConfirm = (studentId: string, studentName: string) => {
+    if (window.confirm(`Adakah anda pasti untuk memadam rekod pelajar ${studentName}?`)) {
+      if (onDeleteStudent) {
+        onDeleteStudent(studentId);
+      }
+      attendanceEngine.deleteStudent(studentId);
+      showToast(`Pelajar ${studentName} telah dipadamkan.`);
+      setEditingStudent(null);
+    }
+  };
+
+  const handleOpenAddStudent = () => {
+    setAddStudentForm({
+      name: '',
+      studentId: '',
+      className: selectedClass,
+      phone: '',
+      email: ''
+    });
+    setIsAddStudentModalOpen(true);
+  };
+
+  const handleSaveAddStudent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addStudentForm.name.trim() || !addStudentForm.studentId.trim()) {
+      showToast('Sila isikan Nama Pelajar dan No. Matrik/ID.');
+      return;
+    }
+
+    const cleanId = addStudentForm.studentId.trim().toUpperCase();
+    const newStudent: Student = {
+      id: cleanId,
+      studentId: cleanId,
+      name: addStudentForm.name.trim().toUpperCase(),
+      className: (addStudentForm.className || selectedClass).trim().toUpperCase(),
+      phone: addStudentForm.phone.trim() || undefined,
+      email: addStudentForm.email.trim() || undefined
+    };
+
+    if (onAddStudent) {
+      onAddStudent(newStudent);
+    }
+    attendanceEngine.addStudent(newStudent);
+    showToast(`Pelajar ${newStudent.name} berjaya didaftarkan ke kelas ${newStudent.className}!`);
+    setIsAddStudentModalOpen(false);
+  };
+
+  const handleSetCellAttendance = (
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'REMOVE',
+    customRemarks?: string
+  ) => {
+    if (!editingAttendanceCell) return;
+    const studentId = editingAttendanceCell.student.studentId || editingAttendanceCell.student.id;
+    attendanceEngine.setStudentAttendanceRecord({
+      sessionId: editingAttendanceCell.session.id,
+      studentId,
+      status,
+      remarks: customRemarks !== undefined ? customRemarks : editingAttendanceCell.remarks
+    });
+    showToast(`Status kehadiran ${editingAttendanceCell.student.name} telah dikemaskini.`);
+    setEditingAttendanceCell(null);
+  };
 
   // Selected subject name
   const selectedSubject = classSubjects.find((s) => s.code === selectedSubjectCode);
@@ -259,22 +412,24 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
             <h3 className="text-lg font-bold text-white tracking-tight mt-1">
               Matriks Kehadiran Kuliah & Seksyen
             </h3>
-            {isLecturerRestricted && activeLecturer ? (
-              <p className="text-xs text-indigo-300/90 mt-1 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" />
-                <span>
-                  Mod Pensyarah: Hanya memaparkan subjek yang ditugaskan kepada <strong>{activeLecturer.name}</strong> bagi kelas yang dipilih.
-                </span>
-              </p>
-            ) : (
-              <p className="text-xs text-slate-400 mt-0.5">
-                Paparan grid visual status kehadiran setiap pelajar bagi setiap sesi kuliah secara bersiri mengikut tarikh.
-              </p>
-            )}
+            <p className="text-xs text-slate-400 mt-0.5">
+              Paparan grid visual status kehadiran setiap pelajar bagi setiap sesi kuliah secara bersiri mengikut tarikh.
+            </p>
           </div>
 
-          {/* Action Buttons: Cetak PDF & Eksport CSV */}
+          {/* Action Buttons: Cetak PDF, Eksport CSV & Tambah Pelajar */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="btn-matrix-add-student"
+              onClick={handleOpenAddStudent}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm shadow-indigo-950/40 cursor-pointer"
+              title={`Tambah pendaftaran pelajar baharu ke dalam kelas ${selectedClass}`}
+            >
+              <UserPlus className="w-4 h-4 text-indigo-100" />
+              <span>+ Tambah Pelajar</span>
+            </button>
+
             <button
               type="button"
               id="btn-print-matrix-pdf"
@@ -283,7 +438,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
               title="Cetak jadual matriks ini dalam saiz kertas A4 Landskap atau simpan sebagai PDF"
             >
               <Printer className="w-4 h-4 text-indigo-400" />
-              <span>Cetak / PDF (A4 Landskap)</span>
+              <span>Cetak</span>
             </button>
 
             <button
@@ -305,7 +460,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
           <div>
             <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span>1. Pilih Kelas / Seksyen</span>
+              <span>1. Pilih Kelas</span>
             </label>
             <select
               id="matrix-select-class"
@@ -326,7 +481,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
             <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between gap-1.5">
               <span className="flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                <span>2. Pilih Kursus / Subjek</span>
+                <span>2. Pilih Subjek</span>
               </span>
               {isLecturerRestricted && (
                 <span className="text-[10px] text-indigo-300 font-semibold bg-indigo-950/80 border border-indigo-500/30 px-1.5 py-0.5 rounded">
@@ -357,7 +512,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
           <div>
             <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-              <span>3. Julat Tarikh (Pilihan)</span>
+              <span>3. Tarikh</span>
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               <input
@@ -516,10 +671,25 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                     <th
                       key={`matrix-col-${col.session.id}-${cIdx}`}
                       scope="col"
-                      className="border border-slate-400 px-2 py-2 text-center min-w-[64px] max-w-[72px] bg-slate-100 font-bold text-slate-900"
+                      className="border border-slate-400 px-1.5 py-2 text-center min-w-[64px] max-w-[76px] bg-slate-100 font-bold text-slate-900 group relative"
                       title={`${col.session.sessionName} (${col.session.date} ${col.session.startTime || ''}) - Status: ${col.session.status}`}
                     >
-                      <div className="font-extrabold text-[11px] tracking-tight">{col.dateFormatted}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="font-extrabold text-[11px] tracking-tight">{col.dateFormatted}</span>
+                        {onDeleteSession && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSessionToDelete(col.session);
+                            }}
+                            className="no-print opacity-30 hover:opacity-100 p-0.5 rounded hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-all cursor-pointer"
+                            title={`Padam sesi ${col.dateFormatted} (contoh: jika sesi ujian/testing platform)`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                       {col.subLabel ? (
                         <div className="text-[10px] font-bold text-indigo-800 bg-indigo-100 rounded px-1.5 py-0.2 mt-0.5 inline-block border border-indigo-200">
                           {col.subLabel}
@@ -580,12 +750,31 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                         {row.className}
                       </td>
 
-                      {/* Sticky 3: NAME (Uppercase, does not cut off) */}
+                      {/* Sticky 3: NAME (Uppercase, does not cut off, with Edit trigger) */}
                       <td
                         style={{ left: 122 }}
-                        className={`sticky z-10 ${rowBg} border border-slate-400 px-3 py-2 text-left font-bold text-slate-950 min-w-[220px] max-w-[320px] break-words uppercase leading-tight`}
+                        className={`sticky z-10 ${rowBg} border border-slate-400 px-3 py-2 text-left font-bold text-slate-950 min-w-[220px] max-w-[320px] break-words uppercase leading-tight group/strow`}
                       >
-                        {row.name}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span
+                            onClick={() => handleOpenEditStudent(row.student)}
+                            className="cursor-pointer hover:text-indigo-600 hover:underline transition-colors select-none"
+                            title="Klik untuk ubah maklumat pelajar ini"
+                          >
+                            {row.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditStudent(row.student);
+                            }}
+                            className="no-print p-1 rounded hover:bg-indigo-100 text-slate-400 hover:text-indigo-600 transition-colors opacity-60 group-hover/strow:opacity-100 cursor-pointer shrink-0"
+                            title="Ubah / Kemas kini maklumat pelajar ini"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
 
                       {/* Sticky 4: ID NUMBER */}
@@ -603,7 +792,16 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                           return (
                             <td
                               key={`cell-${row.student.id}-${cIdx}`}
-                              className="border border-slate-400 px-1.5 py-2 text-center text-slate-300"
+                              onClick={() => {
+                                setEditingAttendanceCell({
+                                  student: row.student,
+                                  session: col.session,
+                                  currentStatus: 'ABSENT',
+                                  remarks: ''
+                                });
+                              }}
+                              className="border border-slate-400 px-1.5 py-2 text-center text-slate-300 cursor-pointer hover:ring-2 hover:ring-indigo-400/80 transition-all"
+                              title={`${row.name} - ${col.dateFormatted}: Tiada rekod. Klik untuk tanda kehadiran.`}
                             >
                               -
                             </td>
@@ -613,8 +811,16 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                         return (
                           <td
                             key={`cell-${row.student.id}-${col.session.id}`}
-                            className={`border border-slate-400 px-1 py-1 text-center select-none ${cell.bgClass}`}
-                            title={`${row.name} - ${col.dateFormatted}: ${cell.label}`}
+                            onClick={() => {
+                              setEditingAttendanceCell({
+                                student: row.student,
+                                session: col.session,
+                                currentStatus: cell.status,
+                                remarks: cell.remarks || ''
+                              });
+                            }}
+                            className={`border border-slate-400 px-1 py-1 text-center select-none cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:z-20 relative transition-all ${cell.bgClass}`}
+                            title={`${row.name} - ${col.dateFormatted}: ${cell.label}. Klik untuk ubah kehadiran.`}
                           >
                             <span
                               className={`inline-block ${
@@ -735,6 +941,453 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Confirmation Modal: Delete Session (e.g. Test Platform Session) */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-white">Padamkan Sesi Daripada Matriks?</h4>
+                <p className="text-xs text-rose-300/80 font-medium">Sesi akan dibuang sepenuhnya daripada rekod</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Subjek:</span>
+                <span className="font-bold text-white">
+                  {sessionToDelete.subjectCode} - {sessionToDelete.subjectName || sessionToDelete.sessionName}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Kelas:</span>
+                <span className="font-bold text-indigo-300">{sessionToDelete.className}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Tarikh:</span>
+                <span className="font-mono text-slate-200">{sessionToDelete.date}</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Untuk Sesi Ujian / Test Platform:</span>
+              </div>
+              <p>
+                Jika sesi ini dibuka hanya untuk menguji platform dan ditutup tanpa kehadiran sebenar pelajar, memadamkannya memastikan lajur sesi ini dibuang dan <strong>pelajar TIDAK akan dikira sebagai Tidak Hadir (Absent)</strong>.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteSession && sessionToDelete) {
+                    onDeleteSession(sessionToDelete.id);
+                  }
+                  setSessionToDelete(null);
+                }}
+                className="px-5 py-2.5 min-h-[48px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sahkan Padam Sesi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 1: Ubah / Kemas Kini Maklumat Pelajar */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Ubah Maklumat Pelajar</h4>
+                  <p className="text-xs text-slate-400">Kemas kini profil atau tukar kelas pelajar</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStudent(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStudentEdit} className="space-y-4">
+              {/* Nama Pelajar */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nama Penuh Pelajar <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editStudentForm.name}
+                  onChange={(e) => setEditStudentForm({ ...editStudentForm, name: e.target.value })}
+                  placeholder="Contoh: MUHAMMAD AIMAN BIN ABDULLAH"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500 uppercase"
+                />
+              </div>
+
+              {/* No Matrik & Kelas */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    No. Matrik / No. ID <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editStudentForm.studentId}
+                    onChange={(e) => setEditStudentForm({ ...editStudentForm, studentId: e.target.value })}
+                    placeholder="Contoh: A01DIA22F001"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-mono text-white focus:outline-none focus:border-indigo-500 uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Kelas / Seksyen <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    value={editStudentForm.className}
+                    onChange={(e) => setEditStudentForm({ ...editStudentForm, className: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {uniqueClasses.map((cls, idx) => (
+                      <option key={`edit-cls-opt-${cls}-${idx}`} value={cls}>
+                        Kelas {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* No Telefon & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    No. Telefon / WhatsApp
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      value={editStudentForm.phone}
+                      onChange={(e) => setEditStudentForm({ ...editStudentForm, phone: e.target.value })}
+                      placeholder="Contoh: 0123456789"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    E-mel Pelajar
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      value={editStudentForm.email}
+                      onChange={(e) => setEditStudentForm({ ...editStudentForm, email: e.target.value })}
+                      placeholder="pelajar@bpenawar.kpm.edu.my"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteStudentConfirm(editingStudent.id, editingStudent.name)}
+                  className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Padam rekod pelajar ini daripada sistem"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Padam Pelajar</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStudent(null)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Perubahan</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Tambah Pelajar Baharu */}
+      {isAddStudentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Tambah Pelajar Baharu</h4>
+                  <p className="text-xs text-slate-400">Daftar pelajar terus ke dalam jadual matriks kelas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddStudentModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAddStudent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nama Penuh Pelajar <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={addStudentForm.name}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, name: e.target.value })}
+                  placeholder="Contoh: SITI NURHALIZA BINTI AHMAD"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500 uppercase"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    No. Matrik / No. ID <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addStudentForm.studentId}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, studentId: e.target.value })}
+                    placeholder="Contoh: A01DIA22F099"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-mono text-white focus:outline-none focus:border-indigo-500 uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Kelas / Seksyen <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    value={addStudentForm.className}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, className: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-bold text-indigo-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {uniqueClasses.map((cls, idx) => (
+                      <option key={`add-cls-opt-${cls}-${idx}`} value={cls}>
+                        Kelas {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    No. Telefon / WhatsApp
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      value={addStudentForm.phone}
+                      onChange={(e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value })}
+                      placeholder="Contoh: 0123456789"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    E-mel Pelajar
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      value={addStudentForm.email}
+                      onChange={(e) => setAddStudentForm({ ...addStudentForm, email: e.target.value })}
+                      placeholder="pelajar@bpenawar.kpm.edu.my"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStudentModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Daftar Pelajar</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Ubah Status Kehadiran Pelajar (Cell Level) */}
+      {editingAttendanceCell && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Ubah Kehadiran Pelajar</h4>
+                  <p className="text-xs text-slate-400">Pilih status kehadiran sesi kuliah</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingAttendanceCell(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Pelajar:</span>
+                <span className="font-bold text-white uppercase">{editingAttendanceCell.student.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">No. Matrik:</span>
+                <span className="font-mono text-indigo-300 font-bold">{editingAttendanceCell.student.studentId || editingAttendanceCell.student.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Sesi / Tarikh:</span>
+                <span className="font-medium text-slate-200">
+                  {editingAttendanceCell.session.sessionName} ({editingAttendanceCell.session.date})
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-2">
+                Pilih Status Kehadiran:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetCellAttendance('PRESENT')}
+                  className="p-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                >
+                  <span className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center font-black text-emerald-400">✓</span>
+                  <span>Hadir (✓)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetCellAttendance('LATE')}
+                  className="p-3 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                >
+                  <span className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center font-black text-amber-400">L</span>
+                  <span>Lewat (L)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetCellAttendance('EXCUSED')}
+                  className="p-3 rounded-xl bg-blue-950/40 hover:bg-blue-900/50 border border-blue-500/40 text-blue-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                >
+                  <span className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center font-black text-blue-400">E</span>
+                  <span>Bersebab (E)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetCellAttendance('ABSENT')}
+                  className="p-3 rounded-xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 text-rose-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                >
+                  <span className="w-6 h-6 rounded-lg bg-rose-500/20 flex items-center justify-center font-black text-rose-400">A</span>
+                  <span>Tidak Hadir (A)</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSetCellAttendance('REMOVE')}
+                className="w-full mt-2 p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-700/60 transition-colors cursor-pointer text-center"
+              >
+                Kosongkan / Padam Rekod Sesi Ini
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setEditingAttendanceCell(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
+      {matrixToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{matrixToast}</span>
+        </div>
+      )}
     </div>
   );
 };

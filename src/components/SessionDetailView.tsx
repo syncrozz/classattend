@@ -17,7 +17,9 @@ import {
   Copy,
   MessageSquare,
   Award,
-  Check
+  Check,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import {
   isLecturerAuthorizedForSession,
@@ -44,6 +46,7 @@ interface SessionDetailViewProps {
   enrollments?: Enrollment[];
   onBack: () => void;
   onOpenScannerForSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
@@ -55,11 +58,13 @@ export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
   teachingAssignments = [],
   enrollments = [],
   onBack,
-  onOpenScannerForSession
+  onOpenScannerForSession,
+  onDeleteSession
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeDetailTab, setActiveDetailTab] = useState<'PRESENT' | 'ABSENT'>('PRESENT');
   const [copiedAbsent, setCopiedAbsent] = useState<boolean>(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
   // 1. Authoritative Authorization Guard
   // Validates lecturer identity and authorized teaching assignments
@@ -204,6 +209,19 @@ export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
             >
               <QrCode className="w-4 h-4" />
               <span>Buka Pengimbas QR Sesi Ini</span>
+            </button>
+          )}
+
+          {onDeleteSession && (
+            <button
+              type="button"
+              onClick={() => setIsConfirmDeleteOpen(true)}
+              id="btn-delete-session-from-detail"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[48px] rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-rose-400 cursor-pointer"
+              title="Padam sesi ini (contoh: jika dibuka untuk ujian/testing platform)"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Padam Sesi</span>
             </button>
           )}
         </div>
@@ -662,6 +680,76 @@ export const SessionDetailView: React.FC<SessionDetailViewProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Confirmation Modal: Delete Session */}
+      {isConfirmDeleteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-white">Padamkan Sesi Kuliah?</h4>
+                <p className="text-xs text-rose-300/80 font-medium">Sesi akan dibuang sepenuhnya daripada sistem</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Subjek:</span>
+                <span className="font-bold text-white">
+                  {session.subjectCode} - {session.subjectName || session.sessionName}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Kelas:</span>
+                <span className="font-bold text-indigo-300">{session.className}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Tarikh:</span>
+                <span className="font-mono text-slate-200">{session.date}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Jumlah Imbasan Semasa:</span>
+                <span className="font-bold text-white">{sessionRecords.length} Pelajar</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Untuk Pensyarah yang Menguji (Test) Platform:</span>
+              </div>
+              <p>
+                Jika sesi ini dibuka hanya untuk tujuan ujian/testing sistem dan tiada imbasan kehadiran sebenar, memadamkannya memastikan <strong>pelajar TIDAK akan dikira sebagai Tidak Hadir (Absent)</strong>. Rekod kehadiran kolej akan kekal bersih dan tepat.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmDeleteOpen(false)}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmDeleteOpen(false);
+                  onDeleteSession?.(session.id);
+                  onBack();
+                }}
+                className="px-5 py-2.5 min-h-[48px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sahkan Padam Sesi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

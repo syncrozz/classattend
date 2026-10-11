@@ -106,10 +106,15 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   }, [currentRole, totalStudentsCount, totalRecordsCount]);
 
   return (
-    <aside className="w-full md:w-64 bg-slate-900/60 md:min-h-[calc(100vh-4rem)] border-b md:border-b-0 md:border-r border-slate-800/80 p-3 sm:p-4 flex flex-col justify-between shrink-0">
+    <aside className="group/sidebar w-full md:w-16 md:hover:w-64 transition-all duration-300 ease-in-out bg-slate-900/90 md:bg-slate-900/70 backdrop-blur-md md:min-h-[calc(100vh-4rem)] border-b md:border-b-0 md:border-r border-slate-800/80 p-2 sm:p-3 md:p-2.5 flex flex-col justify-between shrink-0 overflow-hidden z-20 hover:shadow-2xl hover:shadow-black/60 select-none">
       <div className="space-y-1">
-        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          {currentRole === 'LECTURER' ? 'Menu Pensyarah' : currentRole === 'ADMIN' ? 'Menu Pentadbir' : 'Menu Kelas & Subjek'}
+        <div className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap overflow-hidden transition-all duration-200 border-b border-slate-800/40 mb-1">
+          <span className="md:hidden md:group-hover/sidebar:inline">
+            {currentRole === 'LECTURER' ? 'Menu Pensyarah' : currentRole === 'ADMIN' ? 'Menu Pentadbir' : 'Menu Kelas & Subjek'}
+          </span>
+          <span className="hidden md:inline md:group-hover/sidebar:hidden text-center block text-[10px] text-slate-600 font-mono tracking-widest">
+            •••
+          </span>
         </div>
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -120,24 +125,36 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 key={item.id}
                 id={`sidebar-nav-${item.id}`}
                 onClick={() => onTabChange(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
+                title={item.label}
+                className={`w-full flex items-center justify-between px-2.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer relative group/btn ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-semibold'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 font-semibold'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
+                <div className="flex items-center min-w-0">
+                  <div className="w-6 h-6 flex items-center justify-center shrink-0">
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400 group-hover/btn:text-slate-200 transition-colors'}`} />
+                  </div>
+                  <span className="ml-3 whitespace-nowrap overflow-hidden md:opacity-0 md:w-0 md:group-hover/sidebar:opacity-100 md:group-hover/sidebar:w-auto transition-all duration-200">
+                    {item.label}
+                  </span>
                 </div>
                 {item.badge && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold border ${
-                      isActive ? 'bg-white/20 text-white border-white/30' : item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
+                  <>
+                    <span
+                      className={`hidden md:block md:group-hover/sidebar:hidden absolute top-2 right-2 w-2 h-2 rounded-full ${
+                        isActive ? 'bg-white' : 'bg-indigo-400'
+                      }`}
+                    />
+                    <span
+                      className={`inline-block md:hidden md:group-hover/sidebar:inline-block text-[10px] px-1.5 py-0.5 rounded-full font-bold border shrink-0 transition-opacity duration-200 ${
+                        isActive ? 'bg-white/20 text-white border-white/30' : item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  </>
                 )}
               </button>
             );
@@ -151,14 +168,18 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           <button
             id="sidebar-btn-qr-portal"
             onClick={onOpenQrPortal}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-950/30 hover:bg-teal-900/40 border border-teal-500/30 text-teal-300 text-xs font-semibold transition-all cursor-pointer group"
-            title="Buka atau Kongsi Pautan Pas QR Pelajar (#/qr)"
+            className="w-full flex items-center justify-between px-2.5 py-2.5 rounded-xl bg-teal-950/30 hover:bg-teal-900/40 border border-teal-500/30 text-teal-300 text-xs font-semibold transition-all cursor-pointer group/portal relative"
+            title="Portal Pas QR Pelajar (#/qr)"
           >
-            <div className="flex items-center gap-2.5">
-              <QrCode className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform shrink-0" />
-              <span>Portal Pas QR Pelajar</span>
+            <div className="flex items-center min-w-0">
+              <div className="w-6 h-6 flex items-center justify-center shrink-0">
+                <QrCode className="w-5 h-5 text-teal-400 group-hover/portal:scale-110 transition-transform shrink-0" />
+              </div>
+              <span className="ml-3 whitespace-nowrap overflow-hidden md:opacity-0 md:w-0 md:group-hover/sidebar:opacity-100 md:group-hover/sidebar:w-auto transition-all duration-200">
+                Portal Pas QR Pelajar
+              </span>
             </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-mono font-bold">
+            <span className="inline-block md:hidden md:group-hover/sidebar:inline-block text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-mono font-bold shrink-0">
               #/qr
             </span>
           </button>
@@ -168,31 +189,41 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           <button
             id="sidebar-btn-pwa-install"
             onClick={onOpenPWAInstall}
-            className="hidden w-full items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 text-xs font-semibold transition-all cursor-pointer group"
+            className="hidden w-full items-center justify-between px-2.5 py-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 text-xs font-semibold transition-all cursor-pointer group/pwa relative"
+            title="Pasang Applikasi"
           >
-            <div className="flex items-center gap-2.5">
-              <img
-                src={OFFICIAL_STUDENT_ATTEND_ICON}
-                alt="ClassAttend"
-                className="w-5 h-5 rounded-md object-contain group-hover:scale-110 transition-transform ring-1 ring-white/10 shrink-0"
-                referrerPolicy="no-referrer"
-              />
-              <span>Pasang Applikasi</span>
+            <div className="flex items-center min-w-0">
+              <div className="w-6 h-6 flex items-center justify-center shrink-0">
+                <img
+                  src={OFFICIAL_STUDENT_ATTEND_ICON}
+                  alt="ClassAttend"
+                  className="w-5 h-5 rounded-md object-contain group-hover/pwa:scale-110 transition-transform ring-1 ring-white/10 shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <span className="ml-3 whitespace-nowrap overflow-hidden md:opacity-0 md:w-0 md:group-hover/sidebar:opacity-100 md:group-hover/sidebar:w-auto transition-all duration-200">
+                Pasang Applikasi
+              </span>
             </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 font-bold">
+            <span className="inline-block md:hidden md:group-hover/sidebar:inline-block text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 font-bold shrink-0">
               Install
             </span>
           </button>
         )}
 
-        <div className="hidden md:block p-3.5 rounded-xl bg-slate-800/40 border border-slate-800 text-xs text-slate-400">
-          <div className="flex items-center gap-2 mb-1 text-slate-300 font-semibold">
-            <GraduationCap className="w-4 h-4 text-indigo-400" />
-            <span>KPM Bandar Penawar</span>
+        <div className="hidden md:block overflow-hidden transition-all duration-300">
+          <div className="hidden md:group-hover/sidebar:block p-3.5 rounded-xl bg-slate-800/40 border border-slate-800 text-xs text-slate-400">
+            <div className="flex items-center gap-2 mb-1 text-slate-300 font-semibold">
+              <GraduationCap className="w-4 h-4 text-indigo-400" />
+              <span>KPM Bandar Penawar</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Sistem Khusus Kehadiran Kelas & Subjek mengikut Pensyarah & Kelas.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Sistem Khusus Kehadiran Kelas & Subjek mengikut Pensyarah & Kelas.
-          </p>
+          <div className="flex md:group-hover/sidebar:hidden items-center justify-center py-2 text-slate-500" title="KPM Bandar Penawar">
+            <GraduationCap className="w-5 h-5 text-indigo-400/70" />
+          </div>
         </div>
       </div>
     </aside>

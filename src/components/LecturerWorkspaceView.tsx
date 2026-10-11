@@ -32,7 +32,8 @@ import {
   Plus,
   Check,
   Info,
-  Edit3
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import {
@@ -61,6 +62,7 @@ interface LecturerWorkspaceViewProps {
   onCreateSession: (session: AttendanceSession) => void;
   onSetSessionStatus: (sessionId: string, status: 'OPEN' | 'CLOSED' | 'ARCHIVED') => void;
   onCloseActiveSession: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
   onGoToStudents: () => void;
   onGoToReports: () => void;
   onUpdateSubjectClasses?: (subjectCode: string, classNames: string[]) => void;
@@ -81,6 +83,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   onCreateSession: _onCreateSession,
   onSetSessionStatus,
   onCloseActiveSession: _onCloseActiveSession,
+  onDeleteSession,
   onGoToStudents: _onGoToStudents,
   onGoToReports: _onGoToReports,
   onUpdateSubjectClasses
@@ -275,6 +278,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   const [inspectSession, setInspectSession] = useState<AttendanceSession | null>(null);
   const [confirmEndSessionId, setConfirmEndSessionId] = useState<string | null>(null);
   const [confirmCloseOtherSessionId, setConfirmCloseOtherSessionId] = useState<string | null>(null);
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState<AttendanceSession | null>(null);
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
 
   // Subject Classes Configuration Modal state
@@ -585,6 +589,22 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
     setActionNotice({ type: 'success', message: 'Sesi kehadiran berjaya ditamatkan dan rekod disimpan.' });
   };
 
+  // Explicit Delete Session Confirmation Handler (e.g. Test Platform Session)
+  const handleExecuteDeleteSession = () => {
+    if (!confirmDeleteSession || !onDeleteSession) return;
+    const sName = confirmDeleteSession.sessionName || confirmDeleteSession.subjectCode;
+    onDeleteSession(confirmDeleteSession.id);
+    setConfirmDeleteSession(null);
+    if (confirmEndSessionId === confirmDeleteSession.id) {
+      setConfirmEndSessionId(null);
+    }
+    setActionNotice({
+      type: 'success',
+      message: `Sesi "${sName}" berjaya dipadamkan daripada rekod sistem.`
+    });
+    setTimeout(() => setActionNotice(null), 4000);
+  };
+
   // Explicit Close Other Session to proceed
   const handleExplicitCloseOtherSession = () => {
     if (!confirmCloseOtherSessionId) return;
@@ -607,6 +627,15 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         enrollments={enrollments}
         onBack={handleCloseSessionDetail}
         onOpenScannerForSession={onOpenScannerForSession}
+        onDeleteSession={(sessionId) => {
+          onDeleteSession?.(sessionId);
+          handleCloseSessionDetail();
+          setActionNotice({
+            type: 'success',
+            message: 'Sesi berjaya dipadamkan daripada rekod sistem.'
+          });
+          setTimeout(() => setActionNotice(null), 4000);
+        }}
       />
     );
   }
@@ -753,11 +782,24 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   id="active-session-end-btn"
                   type="button"
                   onClick={() => setConfirmEndSessionId(currentOpenSession.id)}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 font-semibold text-xs border border-slate-700 transition-all"
                   title="Tamatkan sesi dan simpan rekod kehadiran"
                 >
                   <span>Tamat Sesi</span>
                 </button>
+
+                {onDeleteSession && (
+                  <button
+                    id="active-session-delete-btn"
+                    type="button"
+                    onClick={() => setConfirmDeleteSession(currentOpenSession)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[48px] rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all"
+                    title="Padam sesi ini sekiranya dibuka hanya untuk tujuan ujian/testing sistem"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Padam Sesi (Ujian)</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1129,6 +1171,16 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                             >
                               Butiran Sesi
                             </button>
+                            {onDeleteSession && (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteSession(s)}
+                                className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 min-h-[48px] min-w-[48px] flex items-center justify-center border border-slate-700/80 hover:border-rose-500/30 transition-colors cursor-pointer"
+                                title="Padam sesi ini (contoh: jika dibuka untuk ujian/testing platform)"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1224,6 +1276,17 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                       >
                         Lihat Butiran Sesi
                       </button>
+                      {onDeleteSession && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteSession(s)}
+                          className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs font-bold min-h-[48px] border border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          title="Padam sesi ini"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-400" />
+                          <span className="sr-only sm:not-sr-only">Padam</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1305,26 +1368,119 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
-              <AlertTriangle className="w-6 h-6" />
+              <AlertTriangle className="w-6 h-6 shrink-0" />
               <h4 className="text-lg font-bold text-white">Tamatkan Sesi Kehadiran?</h4>
             </div>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-slate-300 leading-relaxed">
               Adakah anda pasti untuk menamatkan sesi ini? Masa tamat akan disimpan dan sesi akan ditandakan sebagai SELESAI. Semua rekod imbasan pelajar kekal terpelihara.
             </p>
+
+            {onDeleteSession && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <Info className="w-4 h-4 shrink-0" />
+                  <span>Hanya Menguji (Test) Platform?</span>
+                </div>
+                <p>
+                  Jika sesi ini dibuka hanya untuk test platform dan tiada pelajar mengimbas, menamatkan sesi akan mengira pelajar yang tidak scan sebagai "Tidak Hadir". Untuk mengelakkan perkara ini, anda boleh memadamkan sesi ini sepenuhnya:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const s = sessions.find((x) => x.id === confirmEndSessionId);
+                    if (s) {
+                      setConfirmDeleteSession(s);
+                      setConfirmEndSessionId(null);
+                    }
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold border border-rose-500/30 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Padam Sesi Ini (Sebagai Sesi Ujian)</span>
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmEndSessionId(null)}
-                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold"
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleConfirmEndSession}
-                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold shadow-lg shadow-rose-600/30"
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-600/30 transition-colors cursor-pointer"
               >
                 Sahkan Tamatkan Sesi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL: DELETE SESSION (E.G. TEST PLATFORM SESSION) */}
+      {confirmDeleteSession && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-white">Padamkan Sesi Ini?</h4>
+                <p className="text-xs text-rose-300/80 font-medium">Sesi akan dibuang sepenuhnya daripada sistem</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Subjek:</span>
+                <span className="font-bold text-white">
+                  {confirmDeleteSession.subjectCode} - {confirmDeleteSession.subjectName || confirmDeleteSession.sessionName}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Kelas:</span>
+                <span className="font-bold text-indigo-300">{confirmDeleteSession.className}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Tarikh:</span>
+                <span className="font-mono text-slate-200">{confirmDeleteSession.date}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Status Sesi:</span>
+                <span className="font-bold text-slate-300">{confirmDeleteSession.status === 'OPEN' ? '🟢 AKTIF' : 'SELESAI'}</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Untuk Pensyarah yang Menguji (Test) Platform:</span>
+              </div>
+              <p>
+                Jika sesi ini dibuka hanya untuk tujuan ujian/testing sistem, memadamkannya adalah tindakan yang tepat. Sesi berserta sebarang rekod imbasan akan dibuang sepenuhnya, dan <strong>pelajar TIDAK akan dikira sebagai Tidak Hadir (Absent)</strong>. Peratusan kehadiran pelajar tidak akan terjejas.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteSession(null)}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteSession}
+                className="px-5 py-2.5 min-h-[48px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sahkan Padam Sesi</span>
               </button>
             </div>
           </div>

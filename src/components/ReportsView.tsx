@@ -43,7 +43,6 @@ import {
   Lock,
   FileSpreadsheet,
   HardDrive,
-  ShieldCheck,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -68,6 +67,10 @@ interface ReportsViewProps {
   isAdmin?: boolean;
   activeLecturer?: Lecturer | null;
   onRequestAdminAccess?: (actionName?: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+  onAddStudent?: (student: Student) => void;
+  onUpdateStudent?: (student: Student) => void;
+  onDeleteStudent?: (studentId: string) => void;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
@@ -79,7 +82,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   teachingAssignments = [],
   isAdmin = false,
   activeLecturer = null,
-  onRequestAdminAccess
+  onRequestAdminAccess,
+  onDeleteSession,
+  onAddStudent,
+  onUpdateStudent,
+  onDeleteStudent
 }) => {
   // Determine if lecturer privacy scoping is active (True when lecturer is logged in and not an Admin)
   const isLecturerRestricted = Boolean(activeLecturer && !isAdmin && activeLecturer.role !== 'ADMIN');
@@ -176,7 +183,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return attendanceRecords.filter((r) => authorizedSessionIds.has(r.sessionId));
   }, [attendanceRecords, authorizedSessions, isLecturerRestricted]);
 
-  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT' | 'MATRIX'>('CLASS');
+  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT' | 'MATRIX'>('MATRIX');
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => authorizedSessions[0]?.id || '');
   const [selectedClassSection, setSelectedClassSection] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
@@ -433,12 +440,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
               <span>Laporan & Analitik Kehadiran Pelajar</span>
             </h2>
-            {isLecturerRestricted && activeLecturer && (
-              <p className="text-xs text-indigo-300/90 mt-1 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" />
-                <span>Mod Pensyarah: Hanya memaparkan subjek & kelas yang diajar oleh <strong>{activeLecturer.name}</strong> ({uniqueClasses.length > 0 ? uniqueClasses.join(', ') : 'Tiada Kelas Ditugaskan'}).</span>
-              </p>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -640,6 +641,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           isAdmin={isAdmin}
           activeLecturer={activeLecturer}
           onRequestAdminAccess={onRequestAdminAccess}
+          onDeleteSession={onDeleteSession}
+          onAddStudent={onAddStudent}
+          onUpdateStudent={onUpdateStudent}
+          onDeleteStudent={onDeleteStudent}
         />
       )}
 

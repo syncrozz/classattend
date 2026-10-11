@@ -3078,11 +3078,79 @@ class AttendanceEngine {
   }
 
   public deleteStudent(studentId: string) {
-    this.students = this.students.filter((s) => s.id !== studentId);
+    this.students = this.students.filter((s) => s.id !== studentId && s.studentId !== studentId);
     this.saveStudentsLocally();
 
     if (db) {
       deleteDoc(doc(db, 'students', studentId)).catch(console.warn);
+    }
+  }
+
+  public updateStudent(updatedStudent: Student) {
+    this.students = this.students.map((s) => (s.id === updatedStudent.id || s.studentId === updatedStudent.studentId ? updatedStudent : s));
+    this.saveStudentsLocally();
+
+    if (db) {
+      setDoc(doc(db, 'students', updatedStudent.id), sanitizeForFirestore(updatedStudent), { merge: true }).catch(console.warn);
+    }
+  }
+
+  public setStudentAttendanceRecord(params: {
+    sessionId: string;
+    studentId: string;
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'REMOVE';
+    notes?: string;
+  }) {
+    const { sessionId, studentId, status, notes } = params;
+    const cleanStudentId = (studentId || '').trim().toUpperCase();
+    const existing = this.attendanceRecords.find(
+      (r) => r.sessionId === sessionId && r.studentId.trim().toUpperCase() === cleanStudentId
+    );
+
+    if (status === 'REMOVE') {
+      if (existing) {
+        this.attendanceRecords = this.attendanceRecords.filter((r) => r.id !== existing.id);
+        this.saveRecordsLocally();
+        if (db) {
+          deleteDoc(doc(db, 'attendance_records', existing.id)).catch(console.warn);
+        }
+      }
+      return;
+    }
+
+    const student = this.getStudentById(studentId) || this.students.find((s) => s.studentId.toUpperCase() === cleanStudentId);
+    const session = this.sessions.find((s) => s.id === sessionId);
+
+    if (existing) {
+      const updated: AttendanceRecord = {
+        ...existing,
+        status,
+        notes: notes !== undefined ? notes : existing.notes,
+        timestamp: existing.timestamp || new Date().toISOString()
+      };
+      this.attendanceRecords = this.attendanceRecords.map((r) => (r.id === existing.id ? updated : r));
+      this.saveRecordsLocally();
+      if (db) {
+        setDoc(doc(db, 'attendance_records', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(console.warn);
+      }
+    } else {
+      const newRecord: AttendanceRecord = {
+        id: `REC_MANUAL_${sessionId}_${cleanStudentId}_${Date.now()}`,
+        sessionId,
+        subjectCode: session?.subjectCode || '',
+        className: student?.className || session?.className || '',
+        studentId: student?.studentId || cleanStudentId,
+        studentName: student?.name || cleanStudentId,
+        timestamp: new Date().toISOString(),
+        method: 'MANUAL',
+        status,
+        notes: notes || 'Pelarasan manual guru/pensyarah'
+      };
+      this.attendanceRecords = [newRecord, ...this.attendanceRecords];
+      this.saveRecordsLocally();
+      if (db) {
+        setDoc(doc(db, 'attendance_records', newRecord.id), sanitizeForFirestore(newRecord), { merge: true }).catch(console.warn);
+      }
     }
   }
 
@@ -3359,8 +3427,16 @@ class AttendanceEngine {
     this.sessions = updated;
     this.saveSessionsLocally();
 
+    // Clean up any attendance records linked to this session
+    const deletedRecordIds = this.attendanceRecords.filter((r) => r.sessionId === sessionId).map((r) => r.id);
+    this.attendanceRecords = this.attendanceRecords.filter((r) => r.sessionId !== sessionId);
+    this.saveRecordsLocally();
+
     if (db) {
       deleteDoc(doc(db, 'sessions', sessionId)).catch(console.warn);
+      deletedRecordIds.forEach((recId) => {
+        deleteDoc(doc(db, 'attendanceRecords', recId)).catch(console.warn);
+      });
     }
 
     return updated;
