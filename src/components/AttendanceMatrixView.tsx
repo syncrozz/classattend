@@ -17,6 +17,7 @@ import {
   exportAttendanceMatrixToCSV,
   downloadCSV
 } from '../utils/csvHelper';
+import { generateWhatsAppWarningLink } from '../utils/whatsappHelper';
 import {
   Printer,
   Download,
@@ -251,7 +252,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
       sessionId: editingAttendanceCell.session.id,
       studentId,
       status,
-      remarks: customRemarks !== undefined ? customRemarks : editingAttendanceCell.remarks
+      notes: customRemarks !== undefined ? customRemarks : editingAttendanceCell.remarks
     });
     showToast(`Status kehadiran ${editingAttendanceCell.student.name} telah dikemaskini.`);
     setEditingAttendanceCell(null);
@@ -354,10 +355,20 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
     downloadCSV(csvContent, `Matriks_Kehadiran_${safeClass}_${safeSubject}.csv`);
   };
 
+  // Quick KPI filter for viewing only students with attendance below 80%
+  const [showOnlyBelow80, setShowOnlyBelow80] = useState<boolean>(false);
+
+  // Filtered rows for display
+  const displayedRows = useMemo(() => {
+    if (!showOnlyBelow80) return matrixData.rows;
+    return matrixData.rows.filter((r) => r.isWarning);
+  }, [matrixData.rows, showOnlyBelow80]);
+
   const handleResetFilters = () => {
     setStartDate('');
     setEndDate('');
     setSearchQuery('');
+    setShowOnlyBelow80(false);
   };
 
   return (
@@ -551,12 +562,12 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                 />
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
               </div>
-              {(startDate || endDate || searchQuery) && (
+              {(startDate || endDate || searchQuery || showOnlyBelow80) && (
                 <button
                   type="button"
                   onClick={handleResetFilters}
                   className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs cursor-pointer shrink-0"
-                  title="Set semula penapis"
+                  title="Set semula semua penapis"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </button>
@@ -581,10 +592,22 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
               </strong>
             </span>
             {matrixData.studentsBelow80Count > 0 && (
-              <span className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowOnlyBelow80((prev) => !prev)}
+                className={`px-2.5 py-1 rounded-lg border font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showOnlyBelow80
+                    ? 'bg-rose-600 text-white border-rose-500 shadow-md ring-2 ring-rose-400/40'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                }`}
+                title={showOnlyBelow80 ? 'Klik untuk papar semua pelajar' : 'Klik untuk tapis pelajar bawah 80% sahaja'}
+              >
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
                 <span>{matrixData.studentsBelow80Count} pelajar bawah 80%</span>
-              </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-200 border border-rose-500/30 ml-0.5">
+                  {showOnlyBelow80 ? 'Papar Semua' : 'Tapis <80%'}
+                </span>
+              </button>
             )}
           </div>
 
@@ -721,11 +744,35 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                   >
                     %
                   </th>
+                  <th
+                    scope="col"
+                    className="border border-slate-400 px-3 py-3 text-center min-w-[130px] bg-slate-200 font-black text-slate-900"
+                  >
+                    Status KPI / Tindakan
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
-                {matrixData.rows.map((row, rIdx) => {
+                {displayedRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={matrixData.columns.length + 8} className="py-12 text-center bg-slate-50 text-slate-600">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                        <p className="font-bold text-slate-800 text-sm">Tahniah! Tiada Pelajar di Bawah 80%</p>
+                        <p className="text-xs text-slate-500 max-w-md">Semua pelajar bagi kelas dan subjek ini berjaya melepasi piawaian kehadiran minimum.</p>
+                        <button
+                          type="button"
+                          onClick={() => setShowOnlyBelow80(false)}
+                          className="mt-2 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          Paparkan Semua Pelajar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  displayedRows.map((row, rIdx) => {
                   const isEven = rIdx % 2 === 0;
                   const rowBg = isEven ? 'bg-white' : 'bg-slate-50/60';
 
@@ -816,7 +863,7 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                                 student: row.student,
                                 session: col.session,
                                 currentStatus: cell.status,
-                                remarks: cell.remarks || ''
+                                remarks: cell.record?.notes || ''
                               });
                             }}
                             className={`border border-slate-400 px-1 py-1 text-center select-none cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:z-20 relative transition-all ${cell.bgClass}`}
@@ -861,9 +908,67 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
                       >
                         {row.percentage}%
                       </td>
+
+                      {/* Status KPI & Tindakan WhatsApp Amaran (Pindahan fungsi penting dari Perspektif Pelajar) */}
+                      <td className="border border-slate-400 px-2.5 py-1.5 text-center bg-slate-50">
+                        {row.totalSessions === 0 ? (
+                          <span className="text-[11px] text-slate-400 italic">Tiada Sesi</span>
+                        ) : !row.isWarning ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs"
+                            title="Lulus KPI Kehadiran (≥ 80%)"
+                          >
+                            <span>✅</span>
+                            <span>Lulus</span>
+                          </span>
+                        ) : (() => {
+                          const waUrl = generateWhatsAppWarningLink({
+                            student: row.student,
+                            courseCode: selectedSubjectCode,
+                            courseName: selectedSubjectName,
+                            className: row.className || selectedClass,
+                            presentCount: row.presentCount,
+                            totalSessions: row.totalSessions,
+                            rate: row.percentage,
+                            lecturerName: activeLecturer?.name
+                          });
+
+                          return (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300"
+                                title="Di Bawah KPI (< 80%)"
+                              >
+                                <span>❌</span>
+                                <span>&lt;80%</span>
+                              </span>
+                              {waUrl ? (
+                                <a
+                                  href={waUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="no-print inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shadow-xs hover:scale-105 transition-all cursor-pointer"
+                                  title={`Hantar Amaran Kehadiran Rasmi kepada ${row.name} via WhatsApp (${row.student.phone})`}
+                                >
+                                  <Phone className="w-2.5 h-2.5" />
+                                  <span>WhatsApp</span>
+                                </a>
+                              ) : (
+                                <span
+                                  className="no-print text-[9px] text-slate-400 italic"
+                                  title="No. telefon belum didaftarkan"
+                                >
+                                  Tiada Tel
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                     </tr>
                   );
-                })}
+                })
+              )}
               </tbody>
             </table>
           </div>

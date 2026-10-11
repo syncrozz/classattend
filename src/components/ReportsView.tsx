@@ -183,7 +183,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return attendanceRecords.filter((r) => authorizedSessionIds.has(r.sessionId));
   }, [attendanceRecords, authorizedSessions, isLecturerRestricted]);
 
-  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'STUDENT' | 'MATRIX'>('MATRIX');
+  const [reportPerspective, setReportPerspective] = useState<'SESSION' | 'CLASS' | 'MATRIX'>('MATRIX');
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => authorizedSessions[0]?.id || '');
   const [selectedClassSection, setSelectedClassSection] = useState<string>(() => uniqueClasses[0] || 'DIA_4A');
   const [filterSet, setFilterSet] = useState<string>('ALL');
@@ -410,27 +410,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     downloadCSV(headers + rows, `Laporan_Kehadiran_Kelas_${selectedClassSection}.csv`);
   };
 
-  // Student-Centric list calculations
-  const studentReportsList = scopedStudents
-    .filter((st) => {
-      const matchesSet = filterSet === 'ALL' || areClassesMatching(st.className, filterSet);
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = st.name.toLowerCase().includes(q) || st.studentId.toLowerCase().includes(q);
-      return matchesSet && matchesSearch;
-    })
-    .map((st) => {
-      const applicableSessions = authorizedSessions.filter((s) => !s.className || areClassesMatching(s.className, st.className));
-      const studentRecs = scopedAttendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');
-      const rate = applicableSessions.length > 0 ? Math.round((studentRecs.length / applicableSessions.length) * 100) : 0;
-
-      return {
-        student: st,
-        total: applicableSessions.length,
-        present: studentRecs.length,
-        rate
-      };
-    });
-
   return (
     <div className="space-y-6 printable-report-container">
       {/* Top Header & Perspective Switcher */}
@@ -467,8 +446,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </button>
             </div>
 
-            {/* Perspective Toggle (3 Perspectives: CLASS, SESSION, STUDENT) */}
+            {/* Perspective Toggle (Matriks Kehadiran, Mengikut Kelas, Sesi Kuliah) */}
             <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1">
+              <button
+                id="btn-report-perspective-matrix"
+                onClick={() => setReportPerspective('MATRIX')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  reportPerspective === 'MATRIX'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                📊 Matriks Kehadiran
+              </button>
               <button
                 id="btn-report-perspective-class"
                 onClick={() => setReportPerspective('CLASS')}
@@ -490,28 +480,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 }`}
               >
                 📅 Sesi Kuliah
-              </button>
-              <button
-                id="btn-report-perspective-student"
-                onClick={() => setReportPerspective('STUDENT')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  reportPerspective === 'STUDENT'
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                🎓 Pelajar
-              </button>
-              <button
-                id="btn-report-perspective-matrix"
-                onClick={() => setReportPerspective('MATRIX')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  reportPerspective === 'MATRIX'
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                📊 Matriks Kehadiran
               </button>
             </div>
           </div>
@@ -1131,108 +1099,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       )}
 
-      {/* PERSPECTIVE 3: STUDENT-CENTRIC */}
-      {reportPerspective === 'STUDENT' && (
-        <div className="space-y-4">
-          <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-lg">
-            <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-              <div className="text-xs font-bold text-white">
-                Ringkasan Prestasi Kumulatif Pelajar ({studentReportsList.length} Pelajar)
-              </div>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
-                  <tr>
-                    <th className="py-3 px-4">No. Pelajar</th>
-                    <th className="py-3 px-4">Nama Pelajar</th>
-                    <th className="py-3 px-4">Kelas</th>
-                    <th className="py-3 px-4 text-center">Kehadiran Kelas Keseluruhan</th>
-                    <th className="py-3 px-4">Sesi Hadir / Jumlah</th>
-                    <th className="py-3 px-4 text-center">Status KPI</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {studentReportsList.map((item) => (
-                    <tr key={item.student.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-indigo-400">{item.student.studentId}</td>
-                      <td className="py-3 px-4 font-semibold text-white">{item.student.name}</td>
-                      <td className="py-3 px-4">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getClassBadgeColor(item.student.className)}`}>
-                          {item.student.className}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {item.total > 0 ? (
-                          <span
-                            className={`px-2 py-0.5 rounded-full font-bold text-xs ${
-                              item.rate >= 80
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : item.rate >= 60
-                                ? 'bg-amber-500/20 text-amber-300'
-                                : 'bg-rose-500/20 text-rose-300'
-                            }`}
-                          >
-                            {item.rate}%
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 text-xs italic">Tiada Sesi</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-400">
-                        {item.total > 0 ? `${item.present} / ${item.total}` : '-'}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {item.total === 0 ? (
-                          <span className="text-slate-500 text-xs">-</span>
-                        ) : item.rate >= 80 ? (
-                          <span
-                            className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
-                            title="Lulus KPI (≥ 80%)"
-                          >
-                            ✅
-                          </span>
-                        ) : (() => {
-                          const waUrl = generateWhatsAppWarningLink({
-                            student: item.student,
-                            className: item.student.className,
-                            presentCount: item.present,
-                            totalSessions: item.total,
-                            rate: item.rate
-                          });
-
-                          return waUrl ? (
-                            <a
-                              href={waUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 hover:border-rose-400 shadow-sm hover:scale-105 transition-all cursor-pointer group"
-                              title={`❌ Perlu Surat Amaran (< 80%). Klik untuk buka WhatsApp & hantar rekod amaran kehadiran rasmi kepada ${item.student.name} (${item.student.phone})`}
-                            >
-                              <span>❌</span>
-                              <span className="text-[10px] font-semibold text-rose-300 group-hover:text-white underline-offset-2 group-hover:underline">
-                                WhatsApp
-                              </span>
-                            </a>
-                          ) : (
-                            <span
-                              className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm"
-                              title="Perlu Surat Amaran (< 80%) - No. telefon belum didaftarkan"
-                            >
-                              ❌
-                            </span>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Toast Notification */}
       {backupToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border-2 border-emerald-500/60 text-emerald-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
