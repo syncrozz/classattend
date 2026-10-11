@@ -417,7 +417,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Laporan & Analitik Kehadiran Pelajar</span>
+              <span>Laporan Kehadiran</span>
             </h2>
           </div>
 

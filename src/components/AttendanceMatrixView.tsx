@@ -414,18 +414,9 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
       <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 space-y-4 shadow-lg no-print">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-bold tracking-wide">
-                Jadual Penuh Kehadiran
-              </span>
-              <span className="text-xs text-slate-400">• Satu Jadual Merangkumi Semua Sesi</span>
-            </div>
-            <h3 className="text-lg font-bold text-white tracking-tight mt-1">
-              Matriks Kehadiran Kuliah & Seksyen
+            <h3 className="text-lg font-bold text-white tracking-tight">
+              Matriks Kehadiran
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Paparan grid visual status kehadiran setiap pelajar bagi setiap sesi kuliah secara bersiri mengikut tarikh.
-            </p>
           </div>
 
           {/* Action Buttons: Cetak PDF, Eksport CSV & Tambah Pelajar */}
@@ -489,16 +480,9 @@ export const AttendanceMatrixView: React.FC<AttendanceMatrixViewProps> = ({
 
           {/* Dropdown 2: Subjek */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between gap-1.5">
-              <span className="flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                <span>2. Pilih Subjek</span>
-              </span>
-              {isLecturerRestricted && (
-                <span className="text-[10px] text-indigo-300 font-semibold bg-indigo-950/80 border border-indigo-500/30 px-1.5 py-0.5 rounded">
-                  Subjek Anda
-                </span>
-              )}
+            <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <span>2. Pilih Subjek</span>
             </label>
             <select
               id="matrix-select-subject"
