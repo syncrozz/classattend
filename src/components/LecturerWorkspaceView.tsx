@@ -652,14 +652,9 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
             {activeLecturer.name?.charAt(0) || 'P'}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                {activeLecturer.name}
-              </h1>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {activeLecturer.department || 'Jabatan Perakaunan'}
-              </span>
-            </div>
+            <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
+              {activeLecturer.name}
+            </h1>
             <p className="text-xs text-slate-400 font-mono">
               {activeLecturer.email}
             </p>
@@ -884,7 +879,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               title="Tetapkan atau ubah senarai kelas bagi subjek yang diajar"
             >
               <Settings className="w-4 h-4 text-indigo-400 group-hover:rotate-45 transition-transform duration-300" />
-              <span>Ubah Kelas Subjek (Tetapan)</span>
+              <span>Ubah Kelas Subjek</span>
             </button>
           </div>
 
@@ -1023,9 +1018,6 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
                   Buka Scanner: {selectedSubject ? `${selectedSubject.code} — ${selectedClass || 'Tiada Kelas Dipilih'}` : 'Sila Pilih Subjek'}
                 </span>
               </div>
-              <span className="text-xs text-indigo-100 font-normal opacity-85">
-                (Sesi kehadiran akan dibuka secara langsung)
-              </span>
             </button>
           )}
         </div>

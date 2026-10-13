@@ -16,6 +16,8 @@ import {
   normalizeStudentId,
   findStudentById
 } from '../utils/studentUtils';
+import { performSmartScreenshotSupport } from '../utils/screenshotHelper';
+import { ADMIN_WHATSAPP_PHONE, ADMIN_WHATSAPP_URL } from '../utils/whatsappHelper';
 import {
   GraduationCap,
   QrCode,
@@ -35,7 +37,9 @@ import {
   X,
   Sparkles,
   ShieldCheck,
-  FileCheck
+  FileCheck,
+  MessageCircle,
+  ExternalLink
 } from 'lucide-react';
 
 export interface StudentCheckinContext {
@@ -94,6 +98,14 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
   const [verifiedRecord, setVerifiedRecord] = useState<AttendanceRecord | null>(null);
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
 
+  // Smart Screenshot & PM Admin State (SES v4.5)
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState<boolean>(false);
+  const [screenshotFeedback, setScreenshotFeedback] = useState<{
+    type: 'SUCCESS' | 'INFO' | 'ERROR';
+    message: string;
+    whatsappUrl?: string;
+  } | null>(null);
+
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const qrScannerId = 'student-self-qr-reader';
 
@@ -102,6 +114,68 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
     sessions.find((s) => s.status === 'OPEN' && (!context?.subjectCode || s.subjectCode === context.subjectCode)) ||
     sessions.find((s) => s.status === 'OPEN') ||
     null;
+
+  // Context metadata displays
+  const displaySubjectCode = context?.subjectCode || targetSession?.subjectCode || 'MPU 2163';
+  const displaySubjectName = context?.subjectName || targetSession?.subjectName || 'Pengajian Malaysia 2';
+  const displayClassName = context?.className || targetSession?.className || 'DIA_4A';
+  const displayLecturer = context?.lecturerName || targetSession?.lecturerName || 'Pensyarah KPM Bandar Penawar';
+
+  // Handle Smart Screenshot & PM Admin (SES v4.5)
+  const handleScreenshotAndPMAdmin = async () => {
+    setIsCapturingScreenshot(true);
+    setScreenshotFeedback(null);
+    soundService.playClick();
+
+    try {
+      const activeId = normalizeStudentId(inputStudentId.trim()) || savedStudentId || verifiedStudent?.studentId;
+      const result = await performSmartScreenshotSupport({
+        targetElementId: 'student-checkin-modal-card',
+        studentId: activeId,
+        studentName: verifiedStudent?.name,
+        courseCode: displaySubjectCode,
+        courseName: displaySubjectName,
+        className: displayClassName,
+        sessionName: targetSession?.name || context?.sessionName,
+        lecturerName: displayLecturer,
+        issueDescription: feedbackMessage || (submitStatus === 'ERROR' ? 'No. Pelajar tidak dijumpai / ralat kehadiran' : 'Bantuan kehadiran pelajar')
+      });
+
+      if (result.outcome === 'SHARED') {
+        soundService.playSuccess();
+        setScreenshotFeedback({
+          type: 'SUCCESS',
+          message: result.userMessage || 'Tetingkap perkongsian telefon dibuka. Sila pilih WhatsApp untuk menghantar tangkapan skrin kepada Admin.',
+          whatsappUrl: result.whatsappUrl
+        });
+      } else if (result.outcome === 'DOWNLOADED') {
+        soundService.playSuccess();
+        setScreenshotFeedback({
+          type: 'INFO',
+          message: result.userMessage || 'Tangkapan skrin telah dimuat turun! Sila lampirkan fail PNG ke dalam perbualan WhatsApp Admin yang telah dibuka.',
+          whatsappUrl: result.whatsappUrl
+        });
+      } else if (result.outcome === 'CANCELLED') {
+        // User closed share sheet, no error needed
+      } else {
+        soundService.playError();
+        setScreenshotFeedback({
+          type: 'ERROR',
+          message: result.error || 'Gagal menjana tangkapan skrin.',
+          whatsappUrl: result.whatsappUrl
+        });
+      }
+    } catch (err: any) {
+      soundService.playError();
+      setScreenshotFeedback({
+        type: 'ERROR',
+        message: err?.message || 'Ralat semasa memproses tangkapan skrin.',
+        whatsappUrl: ADMIN_WHATSAPP_URL
+      });
+    } finally {
+      setIsCapturingScreenshot(false);
+    }
+  };
 
   // Sync register class with context
   useEffect(() => {
@@ -258,9 +332,9 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
     if (found) {
       executeAttendance(found);
     } else {
-      // Prompt for quick registration
-      setIsRegisterMode(true);
-      setRegisterName('');
+      setSubmitStatus('ERROR');
+      setFeedbackMessage(`No. Pelajar "${normalizedInput}" tidak dijumpai dalam pangkalan data kursus ${displaySubjectCode}. Sila semak semula atau gunakan butang "Screenshot & PM Admin" di bawah.`);
+      soundService.playError();
     }
   };
 
@@ -372,11 +446,6 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
       );
     })
     .slice(0, 5);
-
-  const displaySubjectCode = context?.subjectCode || targetSession?.subjectCode || 'MPU 2163';
-  const displaySubjectName = context?.subjectName || targetSession?.subjectName || 'Pengajian Malaysia 2';
-  const displayClassName = context?.className || targetSession?.className || 'DIA_4A';
-  const displayLecturer = context?.lecturerName || targetSession?.lecturerName || 'Pensyarah KPM Bandar Penawar';
 
   return (
     <div
@@ -729,13 +798,26 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
                     )}
                   </button>
 
-                  <div className="flex items-center justify-between pt-1 text-xs">
+                  <div className="flex items-center justify-between pt-1 text-xs" data-html2canvas-ignore="true">
                     <button
                       type="button"
-                      onClick={() => setIsRegisterMode(true)}
-                      className="text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                      id="btn-screenshot-pm-admin"
+                      onClick={handleScreenshotAndPMAdmin}
+                      disabled={isCapturingScreenshot}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 hover:text-teal-200 border border-teal-500/30 text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                      title="Ambil tangkapan skrin masalah dan hubungi WhatsApp Admin rasmi (60145313756)"
                     >
-                      Pelajar Baharu? <span className="underline">Daftar Di Sini</span>
+                      {isCapturingScreenshot ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menjana Screenshot...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-3.5 h-3.5 text-teal-400" />
+                          <span>Screenshot & PM Admin</span>
+                        </>
+                      )}
                     </button>
 
                     <button
@@ -850,11 +932,67 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
             </div>
           )}
 
-          {/* Feedback error message */}
+          {/* Feedback error message & Quick PM Admin CTA */}
           {feedbackMessage && submitStatus === 'ERROR' && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{feedbackMessage}</span>
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2.5 animate-fadeIn">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                <span className="leading-relaxed">{feedbackMessage}</span>
+              </div>
+              <div className="pt-0.5" data-html2canvas-ignore="true">
+                <button
+                  type="button"
+                  id="btn-error-screenshot-pm-admin"
+                  onClick={handleScreenshotAndPMAdmin}
+                  disabled={isCapturingScreenshot}
+                  className="w-full py-2.5 px-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-extrabold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isCapturingScreenshot ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menjana Screenshot...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Screenshot & PM Admin</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Screenshot Action Feedback Notice */}
+          {screenshotFeedback && (
+            <div
+              data-html2canvas-ignore="true"
+              className={`p-3.5 rounded-2xl border text-xs space-y-1.5 animate-fadeIn ${
+                screenshotFeedback.type === 'ERROR'
+                  ? 'bg-rose-950/40 border-rose-500/30 text-rose-200'
+                  : 'bg-teal-950/40 border-teal-500/30 text-teal-200'
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 flex-1">
+                  <p className="font-semibold leading-relaxed">{screenshotFeedback.message}</p>
+                  {screenshotFeedback.whatsappUrl && (
+                    <div className="pt-1">
+                      <a
+                        href={screenshotFeedback.whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 hover:text-white border border-teal-500/40 text-[11px] font-bold"
+                      >
+                        <MessageCircle className="w-3 h-3" />
+                        <span>Buka WhatsApp Admin ({ADMIN_WHATSAPP_PHONE})</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

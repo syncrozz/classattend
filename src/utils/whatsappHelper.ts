@@ -87,3 +87,70 @@ export function generateWhatsAppWarningLink(params: WhatsAppAttendanceWarningPar
   const text = generateAttendanceWarningMessage(params);
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
+
+// ============================================================================
+// ADMIN SUPPORT & SMART SCREENSHOT INTEGRATION (SES v4.5)
+// Official Admin Contact: 60145313756
+// ============================================================================
+export const ADMIN_WHATSAPP_PHONE = '60145313756';
+export const ADMIN_WHATSAPP_URL = 'https://wa.me/60145313756';
+
+export interface AdminSupportMessageParams {
+  studentId?: string;
+  studentName?: string;
+  courseCode?: string;
+  courseName?: string;
+  className?: string;
+  sessionName?: string;
+  lecturerName?: string;
+  issueDescription?: string;
+}
+
+export function generateAdminSupportMessage(params: AdminSupportMessageParams): string {
+  const {
+    studentId,
+    studentName,
+    courseCode,
+    courseName,
+    className,
+    sessionName,
+    lecturerName,
+    issueDescription
+  } = params;
+
+  const courseDisplay =
+    courseCode && courseName
+      ? `${courseCode} - ${courseName}`
+      : courseCode || courseName || 'Subjek KPM';
+
+  const issue = issueDescription || 'No. Pelajar tidak dijumpai / ralat pendaftaran kehadiran';
+
+  const lines = [
+    `*BANTUAN KEHADIRAN PELAJAR — CLASSATTEND*`,
+    `Kolej Profesional MARA Bandar Penawar`,
+    ``,
+    `Salam sejahtera Pentadbir Sistem ClassAttend,`,
+    `Saya memerlukan bantuan teknikal berkaitan pendaftaran/pengesahan kehadiran:`,
+    ``,
+    `📌 *Maklumat Sesi:*`,
+    `• Subjek: ${courseDisplay}`,
+    `• Kelas: ${className || '-'}`,
+    ...(sessionName ? [`• Sesi: ${sessionName}`] : []),
+    ...(lecturerName ? [`• Pensyarah: ${lecturerName}`] : []),
+    ...(studentId ? [`• No. Pelajar: ${studentId}`] : []),
+    ...(studentName ? [`• Nama Pelajar: ${studentName}`] : []),
+    `• Isu/Masalah: ${issue}`,
+    ``,
+    `📎 Bersama ini saya sertakan tangkapan skrin (screenshot) paparan ClassAttend saya untuk semakan pihak admin.`,
+    ``,
+    `Terima kasih.`
+  ];
+
+  return lines.join('\n');
+}
+
+export function generateAdminSupportLink(params: AdminSupportMessageParams): string {
+  const text = generateAdminSupportMessage(params);
+  return `https://wa.me/${ADMIN_WHATSAPP_PHONE}?text=${encodeURIComponent(text)}`;
+}
+
