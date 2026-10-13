@@ -3,7 +3,6 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Student, OFFICIAL_STUDENT_ATTEND_ICON } from '../types';
 import { findStudentById, findStudentByAccessCode, normalizeStudentId } from '../utils/studentUtils';
 import { soundService } from '../services/soundService';
-import { performSmartScreenshotSupport } from '../utils/screenshotHelper';
 import { ADMIN_WHATSAPP_PHONE, ADMIN_WHATSAPP_URL } from '../utils/whatsappHelper';
 import {
   QrCode,
@@ -36,64 +35,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isCheckingMemory, setIsCheckingMemory] = useState<boolean>(true);
-  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState<boolean>(false);
-  const [screenshotFeedback, setScreenshotFeedback] = useState<{
-    type: 'SUCCESS' | 'INFO' | 'ERROR';
-    message: string;
-    whatsappUrl?: string;
-  } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const handleScreenshotAndPMAdmin = async () => {
-    setIsCapturingScreenshot(true);
-    setScreenshotFeedback(null);
-    soundService.playClick();
-
-    try {
-      const activeId = normalizeStudentId(studentIdInput.trim()) || verifiedStudent?.studentId;
-      const result = await performSmartScreenshotSupport({
-        targetElementId: 'student-qr-portal-container',
-        studentId: activeId,
-        studentName: verifiedStudent?.name,
-        className: verifiedStudent?.className,
-        issueDescription: errorMsg || 'No. ID Pelajar tidak dijumpai dalam sistem portal pas QR'
-      });
-
-      if (result.outcome === 'SHARED') {
-        soundService.playSuccess();
-        setScreenshotFeedback({
-          type: 'SUCCESS',
-          message: result.userMessage || 'Tetingkap perkongsian telefon dibuka. Sila pilih WhatsApp untuk menghantar tangkapan skrin kepada Admin.',
-          whatsappUrl: result.whatsappUrl
-        });
-      } else if (result.outcome === 'DOWNLOADED') {
-        soundService.playSuccess();
-        setScreenshotFeedback({
-          type: 'INFO',
-          message: result.userMessage || 'Tangkapan skrin telah dimuat turun! Sila lampirkan fail PNG ke dalam perbualan WhatsApp Admin yang telah dibuka.',
-          whatsappUrl: result.whatsappUrl
-        });
-      } else if (result.outcome === 'CANCELLED') {
-        // User closed share dialog
-      } else {
-        soundService.playError();
-        setScreenshotFeedback({
-          type: 'ERROR',
-          message: result.error || 'Gagal menjana tangkapan skrin.',
-          whatsappUrl: result.whatsappUrl
-        });
-      }
-    } catch (err: any) {
-      soundService.playError();
-      setScreenshotFeedback({
-        type: 'ERROR',
-        message: err?.message || 'Ralat semasa memproses tangkapan skrin.',
-        whatsappUrl: ADMIN_WHATSAPP_URL
-      });
-    } finally {
-      setIsCapturingScreenshot(false);
-    }
-  };
 
   // Check device memory on mount or when students list is loaded
   useEffect(() => {
@@ -314,7 +256,7 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
                 </p>
               </div>
 
-              {/* Error Message Box & Smart Screenshot Support */}
+              {/* Error Message Box & Quick PM Admin CTA */}
               {errorMsg && (
                 <div
                   id="qr-portal-error-msg"
@@ -324,59 +266,23 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
                     <span className="leading-relaxed">{errorMsg}</span>
                   </div>
-                  <div className="pt-0.5" data-html2canvas-ignore="true">
-                    <button
-                      type="button"
-                      id="btn-qr-portal-screenshot-pm-admin"
-                      onClick={handleScreenshotAndPMAdmin}
-                      disabled={isCapturingScreenshot}
-                      className="w-full py-2.5 px-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-extrabold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  <div className="pt-0.5">
+                    <a
+                      href="https://wa.me/60145313756"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      id="btn-qr-portal-pm-admin"
+                      className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer group"
+                      title="Hubungi Admin di WhatsApp (60145313756)"
                     >
-                      {isCapturingScreenshot ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Menjana Screenshot...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>Screenshot & PM Admin</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Screenshot Action Feedback Notice */}
-              {screenshotFeedback && (
-                <div
-                  data-html2canvas-ignore="true"
-                  className={`p-3.5 rounded-2xl border text-xs text-left space-y-1.5 animate-fadeIn ${
-                    screenshotFeedback.type === 'ERROR'
-                      ? 'bg-rose-950/40 border-rose-500/30 text-rose-200'
-                      : 'bg-teal-950/40 border-teal-500/30 text-teal-200'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
-                    <div className="space-y-1 flex-1">
-                      <p className="font-semibold leading-relaxed">{screenshotFeedback.message}</p>
-                      {screenshotFeedback.whatsappUrl && (
-                        <div className="pt-1">
-                          <a
-                            href={screenshotFeedback.whatsappUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 hover:text-white border border-teal-500/40 text-[11px] font-bold"
-                          >
-                            <MessageCircle className="w-3 h-3" />
-                            <span>Buka WhatsApp Admin ({ADMIN_WHATSAPP_PHONE})</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-                    </div>
+                      <span>Perlukan Bantuan?</span>
+                      <img
+                        src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/MAIN/Logo%20Whatapp%20v2.png"
+                        alt="WhatsApp"
+                        className="w-4 h-4 object-contain inline-block group-hover:scale-110 transition-transform"
+                        referrerPolicy="no-referrer"
+                      />
+                    </a>
                   </div>
                 </div>
               )}

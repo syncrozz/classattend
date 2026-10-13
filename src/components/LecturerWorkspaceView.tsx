@@ -33,8 +33,10 @@ import {
   Check,
   Info,
   Edit3,
-  Trash2
+  Trash2,
+  Copy
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import {
   normalizeClassCode
@@ -275,6 +277,7 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
   const [selectedSessionIdForDetail, setSelectedSessionIdForDetail] = useState<string | null>(getInitialDetailSessionId);
   const [isQrProjectorOpen, setIsQrProjectorOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [copiedProjectorLink, setCopiedProjectorLink] = useState(false);
   const [inspectSession, setInspectSession] = useState<AttendanceSession | null>(null);
   const [confirmEndSessionId, setConfirmEndSessionId] = useState<string | null>(null);
   const [confirmCloseOtherSessionId, setConfirmCloseOtherSessionId] = useState<string | null>(null);
@@ -1605,22 +1608,57 @@ export const LecturerWorkspaceView: React.FC<LecturerWorkspaceViewProps> = ({
               <p className="text-sm text-slate-400">{currentOpenSession.subjectName}</p>
             </div>
 
-            <div className="p-8 rounded-3xl bg-white shadow-2xl flex items-center justify-center mx-auto w-64 h-64 sm:w-72 sm:h-72">
-              {/* QR Code Payload Representation */}
-              <div className="flex flex-col items-center justify-center text-slate-900 space-y-2">
-                <QrCode className="w-44 h-44 text-slate-900" />
-                <span className="text-[10px] font-mono text-slate-500 truncate max-w-[200px]">
-                  {currentOpenSession.id}
-                </span>
-              </div>
+            <div className="p-6 sm:p-7 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center mx-auto border-4 border-indigo-500/30">
+              <QRCodeSVG
+                value={
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}${window.location.pathname}#attend?session=${currentOpenSession.id}&subject=${encodeURIComponent(currentOpenSession.subjectCode || '')}&class=${encodeURIComponent(currentOpenSession.className || '')}&lecturer=${encodeURIComponent(currentOpenSession.lecturerName || '')}&subjectName=${encodeURIComponent(currentOpenSession.subjectName || '')}`
+                    : `CLASSATTEND_SESSION|${currentOpenSession.id}|${currentOpenSession.subjectCode || ''}|${currentOpenSession.className || ''}`
+                }
+                size={230}
+                level="H"
+                includeMargin={true}
+              />
+              <span className="text-[11px] font-mono text-slate-500 font-bold pt-2">
+                ID SESI: {currentOpenSession.id}
+              </span>
             </div>
 
-            <div className="space-y-1">
-              <p className="text-xs text-slate-400">
-                Buka aplikasi Class Attend atau imbas menggunakan kamera telefon pintar.
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Pelajar boleh halakan kamera telefon atau pengimbas QR ke kod di atas untuk mengesahkan kehadiran secara langsung.
               </p>
-              <div className="text-base font-bold text-emerald-400">
-                {activeSessionRecords.length} Pelajar Telah Diimbas
+              <div className="text-base font-extrabold text-emerald-400">
+                {activeSessionRecords.length} Pelajar Telah Hadir
+              </div>
+
+              <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const studentUrl = typeof window !== 'undefined'
+                      ? `${window.location.origin}${window.location.pathname}#attend?session=${currentOpenSession.id}&subject=${encodeURIComponent(currentOpenSession.subjectCode || '')}&class=${encodeURIComponent(currentOpenSession.className || '')}&lecturer=${encodeURIComponent(currentOpenSession.lecturerName || '')}&subjectName=${encodeURIComponent(currentOpenSession.subjectName || '')}`
+                      : `CLASSATTEND_SESSION|${currentOpenSession.id}`;
+                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                      navigator.clipboard.writeText(studentUrl);
+                      setCopiedProjectorLink(true);
+                      setTimeout(() => setCopiedProjectorLink(false), 2500);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  {copiedProjectorLink ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-300">Pautan Disalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-slate-400" />
+                      <span>Salin Pautan Kelas (WhatsApp / Telegram)</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
