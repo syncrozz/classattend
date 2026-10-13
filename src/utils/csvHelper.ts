@@ -1,6 +1,7 @@
 import { Student, AttendanceRecord, AttendanceSession, Lecturer, Subject } from '../types';
 import { normalizePhoneNumber } from './phoneHelper';
 import { splitClassNames, normalizeClassCode } from './classHelper';
+import { normalizeStudentId } from './studentUtils';
 import type { AttendanceMatrixData } from './attendanceMatrix';
 
 export * from './phoneHelper';
@@ -949,7 +950,7 @@ export const parseStudentCSVWithReport = (csvText: string): StudentCSVParseResul
     const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim() : '';
     const department = deptIndex >= 0 && rawCols[deptIndex] && rawCols[deptIndex].trim() ? rawCols[deptIndex].trim() : 'Diploma Perakaunan';
 
-    let cleanId = rawId.toUpperCase();
+    let cleanId = normalizeStudentId(rawId);
     const cleanName = rawName.toUpperCase();
     const cleanClass = className.toUpperCase().replace(/\s+/g, '_');
     

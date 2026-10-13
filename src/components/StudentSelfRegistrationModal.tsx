@@ -9,7 +9,12 @@ import {
 } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
-import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import {
+  getClassBadgeColor,
+  getInitials,
+  getStudentColor,
+  normalizeStudentId
+} from '../utils/studentUtils';
 import { normalizePhoneNumber } from '../utils/phoneHelper';
 import {
   GraduationCap,
@@ -74,13 +79,14 @@ export const StudentSelfRegistrationModal: React.FC<StudentSelfRegistrationModal
 
   // Real-time lookup as student enters No. Pelajar
   useEffect(() => {
-    const cleanId = studentId.trim().toUpperCase();
+    const rawId = studentId.trim();
+    const cleanId = normalizeStudentId(rawId);
     if (cleanId.length >= 4) {
-      const found = attendanceEngine.getStudentById(cleanId);
+      const found = attendanceEngine.getStudentById(cleanId) || attendanceEngine.getStudentById(rawId);
       if (found) {
         setIsExistingStudent(true);
         setExistingStudentData(found);
-        if (!name || name === cleanId) {
+        if (!name || name === rawId || name === cleanId) {
           setName(found.name);
         }
         if (!email && found.email) {
@@ -108,7 +114,7 @@ export const StudentSelfRegistrationModal: React.FC<StudentSelfRegistrationModal
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanId = studentId.trim().toUpperCase();
+    const cleanId = normalizeStudentId(studentId.trim());
     const cleanName = name.trim().toUpperCase();
     const cleanClass = (className || context.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_');
 

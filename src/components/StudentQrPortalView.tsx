@@ -72,7 +72,8 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pastedText = e.clipboardData.getData('text').toUpperCase().trim();
-    setStudentIdInput(pastedText);
+    const normalized = normalizeStudentId(pastedText);
+    setStudentIdInput(normalized || pastedText);
     if (errorMsg) setErrorMsg(null);
   };
 
@@ -96,13 +97,14 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
     }
 
     if (!trimmedInput) {
-      setErrorMsg('Sila masukkan No. ID Pelajar anda (contoh: PDA2502001).');
+      setErrorMsg('Sila masukkan No. ID Pelajar anda (contoh: PDA2502032 atau PDA-2502-032).');
       soundService.playError();
       return;
     }
 
-    // 2. Match against student ID (supports e.g. PDA2502001, PDA-2502-001, etc.)
-    let matched = findStudentById(students, trimmedInput);
+    // 2. Normalize and match against student ID (supports e.g. PDA2502032, PDA-2502-032, etc.)
+    const normalizedId = normalizeStudentId(trimmedInput);
+    let matched = findStudentById(students, normalizedId) || findStudentById(students, trimmedInput);
 
     // Fallback: If student entered 6-digit legacy access code, also support it gracefully
     if (!matched && /^\d{6}$/.test(trimmedInput)) {
@@ -111,14 +113,15 @@ export const StudentQrPortalView: React.FC<StudentQrPortalViewProps> = ({
 
     if (matched) {
       setVerifiedStudent(matched);
+      setStudentIdInput(matched.studentId);
       setErrorMsg(null);
-      // Remember student on device safely
+      // Remember student on device safely with standardized ID
       try {
         localStorage.setItem(STORAGE_KEY, matched.studentId);
       } catch {}
       soundService.playSuccess();
     } else {
-      setErrorMsg(`No. ID Pelajar "${trimmedInput}" tidak dijumpai dalam sistem. Sila pastikan anda memasukkan No. ID yang betul (cth: PDA2502001 atau PDA-2502-001).`);
+      setErrorMsg(`No. ID Pelajar "${trimmedInput}" tidak dijumpai dalam sistem. Sila pastikan anda memasukkan No. ID yang betul (cth: PDA2502032 atau PDA-2502-032).`);
       soundService.playError();
     }
   };

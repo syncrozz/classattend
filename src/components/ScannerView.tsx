@@ -19,7 +19,9 @@ import {
   getInitials,
   getStudentColor,
   sortSessionsLatestFirst,
-  formatAbsentListForCopy
+  formatAbsentListForCopy,
+  normalizeStudentId,
+  stripStudentId
 } from '../utils/studentUtils';
 import { filterAuthorizedSessions } from '../utils/sessionAuth';
 import {
@@ -646,19 +648,31 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualInput.trim()) return;
-    handleScannedData(manualInput.trim(), 'MANUAL');
+    const normalizedInput = normalizeStudentId(manualInput.trim());
+    handleScannedData(normalizedInput, 'MANUAL');
     setManualInput('');
   };
 
   // Quick student match list
   const filteredQuickList = students
     .filter((s) => {
-      const q = manualInput.toLowerCase();
-      if (!q) return false;
+      const rawQ = manualInput.trim();
+      if (!rawQ) return false;
+      const qLower = rawQ.toLowerCase();
+      const qNormalized = normalizeStudentId(rawQ).toLowerCase();
+      const qStripped = stripStudentId(rawQ).toLowerCase();
+
+      const sName = s.name.toLowerCase();
+      const sId = (s.studentId || s.id).toLowerCase();
+      const sIdStripped = stripStudentId(s.studentId || s.id).toLowerCase();
+      const sClass = s.className.toLowerCase();
+
       return (
-        s.name.toLowerCase().includes(q) ||
-        s.studentId.toLowerCase().includes(q) ||
-        s.className.toLowerCase().includes(q)
+        sName.includes(qLower) ||
+        sId.includes(qLower) ||
+        sId.includes(qNormalized) ||
+        sIdStripped.includes(qStripped) ||
+        sClass.includes(qLower)
       );
     })
     .slice(0, 6);

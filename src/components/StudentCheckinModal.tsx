@@ -9,7 +9,13 @@ import {
 } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
-import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import {
+  getClassBadgeColor,
+  getInitials,
+  getStudentColor,
+  normalizeStudentId,
+  findStudentById
+} from '../utils/studentUtils';
 import {
   GraduationCap,
   QrCode,
@@ -106,7 +112,7 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
 
   // If savedStudentId exists, resolve active student object
   const activeSavedStudent = savedStudentId
-    ? students.find((s) => s.studentId.toUpperCase() === savedStudentId.toUpperCase() || s.id.toUpperCase() === savedStudentId.toUpperCase())
+    ? (findStudentById(students, savedStudentId) || students.find((s) => s.studentId.toUpperCase() === savedStudentId.toUpperCase() || s.id.toUpperCase() === savedStudentId.toUpperCase()))
     : null;
 
   // Check initial state when modal opens
@@ -244,10 +250,10 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
   // Handle ID Lookup & Check-In
   const handleLookupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanId = inputStudentId.trim().toUpperCase();
-    if (!cleanId) return;
+    const normalizedInput = normalizeStudentId(inputStudentId.trim());
+    if (!normalizedInput) return;
 
-    const found = attendanceEngine.getStudentById(cleanId) || students.find((s) => s.studentId.toUpperCase() === cleanId || s.id.toUpperCase() === cleanId);
+    const found = attendanceEngine.getStudentById(normalizedInput) || findStudentById(students, normalizedInput);
 
     if (found) {
       executeAttendance(found);
@@ -261,7 +267,7 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
   // Handle Quick Student Self-Registration + Check-in
   const handleRegisterAndCheckin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanId = (inputStudentId || savedStudentId).trim().toUpperCase();
+    const cleanId = normalizeStudentId((inputStudentId || savedStudentId).trim());
     const cleanName = registerName.trim().toUpperCase();
     const cleanClass = (registerClass || context?.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_');
 

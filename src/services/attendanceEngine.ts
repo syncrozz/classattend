@@ -18,7 +18,12 @@ import {
   INITIAL_SESSIONS,
   INITIAL_ATTENDANCE_RECORDS
 } from '../data/mockData';
-import { sortSessionsLatestFirst } from '../utils/studentUtils';
+import {
+  sortSessionsLatestFirst,
+  normalizeStudentId,
+  stripStudentId,
+  findStudentById
+} from '../utils/studentUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
 import { areClassesMatching } from '../utils/classHelper';
 import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
@@ -2664,14 +2669,30 @@ class AttendanceEngine {
   }
 
   public getStudentById(studentId: string): Student | undefined {
+    if (!studentId) return undefined;
+    const standardId = normalizeStudentId(studentId);
+    const strippedId = stripStudentId(studentId);
     const cleanId = studentId.trim().toUpperCase();
-    return this.students.find(
-      (s) =>
+
+    return this.students.find((s) => {
+      const sStandard = normalizeStudentId(s.studentId || s.id);
+      const sPrimaryStandard = normalizeStudentId(s.id);
+      const sStripped = stripStudentId(s.studentId || s.id);
+      const sPrimaryStripped = stripStudentId(s.id);
+
+      return (
+        sStandard === standardId ||
+        sPrimaryStandard === standardId ||
+        sStripped === strippedId ||
+        sPrimaryStripped === strippedId ||
+        s.id.toUpperCase() === standardId ||
+        s.studentId.toUpperCase() === standardId ||
         s.id.toUpperCase() === cleanId ||
         s.studentId.toUpperCase() === cleanId ||
-        s.phone.includes(cleanId) ||
+        (cleanId.length >= 6 && s.phone.includes(cleanId)) ||
         s.email.toUpperCase() === cleanId
-    );
+      );
+    });
   }
 
   // --- Student Master & Enrollment Registration Engine ---
@@ -2695,7 +2716,7 @@ class AttendanceEngine {
     enrollment: Enrollment;
     message: string;
   }> {
-    const rawStudentId = (params.studentId || '').trim().toUpperCase();
+    const rawStudentId = normalizeStudentId(params.studentId || '');
     const rawName = (params.name || '').trim().toUpperCase();
     const rawClassName = (params.className || '').trim().toUpperCase().replace(/\s+/g, '_');
     const rawSubCode = (params.subjectCode || '').trim().toUpperCase();
@@ -2717,9 +2738,13 @@ class AttendanceEngine {
       throw new Error('Kelas / Seksyen diperlukan.');
     }
 
-    // 1. Search existing Student Master by studentId / id
+    // 1. Search existing Student Master by normalized studentId / id
     const existingStudent = this.students.find(
-      (s) => s.studentId.toUpperCase() === rawStudentId || s.id.toUpperCase() === rawStudentId
+      (s) =>
+        normalizeStudentId(s.studentId) === rawStudentId ||
+        normalizeStudentId(s.id) === rawStudentId ||
+        stripStudentId(s.studentId) === stripStudentId(rawStudentId) ||
+        stripStudentId(s.id) === stripStudentId(rawStudentId)
     );
 
     let studentRecord: Student;
@@ -2732,7 +2757,7 @@ class AttendanceEngine {
         studentId: rawStudentId,
         name: rawName,
         className: rawClassName,
-        email: rawEmail || `${rawStudentId.toLowerCase()}@bpenawar.kpm.edu.my`,
+        email: rawEmail || `${rawStudentId.toLowerCase().replace(/[^a-z0-9]/g, '')}@bpenawar.kpm.edu.my`,
         phone: rawPhone || '',
         department: rawDept
       };
@@ -3102,9 +3127,18 @@ class AttendanceEngine {
     notes?: string;
   }) {
     const { sessionId, studentId, status, notes } = params;
-    const cleanStudentId = (studentId || '').trim().toUpperCase();
+    const standardStudentId = normalizeStudentId(studentId);
+    const student = this.getStudentById(studentId) || this.students.find(
+      (s) => normalizeStudentId(s.studentId) === standardStudentId || normalizeStudentId(s.id) === standardStudentId
+    );
+    const resolvedStudentId = student?.studentId || student?.id || standardStudentId;
+
     const existing = this.attendanceRecords.find(
-      (r) => r.sessionId === sessionId && r.studentId.trim().toUpperCase() === cleanStudentId
+      (r) =>
+        r.sessionId === sessionId &&
+        (r.studentId === resolvedStudentId ||
+          normalizeStudentId(r.studentId) === standardStudentId ||
+          (student && r.studentId === student.id))
     );
 
     if (status === 'REMOVE') {
@@ -3118,7 +3152,6 @@ class AttendanceEngine {
       return;
     }
 
-    const student = this.getStudentById(studentId) || this.students.find((s) => s.studentId.toUpperCase() === cleanStudentId);
     const session = this.sessions.find((s) => s.id === sessionId);
 
     if (existing) {
@@ -3135,12 +3168,12 @@ class AttendanceEngine {
       }
     } else {
       const newRecord: AttendanceRecord = {
-        id: `REC_MANUAL_${sessionId}_${cleanStudentId}_${Date.now()}`,
+        id: `REC_MANUAL_${sessionId}_${resolvedStudentId}_${Date.now()}`,
         sessionId,
         subjectCode: session?.subjectCode || '',
         className: student?.className || session?.className || '',
-        studentId: student?.studentId || cleanStudentId,
-        studentName: student?.name || cleanStudentId,
+        studentId: resolvedStudentId,
+        studentName: student?.name || resolvedStudentId,
         timestamp: new Date().toISOString(),
         method: 'MANUAL',
         status,
@@ -3707,12 +3740,19 @@ class AttendanceEngine {
 
     // 5. Duplicate Check: One student per class session
     const isAlreadyRecorded = this.attendanceRecords.some(
-      (r) => r.sessionId === activeSession!.id && r.studentId === student.id && r.status === 'PRESENT'
+      (r) =>
+        r.sessionId === activeSession!.id &&
+        (r.studentId === student.id ||
+          normalizeStudentId(r.studentId) === normalizeStudentId(student.id)) &&
+        r.status === 'PRESENT'
     );
 
     if (isAlreadyRecorded) {
       const existingRecord = this.attendanceRecords.find(
-        (r) => r.sessionId === activeSession!.id && r.studentId === student.id
+        (r) =>
+          r.sessionId === activeSession!.id &&
+          (r.studentId === student.id ||
+            normalizeStudentId(r.studentId) === normalizeStudentId(student.id))
       );
       return {
         success: false,
@@ -3730,7 +3770,7 @@ class AttendanceEngine {
     const newRecord: AttendanceRecord = {
       id: `REC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       sessionId: activeSession.id,
-      studentId: student.id,
+      studentId: student.studentId || student.id,
       timestamp: now,
       status: 'PRESENT',
       method: method,
@@ -3758,37 +3798,37 @@ class AttendanceEngine {
     // Check for CLASSATTEND|PDA-2502-005 format
     if (clean.startsWith('CLASSATTEND|')) {
       const parts = clean.split('|');
-      return parts[1]?.trim() || null;
+      const id = parts[1]?.trim() || '';
+      return id ? normalizeStudentId(id) : null;
     }
 
     // Check for STUDENT|PDA-2502-005 format
     if (clean.startsWith('STUDENT|')) {
       const parts = clean.split('|');
-      return parts[1]?.trim() || null;
+      const id = parts[1]?.trim() || '';
+      return id ? normalizeStudentId(id) : null;
     }
 
     // Check for legacy STAFF|ST001 format
     if (clean.startsWith('STAFF|')) {
       const parts = clean.split('|');
-      return parts[1]?.trim() || null;
+      const id = parts[1]?.trim() || '';
+      return id ? normalizeStudentId(id) : null;
     }
 
     // Check for JSON payload: { studentId: "PDA-2502-005" } or { id: "PDA-2502-005" }
     if (clean.startsWith('{') && clean.endsWith('}')) {
       try {
         const parsed = JSON.parse(clean);
-        return parsed.studentId || parsed.id || parsed.noPelajar || null;
+        const resolvedId = parsed.studentId || parsed.id || parsed.noPelajar || null;
+        return resolvedId ? normalizeStudentId(resolvedId) : null;
       } catch {
         // Not valid JSON
       }
     }
 
-    // Direct PDA-2502-XXX format check
-    if (/^[A-Za-z0-9\-_]{3,25}$/.test(clean)) {
-      return clean;
-    }
-
-    return clean;
+    // Direct PDA-2502-XXX or PDA2502032 format check
+    return normalizeStudentId(clean);
   }
 
   // --- CLASS ANALYTICS & REPORTING COMPUTATIONS ---
@@ -3838,7 +3878,12 @@ class AttendanceEngine {
     });
 
     const totalSessions = applicableSessions.length;
-    const studentRecords = this.attendanceRecords.filter((r) => r.studentId === student.id && r.status === 'PRESENT');
+    const studentRecords = this.attendanceRecords.filter(
+      (r) =>
+        (r.studentId === student.id ||
+          normalizeStudentId(r.studentId) === normalizeStudentId(student.id)) &&
+        r.status === 'PRESENT'
+    );
     const presentCount = studentRecords.length;
     const absentCount = Math.max(0, totalSessions - presentCount);
     const percentage = totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : 0;

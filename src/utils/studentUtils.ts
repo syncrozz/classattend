@@ -155,27 +155,95 @@ export const getStudentPhoneSuffix = (phone?: string): string => {
 };
 
 /**
- * Normalizes a student ID for robust comparison (strips hyphens, underscores, spaces, and uppercases).
- * e.g., 'PDA-2502-001' -> 'PDA2502001'
- * e.g., 'pda 2502 001' -> 'PDA2502001'
+ * Normalizes and standardizes a student ID into the standard collegiate format `PDA-XXXX-XXX`.
+ * Automatically detects and formats un-hyphenated, messy, lowercase, spaced, or underscore-separated inputs:
+ * e.g., 'PDA2502032' -> 'PDA-2502-032'
+ * e.g., 'PDA-2502-032' -> 'PDA-2502-032'
+ * e.g., 'pda2502032' -> 'PDA-2502-032'
+ * e.g., 'pda-2502-032' -> 'PDA-2502-032'
+ * e.g., 'pda 2502 032' -> 'PDA-2502-032'
+ * e.g., 'pda_2502_032' -> 'PDA-2502-032'
+ * e.g., 'PDA-2502032' -> 'PDA-2502-032'
+ * e.g., 'PDA2502-032' -> 'PDA-2502-032'
+ *
+ * If the input does not match the standard collegiate pattern (e.g. other IDs or non-student IDs),
+ * it returns the trimmed uppercase input without distorting unrelated IDs.
  */
 export const normalizeStudentId = (id?: string): string => {
+  if (!id) return '';
+  const trimmed = id.trim();
+  if (!trimmed) return '';
+
+  // Extract clean alphanumeric characters
+  const clean = trimmed.replace(/[\s\-_]/g, '').toUpperCase();
+
+  // Standard KPM collegiate student ID pattern:
+  // 2 to 4 letters prefix (e.g. PDA) + 4 digits (e.g. 2502) + 3 digits (e.g. 032)
+  const standardMatch = clean.match(/^([A-Z]{2,4})(\d{4})(\d{3})$/);
+  if (standardMatch) {
+    const [, prefix, batch, sequence] = standardMatch;
+    return `${prefix}-${batch}-${sequence}`;
+  }
+
+  // Already standard format with delimiters (case-insensitive)
+  const delimiterMatch = trimmed.match(/^([A-Za-z]{2,4})[-_\s](\d{4})[-_\s](\d{3})$/);
+  if (delimiterMatch) {
+    const [, prefix, batch, sequence] = delimiterMatch;
+    return `${prefix.toUpperCase()}-${batch}-${sequence}`;
+  }
+
+  return trimmed.toUpperCase();
+};
+
+/**
+ * Strips all delimiters (hyphens, underscores, spaces) and returns uppercase alphanumeric string.
+ * Used for loose or fuzzy identity comparison.
+ * e.g., 'PDA-2502-032' -> 'PDA2502032'
+ */
+export const stripStudentId = (id?: string): string => {
   return (id || '').trim().replace(/[\s\-_]/g, '').toUpperCase();
 };
 
 /**
+ * Validates whether the student ID corresponds to a valid collegiate ID format.
+ * Returns true for both 'PDA2502032' and 'PDA-2502-032'.
+ */
+export const isValidStudentIdFormat = (id?: string): boolean => {
+  if (!id) return false;
+  const clean = (id || '').trim().replace(/[\s\-_]/g, '').toUpperCase();
+  return /^[A-Z]{2,4}\d{7}$/.test(clean);
+};
+
+/**
+ * Alias for normalizeStudentId for explicit semantic naming
+ */
+export const formatStudentIdToStandard = normalizeStudentId;
+
+/**
  * Finds a student by their Student ID (supports hyphenated, un-hyphenated, and raw formats).
- * e.g., input 'PDA2502001' matches student with ID 'PDA-2502-001' or 'PDA2502001'
+ * e.g., input 'PDA2502032' or 'PDA-2502-032' matches student with ID 'PDA-2502-032'
  */
 export const findStudentById = (students: Student[], inputId: string): Student | null => {
-  const cleanInput = normalizeStudentId(inputId);
-  if (!cleanInput) return null;
+  if (!inputId) return null;
+  const standardInput = normalizeStudentId(inputId);
+  const strippedInput = stripStudentId(inputId);
+  if (!strippedInput && !standardInput) return null;
 
   return (
     students.find((s) => {
-      const cleanId = normalizeStudentId(s.studentId);
-      const cleanPrimaryId = normalizeStudentId(s.id);
-      return cleanId === cleanInput || cleanPrimaryId === cleanInput;
+      const sStandard = normalizeStudentId(s.studentId || s.id);
+      const sPrimaryStandard = normalizeStudentId(s.id);
+      const sStripped = stripStudentId(s.studentId || s.id);
+      const sPrimaryStripped = stripStudentId(s.id);
+
+      return (
+        sStandard === standardInput ||
+        sPrimaryStandard === standardInput ||
+        sStripped === strippedInput ||
+        sPrimaryStripped === strippedInput ||
+        s.studentId.toUpperCase() === standardInput ||
+        s.id.toUpperCase() === standardInput
+      );
     }) || null
   );
 };

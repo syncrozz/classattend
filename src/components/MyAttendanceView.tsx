@@ -11,7 +11,9 @@ import {
   getClassBadgeColor,
   getInitials,
   getStudentColor,
-  sortSessionsLatestFirst
+  sortSessionsLatestFirst,
+  findStudentById,
+  normalizeStudentId
 } from '../utils/studentUtils';
 import {
   GraduationCap,
@@ -51,7 +53,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
     if (savedStudentId) {
-      const match = students.find(
+      const match = findStudentById(students, savedStudentId) || students.find(
         (s) => s.studentId.toUpperCase() === savedStudentId.toUpperCase() || s.id.toUpperCase() === savedStudentId.toUpperCase()
       );
       if (match) return match.id;
