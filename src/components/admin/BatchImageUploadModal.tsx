@@ -33,7 +33,7 @@ interface BatchImageUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   categories: EventCategory[];
-  activePhase?: 'pre-final' | 'during-final';
+  activePhase?: OperationalPhase;
   onSaveBatch: (announcements: Partial<Announcement>[]) => Promise<void>;
 }
 
@@ -175,7 +175,7 @@ export const BatchImageUploadModal: React.FC<BatchImageUploadModalProps> = ({
         title: cleanFileNameTitle,
         description: 'Hebahan visual rasmi kontinjen KPM Bandar Penawar.',
         category: 'general',
-        phase: activePhase,
+        phase: (activePhase as OperationalPhase) || 'pre-final',
         priority: 'general',
         tags: ['Poster', 'SOAR2026'],
         status: 'published',

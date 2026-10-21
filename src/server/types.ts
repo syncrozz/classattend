@@ -9,7 +9,7 @@ import type {
   LocationItem,
   PortalSettings,
   PortalData,
-} from '../types';
+} from '../types/index';
 
 export type {
   UserRole,

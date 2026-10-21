@@ -9,7 +9,7 @@ import {
   EventSection,
   LocationItem,
   AIImageAnalysisResult,
-} from '../types';
+} from '../types/index';
 
 const TOKEN_KEY = 'kpmbp_hub_token';
 

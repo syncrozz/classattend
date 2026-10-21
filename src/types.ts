@@ -241,4 +241,51 @@ export const OFFICIAL_STUDENT_ATTEND_ICON =
 export const OFFICIAL_STUDENT_ATTEND_OGI =
   'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/ClassAttend/OGI%20ClassAttend.jpg';
 
+// ======================== SES v4.5 TRUSTED AUTH TYPES ========================
+
+export type TrustedRole = 'SUPER_ADMIN' | 'ADMIN' | 'LECTURER' | 'STUDENT' | 'KIOSK' | 'ANONYMOUS' | 'UNAUTHENTICATED';
+
+export interface TrustedClaims {
+  role: TrustedRole;
+  institutionalId: string;
+  assignedClasses?: string[];
+  kioskId?: string;
+}
+
+export interface TrustedIdentity {
+  uid: string;
+  email: string | null;
+  isAuthenticated: boolean;
+  role: TrustedRole;
+  institutionalId: string | null;
+  claims: TrustedClaims | null;
+  isAnonymous: boolean;
+}
+
+// ======================== PORTAL COMPONENT COMPATIBILITY EXPORTS ========================
+
+export type {
+  UserSession,
+  AuthStatus,
+  NavigationTab,
+  OperationalPhase,
+  ContentStatus,
+  AnnouncementPriority,
+  EventCategory,
+  AIImageAnalysisResult,
+  Announcement,
+  BatchUploadItem,
+  ScheduleItem,
+  DocumentType,
+  DocumentItem,
+  EventSectionType,
+  EventSectionItem,
+  EventSection,
+  LocationCategory,
+  LocationItem,
+  PortalSettings,
+  PortalData,
+} from './types/index';
+
+
 

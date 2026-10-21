@@ -1,6 +1,6 @@
-import type { App } from 'firebase-admin/app';
-import type { Firestore } from 'firebase-admin/firestore';
-import type { Storage } from 'firebase-admin/storage';
+type App = any;
+type Firestore = any;
+type Storage = any;
 import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
