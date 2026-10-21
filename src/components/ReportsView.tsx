@@ -14,7 +14,8 @@ import {
   getClassBadgeColor,
   getInitials,
   getStudentColor,
-  sortSessionsLatestFirst
+  sortSessionsLatestFirst,
+  stripStudentId
 } from '../utils/studentUtils';
 import {
   exportSessionAttendanceToCSV,
@@ -248,9 +249,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       (filterStatus === 'PRESENT' && isPresent) ||
       (filterStatus === 'ABSENT' && !isPresent);
 
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    const qStripped = stripStudentId(searchQuery);
     const matchesSearch =
       student.name.toLowerCase().includes(q) ||
+      (qStripped.length >= 2 && stripStudentId(student.studentId).includes(qStripped)) ||
       student.studentId.toLowerCase().includes(q);
 
     return matchesSet && matchesStatus && matchesSearch;
@@ -361,8 +364,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   const selectedClassStudentStats = targetClassStudents
     .filter((st) => {
-      const q = searchQuery.toLowerCase();
-      return st.name.toLowerCase().includes(q) || st.studentId.toLowerCase().includes(q);
+      const q = searchQuery.toLowerCase().trim();
+      const qStripped = stripStudentId(searchQuery);
+      return (
+        st.name.toLowerCase().includes(q) ||
+        (qStripped.length >= 2 && stripStudentId(st.studentId).includes(qStripped)) ||
+        st.studentId.toLowerCase().includes(q)
+      );
     })
     .map((st) => {
       const studentRecs = scopedAttendanceRecords.filter((r) => r.studentId === st.id && r.status === 'PRESENT');

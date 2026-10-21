@@ -1,0 +1,492 @@
+{
+  "tabs": [
+    {
+      "id": "home",
+      "label": "Utama",
+      "order": 1,
+      "visible": true,
+      "isSystem": true,
+      "description": "Hab Maklumat & Operasi Kontinjen"
+    },
+    {
+      "id": "gallery",
+      "label": "Galeri Poster",
+      "order": 2,
+      "visible": true,
+      "isSystem": false,
+      "description": "Infografik & poster rasmi mengikut kategori"
+    },
+    {
+      "id": "schedule",
+      "label": "Jadual Pertandingan",
+      "order": 3,
+      "visible": true,
+      "isSystem": false,
+      "description": "Jadual carta, waktu giliran & latihan"
+    },
+    {
+      "id": "announcements",
+      "label": "Hebahan Telegram",
+      "order": 3,
+      "visible": true,
+      "isSystem": false,
+      "description": "Mesej rasmi, poster & notis segera"
+    },
+    {
+      "id": "events",
+      "label": "Maklumat Acara",
+      "order": 4,
+      "visible": true,
+      "isSystem": false,
+      "description": "Acara SOAR, syarat & pegawai pasukan"
+    },
+    {
+      "id": "locations",
+      "label": "Lokasi & Pergerakan",
+      "order": 5,
+      "visible": true,
+      "isSystem": false,
+      "description": "Venue pertandingan, penginapan & bas"
+    },
+    {
+      "id": "documents",
+      "label": "Dokumen & Rujukan",
+      "order": 6,
+      "visible": true,
+      "isSystem": false,
+      "description": "Buku panduan, borang teknikal & syarat"
+    }
+  ],
+  "settings": {
+    "eventTitle": "KPMBP SOAR 2026 Contingent Hub",
+    "eventSubtitle": "Hab Maklumat & Operasi Rasmi Kontinjen KPM Bandar Penawar",
+    "contingentName": "KPM Bandar Penawar (KPMBP)",
+    "motto": "Kecemerlangan Terbukti, Semangat Menjulang",
+    "secretariatLocation": "Bilik Gerakan Kontinjen KPMBP, Aras 2 Blok Penginapan",
+    "emergencyContactName": "Urus Setia Kontinjen (Cikgu Khairi / En. Azman)",
+    "emergencyContactPhone": "+60 19-700 8921",
+    "allowPublicGuestView": true,
+    "activePhase": "pre-final",
+    "phaseAName": "Fasa A: Persediaan Pra-Final",
+    "phaseADescription": "Senarai semak, persiapan, jadual taklimat, aturan ketibaan & penginapan",
+    "phaseBName": "Fasa B: Semasa Pertandingan Final",
+    "phaseBDescription": "Aktiviti hari ini, masa berkumpul, venue pertandingan, giliran persembahan & keputusan",
+    "phaseDates": "SOAR 2026"
+  },
+  "categories": [
+    {
+      "id": "symphonic-duo",
+      "name": "Symphonic Duo",
+      "shortCode": "SD",
+      "description": "Saluran Hebahan & Jadual Kategori Symphonic Duo",
+      "managerName": "Ustazah Noraini (Pengurus Acara)",
+      "managerPhone": "+60 19-700 8921",
+      "order": 1,
+      "visible": true
+    },
+    {
+      "id": "islamic-theatre",
+      "name": "Islamic Theatre",
+      "shortCode": "IT",
+      "description": "Saluran Hebahan & Jadual Teater Islamik Kontinjen",
+      "managerName": "Cikgu Razali (Pengurus Teater)",
+      "managerPhone": "+60 19-700 8922",
+      "order": 2,
+      "visible": true
+    },
+    {
+      "id": "battle-of-the-bands",
+      "name": "Battle of the Bands",
+      "shortCode": "BOTB",
+      "description": "Saluran Hebahan & Jadual Battle of the Bands",
+      "managerName": "En. Shahrul (Pengurus Kugiran)",
+      "managerPhone": "+60 19-700 8923",
+      "order": 3,
+      "visible": true
+    },
+    {
+      "id": "tarian-zapin",
+      "name": "Tarian Zapin",
+      "shortCode": "TZ",
+      "description": "Saluran Hebahan & Jadual Pasukan Tarian Zapin",
+      "managerName": "Puan Faridah (Jurulatih & Pengurus)",
+      "managerPhone": "+60 19-700 8924",
+      "order": 4,
+      "visible": true
+    },
+    {
+      "id": "street-dakwah",
+      "name": "Street Dakwah",
+      "shortCode": "SDW",
+      "description": "Saluran Hebahan & Jadual Street Dakwah Terbuka",
+      "managerName": "Ustaz Haziq (Pembimbing Dakwah)",
+      "managerPhone": "+60 19-700 8925",
+      "order": 5,
+      "visible": true
+    },
+    {
+      "id": "majlis-penutupan",
+      "name": "Majlis Penutupan SOAR",
+      "shortCode": "MPS",
+      "description": "Raptai perarakan, atur cara dan pengumuman keputusan rasmi",
+      "managerName": "Urus Setia Kontinjen KPMBP",
+      "managerPhone": "+60 19-700 8920",
+      "order": 6,
+      "visible": true
+    },
+    {
+      "id": "penginapan",
+      "name": "Penginapan Kontinjen",
+      "shortCode": "LOG",
+      "description": "Kolej Kediaman, peraturan bilik & kebajikan peserta",
+      "managerName": "En. Hafiz (Warden / Urus Setia)",
+      "managerPhone": "+60 19-700 8926",
+      "order": 7,
+      "visible": true
+    },
+    {
+      "id": "pengangkutan",
+      "name": "Pengangkutan & Bas",
+      "shortCode": "TRN",
+      "description": "Jadual pergerakan bas kontinjen & koordinasi pemandu",
+      "managerName": "En. Fauzi (Pegawai Pengangkutan)",
+      "managerPhone": "+60 19-700 8927",
+      "order": 8,
+      "visible": true
+    },
+    {
+      "id": "general",
+      "name": "Urus Setia / Hebahan Am",
+      "shortCode": "GEN",
+      "description": "Pemberitahuan rasmi Ketua Kontinjen & Urus Setia KPMBP",
+      "managerName": "Ketua Kontinjen KPMBP",
+      "managerPhone": "+60 19-700 8928",
+      "order": 9,
+      "visible": true
+    }
+  ],
+  "announcements": [
+    {
+      "id": "ann_poster_pendaftaran",
+      "title": "Infografik Panduan Pendaftaran & Semakan Kad Matrik Peserta",
+      "content": "Garis panduan rasmi pendaftaran kontinjen: semakan kad matrik asal, borang akuan kesihatan penjaga dan pengagihan tag akreditasi SOAR 2026.",
+      "priority": "urgent",
+      "isPinned": true,
+      "category": "pendaftaran",
+      "phase": "pre-final",
+      "status": "published",
+      "author": "Urus Setia Pendaftaran KPMBP",
+      "timestamp": "13 Mei 2026, 08:30",
+      "imageUrl": "/uploads/soar_pendaftaran_peserta.svg",
+      "imageCaption": "Infografik syarat pendaftaran dan senarai dokumen wajib dibawa oleh peserta.",
+      "tags": ["Pendaftaran", "KadMatrik", "Wajib", "SOAR2026"],
+      "importantDates": "14 Mei 2026 (2:00 - 6:00 Petang) @ Foyer Utama",
+      "lastUpdated": "13 Mei 2026, 08:30"
+    },
+    {
+      "id": "ann_poster_penginapan",
+      "title": "Panduan & Peraturan Penginapan Kolej Kediaman Kontinjen",
+      "content": "Maklumat penempatan bilik kolej kediaman, etika pergaulan, curfew jam 11:00 malam dan talian kecemasan bilik gerakan kontinjen.",
+      "priority": "important",
+      "isPinned": true,
+      "category": "penginapan",
+      "phase": "all",
+      "status": "published",
+      "author": "Warden & Urus Setia Kebajikan",
+      "timestamp": "12 Mei 2026, 14:00",
+      "imageUrl": "/uploads/soar_penginapan_panduan.svg",
+      "imageCaption": "Pelan kolej kediaman, pembahagian blok lelaki/wanita dan nombor bilik gerakan 24 jam.",
+      "tags": ["Penginapan", "Asrama", "Curfew", "Kebajikan"],
+      "importantDates": "Curfew: 11:00 Malam Setiap Hari",
+      "lastUpdated": "12 Mei 2026, 14:00"
+    },
+    {
+      "id": "ann_poster_jadual",
+      "title": "Carta Giliran & Waktu Persembahan Peringkat Akhir",
+      "content": "Jadual rasmi giliran bertanding bagi Symphonic Duo, Tarian Zapin, Battle of the Bands dan Street Dakwah kontinjen KPMBP.",
+      "priority": "urgent",
+      "isPinned": true,
+      "category": "jadual",
+      "phase": "during-final",
+      "status": "published",
+      "author": "Jawatankuasa Teknikal Kontinjen",
+      "timestamp": "13 Mei 2026, 10:00",
+      "imageUrl": "/uploads/soar_jadual_pertandingan.svg",
+      "imageCaption": "Jadual masa berlepas bas dan waktu giliran di auditorium & pentas budaya.",
+      "tags": ["Jadual", "Giliran", "PentasUtama", "Pertandingan"],
+      "importantDates": "15-16 Mei 2026 (Rujuk infografik giliran)",
+      "lastUpdated": "13 Mei 2026, 10:00"
+    },
+    {
+      "id": "ann_poster_jadual_old",
+      "title": "Jadual Awal Raptai & Soundcheck (Versi Terdahulu)",
+      "content": "Jadual draf awal slot soundcheck sebelum pengemaskinian masa oleh penganjur pusat.",
+      "priority": "general",
+      "isPinned": false,
+      "category": "jadual",
+      "phase": "pre-final",
+      "status": "published",
+      "author": "Jawatankuasa Teknikal Kontinjen",
+      "timestamp": "10 Mei 2026, 09:00",
+      "imageUrl": "/uploads/soar_jadual_pertandingan.svg",
+      "imageCaption": "Versi draf awal — telah digantikan oleh carta waktu rasmi bertarikh 13 Mei.",
+      "tags": ["Jadual", "Arkib"],
+      "isSuperseded": true,
+      "supersededReason": "Digantikan oleh Carta Giliran & Waktu Persembahan Rasmi terkini.",
+      "lastUpdated": "10 Mei 2026, 09:00"
+    },
+    {
+      "id": "ann_soar_01",
+      "title": "Taklimat Akhir & Raptai Perjalanan Kontinjen KPMBP",
+      "content": "PENGUMUMAN URUS SETIA KONTINJEN KPMBP:\n\nSemua pengurus pasukan, jurulatih dan ketua peserta bagi setiap acara (Symphonic Duo, Islamic Theatre, Battle of the Bands, Tarian Zapin & Street Dakwah) diminta hadir ke Taklimat Akhir Kontinjen.\n\nTarikh: 14 Mei 2026\nMasa: 8:30 Malam\nTempat: Bilik Gerakan Kontinjen (Aras 2)\n\nAgenda:\n1. Semakan dokumen pendaftaran dan kad matrik\n2. Jadual pergerakan bas ke venue pertandingan\n3. Pengagihan tag kontinjen dan t-shirt rasmi\n4. Arahan disiplin dan kebajikan peserta\n\nHarap maklum dan patuhi ketetapan masa.",
+      "priority": "urgent",
+      "isPinned": true,
+      "category": "general",
+      "phase": "pre-final",
+      "status": "published",
+      "author": "Ketua Kontinjen KPMBP",
+      "timestamp": "12 Mei 2026, 09:00",
+      "externalUrlLabel": "Saluran Telegram Rasmi KPMBP",
+      "lastUpdated": "12 Mei 2026, 09:00"
+    },
+    {
+      "id": "ann_soar_02",
+      "title": "Makluman Slot Soundcheck & Rehearsal Symphonic Duo",
+      "content": "PERHATIAN PASUKAN SYMPHONIC DUO:\n\nSlot ujian bunyi (soundcheck) dan rehearsal teknikal di pentas utama telah ditetapkan:\n- Tarikh: 15 Mei 2026\n- Masa: 10:00 Pagi - 10:45 Pagi\n- Tempat: Auditorium Utama SOAR 2026\n\nSila pastikan semua instrumen akustik dan kabel audio telah diserahkan kepada kru teknikal 15 minit lebih awal. Pasukan diiringi oleh Ustazah Noraini.",
+      "priority": "important",
+      "isPinned": true,
+      "category": "symphonic-duo",
+      "phase": "all",
+      "status": "published",
+      "author": "Pengurus Acara Symphonic Duo",
+      "timestamp": "12 Mei 2026, 11:30",
+      "lastUpdated": "12 Mei 2026, 11:30"
+    },
+    {
+      "id": "ann_soar_03",
+      "title": "Peraturan Bilik & Disiplin di Kolej Kediaman Kontinjen",
+      "content": "MAKLUMAN PENGINAPAN KONTINJEN KPMBP:\n\n1. Waktu berkurung (curfew) adalah pada jam 11:00 malam setiap hari.\n2. Peserta tidak dibenarkan keluar dari kawasan kampus tanpa kebenaran bertulis warden atau ketua kontinjen.\n3. Kebersihan bilik hendaklah dipelihara sepanjang masa.\n4. Sebarang kecemasan perubatan sila hubungi Bilik Gerakan segera: +60 19-700 8921.",
+      "priority": "general",
+      "isPinned": false,
+      "category": "penginapan",
+      "phase": "all",
+      "status": "published",
+      "author": "Urus Setia Kebajikan",
+      "timestamp": "11 Mei 2026, 16:00",
+      "lastUpdated": "11 Mei 2026, 16:00"
+    }
+  ],
+  "schedules": [
+    {
+      "id": "sch_soar_01",
+      "categoryName": "Symphonic Duo",
+      "subcategory": "Peringkat Akhir Kebangsaan",
+      "date": "15 Mei 2026",
+      "time": "14:30 - 17:00",
+      "venue": "Auditorium Utama Kompleks Seni",
+      "performanceOrder": "Giliran ke-4 (Sesi Petang)",
+      "notes": "Soundcheck jam 10:00 pagi. Berada di bilik menunggu (holding room) jam 13:45.",
+      "phase": "during-final",
+      "status": "published",
+      "order": 1,
+      "lastUpdated": "12 Mei 2026"
+    },
+    {
+      "id": "sch_soar_02",
+      "categoryName": "Tarian Zapin",
+      "subcategory": "Pertandingan Tarian Tradisional",
+      "date": "15 Mei 2026",
+      "time": "20:30 - 23:00",
+      "venue": "Pentas Terbuka Budaya",
+      "performanceOrder": "Giliran ke-2",
+      "notes": "Persiapan busana dan solekan bermula jam 17:00 di bilik persalinan kontinjen.",
+      "phase": "during-final",
+      "status": "published",
+      "order": 2,
+      "lastUpdated": "12 Mei 2026"
+    },
+    {
+      "id": "sch_soar_03",
+      "categoryName": "Battle of the Bands",
+      "subcategory": "Pentas Akhir Kombo",
+      "date": "16 Mei 2026",
+      "time": "15:00 - 18:30",
+      "venue": "Dewan Perdana SOAR",
+      "performanceOrder": "Giliran ke-5",
+      "notes": "Loading gear muzik jam 12:00 tengah hari. Patuhi senarai lagu yang telah diluluskan.",
+      "phase": "during-final",
+      "status": "published",
+      "order": 3,
+      "lastUpdated": "12 Mei 2026"
+    },
+    {
+      "id": "sch_soar_04",
+      "categoryName": "Street Dakwah",
+      "subcategory": "Pidato Dakwah Kontemporari",
+      "date": "16 Mei 2026",
+      "time": "09:00 - 12:30",
+      "venue": "Plaza Terbuka Pavilion",
+      "performanceOrder": "Giliran ke-3",
+      "notes": "Peserta dinasihatkan membuat pemanasan vokal jam 08:00 pagi bersama pembimbing.",
+      "phase": "during-final",
+      "status": "published",
+      "order": 4,
+      "lastUpdated": "12 Mei 2026"
+    }
+  ],
+  "documents": [
+    {
+      "id": "doc_soar_01",
+      "title": "Buku Panduan & Syarat Am Pertandingan SOAR 2026",
+      "category": "Syarat & Garis Panduan",
+      "description": "Garis panduan rasmi penganjur, kriteria permarkahan dan peraturan disiplin peserta.",
+      "fileUrl": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+      "fileType": "pdf",
+      "phase": "all",
+      "status": "published",
+      "order": 1,
+      "isPinned": true,
+      "lastUpdated": "10 Mei 2026"
+    },
+    {
+      "id": "doc_soar_02",
+      "title": "Jadual Induk Pergerakan & Pengangkutan Kontinjen KPMBP",
+      "category": "Jadual & Pergerakan",
+      "description": "Carta waktu perjalanan bas dari KPM Bandar Penawar ke lokasi festival dan pergerakan harian.",
+      "fileUrl": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/edit",
+      "fileType": "sheet",
+      "phase": "all",
+      "status": "published",
+      "order": 2,
+      "isPinned": true,
+      "lastUpdated": "11 Mei 2026"
+    },
+    {
+      "id": "doc_soar_03",
+      "title": "Senarai Semak Pendaftaran & Dokumen Rasmi Peserta",
+      "category": "Borang & Senarai Semak",
+      "description": "Checklist semakan kad pengenalan, surat kebenaran ibu bapa dan insurans peserta.",
+      "fileUrl": "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/edit",
+      "fileType": "doc",
+      "phase": "pre-final",
+      "status": "published",
+      "order": 3,
+      "isPinned": false,
+      "lastUpdated": "09 Mei 2026"
+    }
+  ],
+  "eventSections": [
+    {
+      "id": "sec_soar_01",
+      "title": "Atur Cara Hari Pertama & Ketibaan Kontinjen",
+      "category": "Rundown",
+      "type": "rundown",
+      "description": "Jadual atur cara hari ketibaan kontinjen KPM Bandar Penawar.",
+      "phase": "pre-final",
+      "status": "published",
+      "order": 1,
+      "items": [
+        {
+          "id": "item_rd_01",
+          "title": "Pelepasan Bas Kontinjen dari KPM Bandar Penawar",
+          "subtitle": "Kolej Profesional MARA Bandar Penawar",
+          "time": "08:00 Pagi",
+          "badge": "Perjalanan",
+          "detail": "Semua peserta dan pengurus berkumpul di perkarangan Kolej jam 07:30 pagi untuk pendaftaran bagasi dan doa selamat."
+        },
+        {
+          "id": "item_rd_02",
+          "title": "Ketibaan & Pendaftaran Bilik Kediaman",
+          "subtitle": "Kolej Kediaman Festival SOAR",
+          "time": "14:00 Petang",
+          "badge": "Check-in",
+          "detail": "Pengambilan kunci bilik oleh pengurus pasukan dan taklimat ringkas peraturan asrama."
+        },
+        {
+          "id": "item_rd_03",
+          "title": "Taklimat Pengurus Kontinjen & Pengundian Giliran",
+          "subtitle": "Bilik Mesyuarat Utama Urus Setia Pusat",
+          "time": "20:00 Malam",
+          "badge": "Wajib",
+          "detail": "Pengundian giliran bertanding bagi semua kategori disertai Kontinjen KPMBP."
+        }
+      ]
+    },
+    {
+      "id": "sec_soar_02",
+      "title": "Direktori Pegawai & Pengurus Pasukan KPMBP",
+      "category": "Pegawai",
+      "type": "contacts",
+      "description": "Senarai pegawai kontinjen dan talian telefon untuk dihubungi.",
+      "phase": "all",
+      "status": "published",
+      "order": 2,
+      "items": [
+        {
+          "id": "item_of_01",
+          "title": "Cikgu Khairul Anuar",
+          "subtitle": "Ketua Kontinjen KPMBP",
+          "badge": "Pucuk Pimpinan",
+          "contactNumber": "+60 19-700 8920",
+          "detail": "Bertanggungjawab ke atas keseluruhan operasi dan kebajikan kontinjen."
+        },
+        {
+          "id": "item_of_02",
+          "title": "Cikgu Khairi (khaikerr@gmail.com)",
+          "subtitle": "Penyelaras Urus Setia & Pentadbir Hab",
+          "badge": "Urus Setia",
+          "contactNumber": "+60 19-700 8921",
+          "detail": "Pengurusan maklumat hab, kemas kini hebahan Telegram dan logistik."
+        },
+        {
+          "id": "item_of_03",
+          "title": "Puan Faridah",
+          "subtitle": "Pengurus Pasukan Seni & Budaya",
+          "badge": "Jurulatih",
+          "contactNumber": "+60 19-700 8924",
+          "detail": "Penyelaras pasukan Tarian Zapin dan Teater Islamik."
+        }
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "id": "loc_soar_01",
+      "name": "Bilik Gerakan Kontinjen KPMBP",
+      "category": "assembly",
+      "address": "Aras 2, Blok B Kolej Kediaman Siswa",
+      "notes": "Pusat operasi 24 jam urus setia kontinjen. Sebarang pertanyaan dan kecemasan.",
+      "contactPerson": "Cikgu Khairi",
+      "contactPhone": "+60 19-700 8921",
+      "phase": "all",
+      "status": "published",
+      "order": 1
+    },
+    {
+      "id": "loc_soar_02",
+      "name": "Auditorium Utama Kompleks Seni",
+      "category": "venue",
+      "address": "Kompleks Seni & Warisan Kampus",
+      "notes": "Venue bagi pertandingan Symphonic Duo dan Teater Islamik.",
+      "mapUrl": "https://maps.google.com",
+      "scheduleTimes": "Pertandingan bermula jam 14:00",
+      "phase": "during-final",
+      "status": "published",
+      "order": 2
+    },
+    {
+      "id": "loc_soar_03",
+      "name": "Pusat Hentian Bas Kontinjen (Pick-Up Point)",
+      "category": "transport",
+      "address": "Parkir Bas Utama Hadapan Kolej Kediaman",
+      "notes": "Bas bergerak 45 minit sebelum setiap sesi acara bermula. Patuhi waktu berlepas.",
+      "scheduleTimes": "Sesi Pagi: 07:45 | Sesi Petang: 13:15 | Sesi Malam: 19:30",
+      "contactPerson": "En. Fauzi (Pegawai Pengangkutan)",
+      "contactPhone": "+60 19-700 8927",
+      "phase": "all",
+      "status": "published",
+      "order": 3
+    }
+  ],
+  "customTabsContent": {}
+}

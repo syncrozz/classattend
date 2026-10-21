@@ -12,7 +12,8 @@ import {
 import {
   getClassBadgeColor,
   getInitials,
-  getStudentColor
+  getStudentColor,
+  stripStudentId
 } from '../utils/studentUtils';
 import {
   exportStudentsToCSV,
@@ -157,11 +158,13 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     const q = classSearchQuery.trim().toLowerCase();
     return uniqueClasses.filter((cls) => {
       if (cls.toLowerCase().includes(q)) return true;
+      const qStripped = stripStudentId(classSearchQuery);
       const hasMatchingStudent = students.some(
         (s) =>
           s.className?.trim().toUpperCase() === cls.trim().toUpperCase() &&
           (s.name.toLowerCase().includes(q) ||
             (s.studentId || s.id).toLowerCase().includes(q) ||
+            (qStripped.length >= 2 && stripStudentId(s.studentId || s.id).includes(qStripped)) ||
             (s.email || '').toLowerCase().includes(q) ||
             (s.phone || '').includes(q))
       );
@@ -333,9 +336,11 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   // Filter students
   const filteredStudents = students.filter((student) => {
     const matchesSet = selectedSet === 'ALL' || student.className === selectedSet;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    const qStripped = stripStudentId(searchQuery);
     const matchesSearch =
       student.name.toLowerCase().includes(q) ||
+      (qStripped.length >= 2 && stripStudentId(student.studentId).includes(qStripped)) ||
       student.studentId.toLowerCase().includes(q) ||
       student.email.toLowerCase().includes(q) ||
       student.phone.includes(q);

@@ -9,7 +9,7 @@ import {
   Enrollment
 } from '../types';
 import { normalizeClassCode } from '../utils/classHelper';
-import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import { getClassBadgeColor, getInitials, getStudentColor, stripStudentId } from '../utils/studentUtils';
 import {
   Users,
   QrCode,
@@ -273,10 +273,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Filter students for quick simulate (limited to 8 items in the 8-10 range)
   const filteredSimulateStudents = useMemo(() => {
     const q = searchSimulate.toLowerCase().trim();
+    const qStripped = stripStudentId(searchSimulate);
     const list = q
       ? students.filter((s) => {
           return (
             s.name.toLowerCase().includes(q) ||
+            (qStripped.length >= 2 && stripStudentId(s.studentId).includes(qStripped)) ||
             s.studentId.toLowerCase().includes(q) ||
             (s.className || '').toLowerCase().includes(q)
           );

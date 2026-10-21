@@ -1,0 +1,28 @@
+{
+  "isSetup": true,
+  "adminEmail": "khaikerr@gmail.com",
+  "adminPasswordHash": "1c5b4fbca3d984fb5d89c44516cfb04753a7bb6706d54ecf1ccedff57b2cbacd423699b33febcb1dfd985cc626ba4c1c054d2f00f6157dabc2e69dac8191890d",
+  "adminPasswordSalt": "cd28a2db1e23aaaad7b0bb17caa1e837",
+  "teamPasscode": "KPMBP2026",
+  "sessions": {
+    "c971030518e96b047a8e4ea2e876ea822438e94e2be6e2866bf2494523d48c3a": {
+      "role": "admin",
+      "email": "khaikerr@gmail.com",
+      "expiresAt": 1792504543616
+    },
+    "21ae76f03b328a570fa504f9711b0a7423e24c1d5267ca986f650c90df163745": {
+      "role": "admin",
+      "email": "khaikerr@gmail.com",
+      "expiresAt": 1792505383686
+    },
+    "4ea6b9e6c4c6216d7d56541b55bef128bf2457db8240c3a76c4372bcd3d8f59d": {
+      "role": "team",
+      "expiresAt": 1792507839862
+    },
+    "7dbb84347d9db3a6229de72398d9484a25ebe9b0875df9c25677051aa6ffaa34": {
+      "role": "admin",
+      "email": "khaikerr@gmail.com",
+      "expiresAt": 1792507849924
+    }
+  }
+}

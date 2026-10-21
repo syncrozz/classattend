@@ -2,7 +2,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Subject, Enrollment, Student, Lecturer } from '../types';
 import { attendanceEngine } from '../services/attendanceEngine';
-import { getClassBadgeColor, getInitials, getStudentColor } from '../utils/studentUtils';
+import {
+  getClassBadgeColor,
+  getInitials,
+  getStudentColor,
+  findStudentById,
+  normalizeStudentId,
+  stripStudentId
+} from '../utils/studentUtils';
 import {
   Users,
   X,
@@ -137,7 +144,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
   const validSubjectEnrollments = useMemo(() => {
     if (targetClassesForSubject.length === 0) return subjectEnrollments;
     return subjectEnrollments.filter((enr) => {
-      const student = students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
+      const student = findStudentById(students, enr.studentId) || students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
       const enrClass = (enr.className || student?.className || '').trim().toUpperCase();
       return targetClassesForSubject.some((sec) => {
         const cleanSec = sec.trim().toUpperCase();
@@ -148,19 +155,31 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
 
   // Check which master students are NOT yet enrolled in this subject
   const enrolledStudentIdSet = useMemo(() => {
-    return new Set(validSubjectEnrollments.map((e) => e.studentId.toUpperCase()));
+    const set = new Set<string>();
+    validSubjectEnrollments.forEach((e) => {
+      set.add(e.studentId.toUpperCase());
+      set.add(normalizeStudentId(e.studentId));
+      set.add(stripStudentId(e.studentId));
+    });
+    return set;
   }, [validSubjectEnrollments]);
 
   const unenrolledMasterStudents = useMemo(() => {
     return masterStudentsForSubject.filter(
-      (s) => !enrolledStudentIdSet.has(s.studentId.toUpperCase()) && !enrolledStudentIdSet.has(s.id.toUpperCase())
+      (s) =>
+        !enrolledStudentIdSet.has(s.studentId.toUpperCase()) &&
+        !enrolledStudentIdSet.has(s.id.toUpperCase()) &&
+        !enrolledStudentIdSet.has(normalizeStudentId(s.studentId)) &&
+        !enrolledStudentIdSet.has(normalizeStudentId(s.id)) &&
+        !enrolledStudentIdSet.has(stripStudentId(s.studentId)) &&
+        !enrolledStudentIdSet.has(stripStudentId(s.id))
     );
   }, [masterStudentsForSubject, enrolledStudentIdSet]);
 
   // Filtered Subject Enrollments (filtered by class and search query)
   const filteredEnrollments = useMemo(() => {
     return validSubjectEnrollments.filter((enr) => {
-      const student = students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
+      const student = findStudentById(students, enr.studentId) || students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
       const enrClass = (enr.className || student?.className || '').trim().toUpperCase();
       const matchesClass =
         selectedClassFilter === 'ALL' ||
@@ -170,10 +189,12 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
       if (!matchesClass) return false;
 
       if (!searchQuery) return true;
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
+      const qStripped = stripStudentId(searchQuery);
       const name = (student?.name || '').toLowerCase();
       const id = enr.studentId.toLowerCase();
-      return name.includes(query) || id.includes(query) || enrClass.toLowerCase().includes(query);
+      const idMatch = (qStripped.length >= 2 && stripStudentId(enr.studentId).includes(qStripped)) || id.includes(query);
+      return name.includes(query) || idMatch || enrClass.toLowerCase().includes(query);
     });
   }, [validSubjectEnrollments, students, selectedClassFilter, searchQuery]);
 
@@ -188,11 +209,15 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
       if (!matchesClass) return false;
 
       if (!searchQuery) return true;
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
+      const qStripped = stripStudentId(searchQuery);
       const name = (s.name || '').toLowerCase();
       const id = (s.studentId || s.id || '').toLowerCase();
+      const idMatch =
+        (qStripped.length >= 2 && (stripStudentId(s.studentId).includes(qStripped) || stripStudentId(s.id).includes(qStripped))) ||
+        id.includes(query);
       const sClass = (s.className || '').toLowerCase();
-      return name.includes(query) || id.includes(query) || sClass.includes(query);
+      return name.includes(query) || idMatch || sClass.includes(query);
     });
   }, [masterStudentsForSubject, selectedClassFilter, searchQuery]);
 
@@ -276,7 +301,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
     if (filteredEnrollments.length === 0) return;
     const headers = ['No. Pelajar', 'Nama Penuh', 'Kelas', 'Subjek', 'Tarikh Daftar', 'No. Telefon', 'E-mel'];
     const rows = filteredEnrollments.map((enr) => {
-      const s = students.find((st) => st.studentId === enr.studentId || st.id === enr.studentId);
+      const s = findStudentById(students, enr.studentId) || students.find((st) => st.studentId === enr.studentId || st.id === enr.studentId);
       return [
         `"${enr.studentId}"`,
         `"${s?.name || enr.studentId}"`,
@@ -597,7 +622,7 @@ export const EnrolledStudentsModal: React.FC<EnrolledStudentsModalProps> = ({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {filteredEnrollments.map((enr) => {
-                const student = students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
+                const student = findStudentById(students, enr.studentId) || students.find((s) => s.studentId === enr.studentId || s.id === enr.studentId);
                 const displayName = student?.name || enr.studentId;
                 const formattedDate = new Date(enr.enrolledAt).toLocaleDateString('ms-MY', {
                   day: 'numeric',

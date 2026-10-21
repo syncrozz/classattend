@@ -21,7 +21,8 @@ import {
   sortSessionsLatestFirst,
   formatAbsentListForCopy,
   normalizeStudentId,
-  stripStudentId
+  stripStudentId,
+  findStudentById
 } from '../utils/studentUtils';
 import { filterAuthorizedSessions } from '../utils/sessionAuth';
 import {
@@ -369,19 +370,19 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
 
     if (sessionAllowedClasses && sessionAllowedClasses.length > 0) {
       return sessionRecords.filter((r) => {
-        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        const student = findStudentById(students, r.studentId) || students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
         return student && isStudentInClasses(student.className, sessionAllowedClasses);
       });
     }
     if (currentSession?.className && currentSession.className !== 'ALL' && currentSession.className !== 'SEMUA') {
       return sessionRecords.filter((r) => {
-        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        const student = findStudentById(students, r.studentId) || students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
         return student && areClassesMatching(student.className, currentSession.className);
       });
     }
     if (selectedClassFilter !== 'ALL') {
       return sessionRecords.filter((r) => {
-        const student = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+        const student = findStudentById(students, r.studentId) || students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
         return student && areClassesMatching(student.className, selectedClassFilter);
       });
     }
@@ -403,7 +404,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   // Filtered session records based on class filter (Sorted latest-first)
   const filteredSessionRecords = sessionRecords.filter((record) => {
     if (selectedClassFilter === 'ALL') return true;
-    const student = students.find((s) => s.id === record.studentId);
+    const student = findStudentById(students, record.studentId) || students.find((s) => s.id === record.studentId);
     return student?.className.toUpperCase() === selectedClassFilter.toUpperCase();
   }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -411,11 +412,23 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
   const presentStudentIdsSet = useMemo(() => {
     const set = new Set<string>();
     matchingPresentRecords.forEach((r) => {
-      if (r.studentId) set.add(r.studentId.trim().toUpperCase());
-      const stu = students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
+      if (r.studentId) {
+        set.add(r.studentId.trim().toUpperCase());
+        set.add(normalizeStudentId(r.studentId));
+        set.add(stripStudentId(r.studentId));
+      }
+      const stu = findStudentById(students, r.studentId) || students.find((s) => s.id === r.studentId || s.studentId === r.studentId);
       if (stu) {
-        if (stu.id) set.add(stu.id.trim().toUpperCase());
-        if (stu.studentId) set.add(stu.studentId.trim().toUpperCase());
+        if (stu.id) {
+          set.add(stu.id.trim().toUpperCase());
+          set.add(normalizeStudentId(stu.id));
+          set.add(stripStudentId(stu.id));
+        }
+        if (stu.studentId) {
+          set.add(stu.studentId.trim().toUpperCase());
+          set.add(normalizeStudentId(stu.studentId));
+          set.add(stripStudentId(stu.studentId));
+        }
       }
     });
     return set;
@@ -426,16 +439,24 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
     return targetStudents.filter((st) => {
       const idUpper = (st.id || '').trim().toUpperCase();
       const codeUpper = (st.studentId || '').trim().toUpperCase();
-      const isPresent = (idUpper && presentStudentIdsSet.has(idUpper)) || (codeUpper && presentStudentIdsSet.has(codeUpper));
+      const idStripped = stripStudentId(st.id);
+      const codeStripped = stripStudentId(st.studentId);
+      const isPresent =
+        (idUpper && presentStudentIdsSet.has(idUpper)) ||
+        (codeUpper && presentStudentIdsSet.has(codeUpper)) ||
+        (idStripped && presentStudentIdsSet.has(idStripped)) ||
+        (codeStripped && presentStudentIdsSet.has(codeStripped));
       return !isPresent;
     });
   }, [targetStudents, presentStudentIdsSet]);
 
   const filteredAbsentStudents = useMemo(() => {
     if (!absentSearchQuery.trim()) return absentStudents;
-    const q = absentSearchQuery.toLowerCase();
+    const q = absentSearchQuery.toLowerCase().trim();
+    const qStripped = stripStudentId(absentSearchQuery);
     return absentStudents.filter((st) =>
       st.name.toLowerCase().includes(q) ||
+      (qStripped.length >= 2 && stripStudentId(st.studentId).includes(qStripped)) ||
       st.studentId.toLowerCase().includes(q) ||
       st.className.toLowerCase().includes(q)
     );
@@ -1524,7 +1545,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
                     {filteredSessionRecords.map((rec) => {
-                      const student = students.find((s) => s.id === rec.studentId || s.studentId === rec.studentId);
+                      const student = findStudentById(students, rec.studentId) || students.find((s) => s.id === rec.studentId || s.studentId === rec.studentId);
                       if (!student) return null;
 
                       return (

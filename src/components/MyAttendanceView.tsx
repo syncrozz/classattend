@@ -13,7 +13,8 @@ import {
   getStudentColor,
   sortSessionsLatestFirst,
   findStudentById,
-  normalizeStudentId
+  normalizeStudentId,
+  stripStudentId
 } from '../utils/studentUtils';
 import {
   GraduationCap,
@@ -54,11 +55,15 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
     if (savedStudentId) {
       const match = findStudentById(students, savedStudentId) || students.find(
-        (s) => s.studentId.toUpperCase() === savedStudentId.toUpperCase() || s.id.toUpperCase() === savedStudentId.toUpperCase()
+        (s) =>
+          s.studentId.toUpperCase() === savedStudentId.toUpperCase() ||
+          s.id.toUpperCase() === savedStudentId.toUpperCase() ||
+          stripStudentId(s.studentId) === stripStudentId(savedStudentId)
       );
       if (match) return match.id;
     }
-    return students.find((s) => s.studentId === 'PDA-2502-005')?.id || students[0]?.id || '';
+    const defaultStudent = findStudentById(students, 'PDA-2502-005') || students[0];
+    return defaultStudent?.id || '';
   });
 
   const [filterSubject, setFilterSubject] = useState<string>('ALL');
@@ -66,7 +71,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
   const [isSlipModalOpen, setIsSlipModalOpen] = useState<boolean>(false);
   const [isSuratModalOpen, setIsSuratModalOpen] = useState<boolean>(false);
 
-  const currentStudent = students.find((s) => s.id === selectedStudentId) || students[0];
+  const currentStudent = students.find((s) => s.id === selectedStudentId) || findStudentById(students, selectedStudentId) || students[0];
 
   if (!currentStudent) {
     return <div className="text-center py-12 text-slate-400">Tiada profil pelajar ditemui.</div>;
@@ -75,7 +80,7 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
   // Save selection for returning zero-friction experience
   const handleSelectStudent = (id: string) => {
     setSelectedStudentId(id);
-    const found = students.find((s) => s.id === id);
+    const found = students.find((s) => s.id === id) || findStudentById(students, id);
     if (found) {
       try {
         localStorage.setItem('classattend_saved_student_id', found.studentId);
@@ -90,7 +95,11 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
 
   // Student's records
   const studentRecords = attendanceRecords.filter(
-    (r) => r.studentId === currentStudent.id && r.status === 'PRESENT'
+    (r) =>
+      (r.studentId === currentStudent.id ||
+        r.studentId === currentStudent.studentId ||
+        stripStudentId(r.studentId) === stripStudentId(currentStudent.studentId)) &&
+      r.status === 'PRESENT'
   );
 
   const totalSessions = applicableSessions.length;
@@ -455,7 +464,11 @@ export const MyAttendanceView: React.FC<MyAttendanceViewProps> = ({
             ) : (
               filteredTimeline.map((session) => {
                 const rec = attendanceRecords.find(
-                  (r) => r.sessionId === session.id && r.studentId === currentStudent.id
+                  (r) =>
+                    r.sessionId === session.id &&
+                    (r.studentId === currentStudent.id ||
+                      r.studentId === currentStudent.studentId ||
+                      stripStudentId(r.studentId) === stripStudentId(currentStudent.studentId))
                 );
                 const isAttended = rec?.status === 'PRESENT';
 

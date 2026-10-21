@@ -3606,7 +3606,9 @@ class AttendanceEngine {
       const alreadyPresent = this.attendanceRecords.some(
         (r) =>
           r.sessionId === record.sessionId &&
-          r.studentId.toUpperCase() === record.studentId.toUpperCase() &&
+          (r.studentId.toUpperCase() === record.studentId.toUpperCase() ||
+            normalizeStudentId(r.studentId) === normalizeStudentId(record.studentId) ||
+            stripStudentId(r.studentId) === stripStudentId(record.studentId)) &&
           r.status === 'PRESENT'
       );
       if (alreadyPresent) {
@@ -3743,7 +3745,9 @@ class AttendanceEngine {
       (r) =>
         r.sessionId === activeSession!.id &&
         (r.studentId === student.id ||
-          normalizeStudentId(r.studentId) === normalizeStudentId(student.id)) &&
+          r.studentId === student.studentId ||
+          normalizeStudentId(r.studentId) === normalizeStudentId(student.studentId || student.id) ||
+          stripStudentId(r.studentId) === stripStudentId(student.studentId || student.id)) &&
         r.status === 'PRESENT'
     );
 
@@ -3752,7 +3756,9 @@ class AttendanceEngine {
         (r) =>
           r.sessionId === activeSession!.id &&
           (r.studentId === student.id ||
-            normalizeStudentId(r.studentId) === normalizeStudentId(student.id))
+            r.studentId === student.studentId ||
+            normalizeStudentId(r.studentId) === normalizeStudentId(student.studentId || student.id) ||
+            stripStudentId(r.studentId) === stripStudentId(student.studentId || student.id))
       );
       return {
         success: false,
@@ -3881,7 +3887,9 @@ class AttendanceEngine {
     const studentRecords = this.attendanceRecords.filter(
       (r) =>
         (r.studentId === student.id ||
-          normalizeStudentId(r.studentId) === normalizeStudentId(student.id)) &&
+          r.studentId === student.studentId ||
+          normalizeStudentId(r.studentId) === normalizeStudentId(student.studentId || student.id) ||
+          stripStudentId(r.studentId) === stripStudentId(student.studentId || student.id)) &&
         r.status === 'PRESENT'
     );
     const presentCount = studentRecords.length;

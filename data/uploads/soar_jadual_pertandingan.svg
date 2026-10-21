@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="50%" stop-color="#27272a"/>
+      <stop offset="100%" stop-color="#7c2d12"/>
+    </linearGradient>
+    <linearGradient id="cardBg3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fafafa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="1100" fill="url(#bg3)"/>
+  <circle cx="700" cy="180" r="170" fill="#f97316" opacity="0.15"/>
+
+  <!-- Top Badge -->
+  <rect x="60" y="50" width="680" height="40" rx="8" fill="#ea580c" opacity="0.4"/>
+  <text x="400" y="75" fill="#fed7aa" font-family="system-ui, sans-serif" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">
+    JADUAL RASMI PERTANDINGAN FINAL • SOAR 2026
+  </text>
+
+  <!-- Header Title -->
+  <text x="400" y="150" fill="#ffffff" font-family="system-ui, sans-serif" font-size="34" font-weight="900" text-anchor="middle">
+    CARTA GILIRAN &amp; VENUE ACARA
+  </text>
+  <text x="400" y="185" fill="#fdba74" font-family="system-ui, sans-serif" font-size="16" font-weight="500" text-anchor="middle">
+    Masa Berlepas, Soundcheck &amp; Giliran Persembahan KPMBP
+  </text>
+
+  <!-- Row 1: Symphonic Duo -->
+  <g transform="translate(60, 230)">
+    <rect width="680" height="120" rx="16" fill="url(#cardBg3)"/>
+    <rect x="0" y="0" width="8" height="120" rx="4" fill="#a855f7"/>
+    <text x="35" y="40" fill="#09090b" font-family="system-ui, sans-serif" font-size="18" font-weight="800">SYMPHONIC DUO (Pentas Utama)</text>
+    <text x="35" y="70" fill="#4b5563" font-family="system-ui, sans-serif" font-size="14">
+      Soundcheck: 10:00 Pagi | Pertandingan: 14:30 Petang
+    </text>
+    <text x="35" y="95" fill="#7e22ce" font-family="system-ui, sans-serif" font-size="14" font-weight="700">
+      Giliran Bertanding: Ke-4 (Auditorium Kompleks Seni)
+    </text>
+  </g>
+
+  <!-- Row 2: Tarian Zapin -->
+  <g transform="translate(60, 370)">
+    <rect width="680" height="120" rx="16" fill="url(#cardBg3)"/>
+    <rect x="0" y="0" width="8" height="120" rx="4" fill="#10b981"/>
+    <text x="35" y="40" fill="#09090b" font-family="system-ui, sans-serif" font-size="18" font-weight="800">TARIAN ZAPIN (Pentas Terbuka Budaya)</text>
+    <text x="35" y="70" fill="#4b5563" font-family="system-ui, sans-serif" font-size="14">
+      Persiapan Busana: 17:00 Petang | Acara Bermula: 20:30 Malam
+    </text>
+    <text x="35" y="95" fill="#047857" font-family="system-ui, sans-serif" font-size="14" font-weight="700">
+      Giliran Bertanding: Ke-2 (Pentas Budaya Utama)
+    </text>
+  </g>
+
+  <!-- Row 3: Battle of the Bands -->
+  <g transform="translate(60, 510)">
+    <rect width="680" height="120" rx="16" fill="url(#cardBg3)"/>
+    <rect x="0" y="0" width="8" height="120" rx="4" fill="#ef4444"/>
+    <text x="35" y="40" fill="#09090b" font-family="system-ui, sans-serif" font-size="18" font-weight="800">BATTLE OF THE BANDS (Dewan Perdana)</text>
+    <text x="35" y="70" fill="#4b5563" font-family="system-ui, sans-serif" font-size="14">
+      Loading Gear: 12:00 Tengah Hari | Pertandingan: 15:00 Petang
+    </text>
+    <text x="35" y="95" fill="#b91c1c" font-family="system-ui, sans-serif" font-size="14" font-weight="700">
+      Giliran Bertanding: Ke-5 (Dewan Perdana SOAR)
+    </text>
+  </g>
+
+  <!-- Row 4: Street Dakwah -->
+  <g transform="translate(60, 650)">
+    <rect width="680" height="120" rx="16" fill="url(#cardBg3)"/>
+    <rect x="0" y="0" width="8" height="120" rx="4" fill="#3b82f6"/>
+    <text x="35" y="40" fill="#09090b" font-family="system-ui, sans-serif" font-size="18" font-weight="800">STREET DAKWAH (Plaza Terbuka)</text>
+    <text x="35" y="70" fill="#4b5563" font-family="system-ui, sans-serif" font-size="14">
+      Pemanasan Vokal: 08:00 Pagi | Sesi Berlangsung: 09:00 Pagi
+    </text>
+    <text x="35" y="95" fill="#1d4ed8" font-family="system-ui, sans-serif" font-size="14" font-weight="700">
+      Giliran Berucap: Ke-3 (Plaza Paviliun Terbuka)
+    </text>
+  </g>
+
+  <!-- Alert Note -->
+  <g transform="translate(60, 790)">
+    <rect width="680" height="140" rx="16" fill="#431407" stroke="#ea580c" stroke-width="2"/>
+    <text x="40" y="40" fill="#fdba74" font-family="system-ui, sans-serif" font-size="16" font-weight="800">
+      PERINGATAN PENGURUS PASUKAN:
+    </text>
+    <text x="40" y="70" fill="#ffffff" font-family="system-ui, sans-serif" font-size="15">
+      Peserta wajib berada di bilik menunggu (holding area) selewat-lewatnya
+    </text>
+    <text x="40" y="95" fill="#ffffff" font-family="system-ui, sans-serif" font-size="15">
+      45 minit sebelum giliran sebenar. Bas bergerak dari kolej 1 jam lebih awal.
+    </text>
+  </g>
+
+  <text x="400" y="1020" fill="#a1a1aa" font-family="system-ui, sans-serif" font-size="13" text-anchor="middle">
+    Jawatankuasa Teknikal &amp; Pertandingan Kontinjen KPMBP
+  </text>
+</svg>

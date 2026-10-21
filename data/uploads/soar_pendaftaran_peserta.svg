@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="50%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="1100" fill="url(#bg)"/>
+
+  <!-- Subtle circles -->
+  <circle cx="700" cy="150" r="180" fill="#6366f1" opacity="0.15"/>
+  <circle cx="100" cy="950" r="220" fill="#818cf8" opacity="0.12"/>
+
+  <!-- Top Badge -->
+  <rect x="60" y="50" width="680" height="40" rx="8" fill="#4f46e5" opacity="0.4"/>
+  <text x="400" y="75" fill="#c7d2fe" font-family="system-ui, sans-serif" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">
+    FESTIVAL SOAR 2026 • KONTINJEN KPM BANDAR PENAWAR
+  </text>
+
+  <!-- Header Title -->
+  <text x="400" y="150" fill="#ffffff" font-family="system-ui, sans-serif" font-size="34" font-weight="900" text-anchor="middle">
+    PANDUAN PENDAFTARAN PESERTA
+  </text>
+  <text x="400" y="185" fill="#a5b4fc" font-family="system-ui, sans-serif" font-size="16" font-weight="500" text-anchor="middle">
+    Syarat Kelayakan, Pengesahan Kad Matrik &amp; Dokumen Wajib
+  </text>
+
+  <!-- Card 1 -->
+  <g transform="translate(60, 230)">
+    <rect width="680" height="140" rx="16" fill="url(#cardBg)"/>
+    <rect x="0" y="0" width="8" height="140" rx="4" fill="#3b82f6"/>
+    <circle cx="50" cy="45" r="24" fill="#dbeafe"/>
+    <text x="50" y="52" fill="#1d4ed8" font-family="system-ui, sans-serif" font-size="18" font-weight="800" text-anchor="middle">1</text>
+    <text x="95" y="45" fill="#0f172a" font-family="system-ui, sans-serif" font-size="18" font-weight="800">KAD MATRIK &amp; KAD PENGENALAN ASAL</text>
+    <text x="95" y="75" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      Semua peserta wajib membawa kad matrik fizikal pelajar yang masih sah
+    </text>
+    <text x="95" y="100" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      bersama Kad Pengenalan semasa pendaftaran di Meja Urus Setia Pusat.
+    </text>
+  </g>
+
+  <!-- Card 2 -->
+  <g transform="translate(60, 400)">
+    <rect width="680" height="140" rx="16" fill="url(#cardBg)"/>
+    <rect x="0" y="0" width="8" height="140" rx="4" fill="#10b981"/>
+    <circle cx="50" cy="45" r="24" fill="#d1fae5"/>
+    <text x="50" y="52" fill="#047857" font-family="system-ui, sans-serif" font-size="18" font-weight="800" text-anchor="middle">2</text>
+    <text x="95" y="45" fill="#0f172a" font-family="system-ui, sans-serif" font-size="18" font-weight="800">BORANG PENGAKUAN KESIHATAN</text>
+    <text x="95" y="75" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      Borang kesihatan lengkap yang ditandatangani oleh ibu bapa/penjaga
+    </text>
+    <text x="95" y="100" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      mesti diserahkan kepada pengurus pasukan masing-masing sebelum pelepasan bas.
+    </text>
+  </g>
+
+  <!-- Card 3 -->
+  <g transform="translate(60, 570)">
+    <rect width="680" height="140" rx="16" fill="url(#cardBg)"/>
+    <rect x="0" y="0" width="8" height="140" rx="4" fill="#f59e0b"/>
+    <circle cx="50" cy="45" r="24" fill="#fef3c7"/>
+    <text x="50" y="52" fill="#b45309" font-family="system-ui, sans-serif" font-size="18" font-weight="800" text-anchor="middle">3</text>
+    <text x="95" y="45" fill="#0f172a" font-family="system-ui, sans-serif" font-size="18" font-weight="800">TAG KONTINJEN &amp; T-SHIRT RASMI</text>
+    <text x="95" y="75" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      Pengambilan tag akreditasi kontinjen dan t-shirt rasmi KPMBP dibuat
+    </text>
+    <text x="95" y="100" fill="#475569" font-family="system-ui, sans-serif" font-size="14">
+      di Bilik Gerakan Kontinjen (Aras 2) pada malam sebelum pertandingan bermula.
+    </text>
+  </g>
+
+  <!-- Tarikh & Lokasi Box -->
+  <g transform="translate(60, 750)">
+    <rect width="680" height="180" rx="16" fill="#1e1b4b" stroke="#6366f1" stroke-width="2"/>
+    <text x="40" y="45" fill="#facc15" font-family="system-ui, sans-serif" font-size="16" font-weight="800">
+      TARIKH &amp; MASA PENDAFTARAN:
+    </text>
+    <text x="40" y="75" fill="#ffffff" font-family="system-ui, sans-serif" font-size="18" font-weight="700">
+      14 Mei 2026 (Khamis) | 2:00 Petang - 6:00 Petang
+    </text>
+    <text x="40" y="115" fill="#a5b4fc" font-family="system-ui, sans-serif" font-size="15">
+      Lokasi Pendaftaran: Foyer Utama Kolej Kediaman Festival SOAR 2026
+    </text>
+    <text x="40" y="145" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">
+      Hubungi Urus Setia Kontinjen: Cikgu Khairi (+60 19-700 8921)
+    </text>
+  </g>
+
+  <!-- Footer -->
+  <text x="400" y="1040" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13" text-anchor="middle">
+    Dikeluarkan oleh Urus Setia Kontinjen KPM Bandar Penawar (KPMBP) • SOAR 2026
+  </text>
+</svg>

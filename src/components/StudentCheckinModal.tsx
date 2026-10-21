@@ -14,7 +14,8 @@ import {
   getInitials,
   getStudentColor,
   normalizeStudentId,
-  findStudentById
+  findStudentById,
+  stripStudentId
 } from '../utils/studentUtils';
 import { ADMIN_WHATSAPP_PHONE, ADMIN_WHATSAPP_URL } from '../utils/whatsappHelper';
 import {
@@ -143,7 +144,12 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
     // Check if returning student already recorded attendance for this session
     if (activeSavedStudent && targetSession) {
       const existing = attendanceRecords.find(
-        (r) => r.sessionId === targetSession.id && r.studentId === activeSavedStudent.id && r.status === 'PRESENT'
+        (r) =>
+          r.sessionId === targetSession.id &&
+          (r.studentId === activeSavedStudent.id ||
+            r.studentId === activeSavedStudent.studentId ||
+            stripStudentId(r.studentId) === stripStudentId(activeSavedStudent.studentId)) &&
+          r.status === 'PRESENT'
       );
       if (existing) {
         setSubmitStatus('DUPLICATE');
@@ -185,7 +191,12 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
 
     // Check duplicate
     const existing = attendanceRecords.find(
-      (r) => r.sessionId === targetSession.id && r.studentId === studentToRecord.id && r.status === 'PRESENT'
+      (r) =>
+        r.sessionId === targetSession.id &&
+        (r.studentId === studentToRecord.id ||
+          r.studentId === studentToRecord.studentId ||
+          stripStudentId(r.studentId) === stripStudentId(studentToRecord.studentId)) &&
+        r.status === 'PRESENT'
     );
     if (existing) {
       setSubmitStatus('DUPLICATE');
@@ -259,16 +270,21 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
   // Handle ID Lookup & Check-In
   const handleLookupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedInput = normalizeStudentId(inputStudentId.trim());
-    if (!normalizedInput) return;
+    const rawInput = inputStudentId.trim();
+    if (!rawInput) return;
+    const normalizedInput = normalizeStudentId(rawInput);
 
-    const found = attendanceEngine.getStudentById(normalizedInput) || findStudentById(students, normalizedInput);
+    const found =
+      findStudentById(students, rawInput) ||
+      attendanceEngine.getStudentById(rawInput) ||
+      (normalizedInput ? findStudentById(students, normalizedInput) : null) ||
+      (normalizedInput ? attendanceEngine.getStudentById(normalizedInput) : null);
 
     if (found) {
       executeAttendance(found);
     } else {
       setSubmitStatus('ERROR');
-      setFeedbackMessage(`No. Pelajar "${normalizedInput}" tidak dijumpai dalam pangkalan data kursus ${displaySubjectCode}. Sila semak semula atau hubungi Admin jika perlukan bantuan.`);
+      setFeedbackMessage(`No. Pelajar "${normalizedInput || rawInput}" tidak dijumpai dalam pangkalan data kursus ${displaySubjectCode}. Sila semak semula atau hubungi Admin jika perlukan bantuan.`);
       soundService.playError();
     }
   };
@@ -374,8 +390,10 @@ export const StudentCheckinModal: React.FC<StudentCheckinModalProps> = ({
     .filter((s) => {
       const q = inputStudentId.toLowerCase().trim();
       if (!q || q.length < 2) return false;
+      const qStripped = stripStudentId(inputStudentId);
+      const studentIdMatch = qStripped.length >= 2 && stripStudentId(s.studentId).includes(qStripped);
       return (
-        s.studentId.toLowerCase().includes(q) ||
+        studentIdMatch ||
         s.name.toLowerCase().includes(q) ||
         s.className.toLowerCase().includes(q)
       );

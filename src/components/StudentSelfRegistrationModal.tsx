@@ -13,7 +13,9 @@ import {
   getClassBadgeColor,
   getInitials,
   getStudentColor,
-  normalizeStudentId
+  normalizeStudentId,
+  findStudentById,
+  stripStudentId
 } from '../utils/studentUtils';
 import { normalizePhoneNumber } from '../utils/phoneHelper';
 import {
@@ -85,12 +87,17 @@ export const StudentSelfRegistrationModal: React.FC<StudentSelfRegistrationModal
   useEffect(() => {
     const rawId = studentId.trim();
     const cleanId = normalizeStudentId(rawId);
-    if (cleanId.length >= 4) {
-      const found = attendanceEngine.getStudentById(cleanId) || attendanceEngine.getStudentById(rawId);
+    const strippedId = stripStudentId(rawId);
+    if (cleanId.length >= 4 || strippedId.length >= 4) {
+      const found =
+        findStudentById(attendanceEngine.getStudents(), rawId) ||
+        attendanceEngine.getStudentById(cleanId) ||
+        attendanceEngine.getStudentById(rawId) ||
+        (strippedId ? attendanceEngine.getStudentById(strippedId) : null);
       if (found) {
         setIsExistingStudent(true);
         setExistingStudentData(found);
-        if (!name || name === rawId || name === cleanId) {
+        if (!name || name === rawId || name === cleanId || name === strippedId) {
           setName(found.name);
         }
         if (!email && found.email) {
