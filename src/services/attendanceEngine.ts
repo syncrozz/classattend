@@ -955,7 +955,121 @@ class AttendanceEngine {
     }
   }
 
+  /**
+   * Forces a fresh, authoritative pull of all primary collections from Cloud Firestore.
+   * Bypasses stale local caches and updates in-memory states and localStorage.
+   */
+  public async forceSyncFromFirestore(): Promise<{
+    students: number;
+    lecturers: number;
+    subjects: number;
+    sessions: number;
+    teachingAssignments: number;
+    records: number;
+  }> {
+    if (!db) {
+      throw new Error('Firestore is not initialized.');
+    }
+
+    try {
+      // 1. Fetch Students
+      const studentsSnap = await getDocs(collection(db, 'students'));
+      if (!studentsSnap.empty) {
+        const data = studentsSnap.docs.map((docSnap) => docSnap.data() as Student);
+        const dedupedMap = new Map<string, Student>();
+        data.forEach((s) => {
+          const rawId = (s.studentId || s.id || '').trim().toUpperCase();
+          if (rawId && !dedupedMap.has(rawId)) {
+            dedupedMap.set(rawId, {
+              ...s,
+              id: rawId,
+              studentId: rawId,
+              name: (s.name || '').trim().toUpperCase(),
+              className: (s.className || 'DIA_4A').trim().toUpperCase().replace(/\s+/g, '_')
+            });
+          }
+        });
+        this.students = Array.from(dedupedMap.values());
+        this.saveStudentsLocally();
+        this.notifyStudentListeners();
+      }
+
+      // 2. Fetch Lecturers
+      const lecturersSnap = await getDocs(collection(db, 'lecturers'));
+      if (!lecturersSnap.empty) {
+        const data = lecturersSnap.docs
+          .map((docSnap) => docSnap.data() as Lecturer)
+          .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id));
+        this.lecturers = data;
+        this.saveLecturersLocally();
+        this.notifyLecturerListeners();
+      }
+
+      // 3. Fetch Subjects
+      const subjectsSnap = await getDocs(collection(db, 'subjects'));
+      if (!subjectsSnap.empty) {
+        const data = subjectsSnap.docs
+          .map((docSnap) => docSnap.data() as Subject)
+          .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
+        this.subjects = data;
+        this.saveSubjectsLocally();
+        this.notifySubjectListeners();
+      }
+
+      // 4. Fetch Sessions
+      const sessionsSnap = await getDocs(collection(db, 'sessions'));
+      if (!sessionsSnap.empty) {
+        const data = sessionsSnap.docs
+          .map((docSnap) => docSnap.data() as AttendanceSession)
+          .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
+        this.sessions = sortSessionsLatestFirst(data);
+        this.saveSessionsLocally();
+        this.notifySessionListeners();
+      }
+
+      // 5. Fetch Teaching Assignments
+      const assignmentsSnap = await getDocs(collection(db, 'teaching_assignments'));
+      if (!assignmentsSnap.empty) {
+        const data = assignmentsSnap.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
+        this.teachingAssignments = data;
+        this.saveTeachingAssignmentsLocally();
+        this.notifyTeachingAssignmentListeners();
+      }
+
+      // 6. Fetch Records
+      const recordsSnap = await getDocs(collection(db, 'attendance_records'));
+      if (!recordsSnap.empty) {
+        const data = recordsSnap.docs
+          .map((docSnap) => docSnap.data() as AttendanceRecord)
+          .filter(
+            (rec) =>
+              !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
+              !DUMMY_SESSION_IDS.includes(rec.sessionId)
+          );
+        this.attendanceRecords = data;
+        this.saveRecordsLocally();
+        this.notifyRecordListeners();
+      }
+
+      // Mark initialized
+      safeStorageSet(STORAGE_KEYS.INITIALIZED, 'true');
+
+      return {
+        students: this.students.length,
+        lecturers: this.lecturers.length,
+        subjects: this.subjects.length,
+        sessions: this.sessions.length,
+        teachingAssignments: this.teachingAssignments.length,
+        records: this.attendanceRecords.length
+      };
+    } catch (err: any) {
+      console.error('Error during forceSyncFromFirestore:', err);
+      throw err;
+    }
+  }
+
   // --- Subscriptions ---
+
   public subscribeStudents(callback: (students: Student[]) => void): () => void {
     this.studentListeners.add(callback);
     callback(this.students);

@@ -14,7 +14,8 @@ import {
   BookOpen,
   LogOut,
   User,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -31,6 +32,8 @@ interface HeaderProps {
   onLogoutLecturer: () => void;
   onCloseActiveSession?: (sessionId: string) => void;
   isLecturerWorkspaceActive?: boolean;
+  onForceSyncCloud?: () => void;
+  isSyncingCloud?: boolean;
 }
 
 const formatSessionHeaderTitle = (session: { subjectCode?: string; sessionName?: string; className?: string }): string => {
@@ -77,7 +80,9 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAdminMode,
   onLogoutLecturer,
   onCloseActiveSession,
-  isLecturerWorkspaceActive = false
+  isLecturerWorkspaceActive = false,
+  onForceSyncCloud,
+  isSyncingCloud = false
 }) => {
   const isPrivileged = Boolean(activeLecturer || isAdmin);
 
@@ -254,6 +259,23 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <QrCode className="w-4 h-4" />
               <span className="hidden sm:inline">Imbas QR</span>
+            </button>
+          )}
+
+          {/* Cloud Firestore Sync Button */}
+          {onForceSyncCloud && (
+            <button
+              id="header-btn-cloud-sync"
+              onClick={onForceSyncCloud}
+              disabled={isSyncingCloud}
+              className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-center ${
+                isSyncingCloud
+                  ? 'bg-indigo-900/60 border-indigo-500/50 text-indigo-300 animate-pulse'
+                  : 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:text-white hover:bg-slate-700'
+              }`}
+              title="Segar Semula Data (Tarik Data Terkini dari Cloud Firestore)"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingCloud ? 'animate-spin text-indigo-400' : ''}`} />
             </button>
           )}
 

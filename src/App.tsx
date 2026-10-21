@@ -43,7 +43,7 @@ import { StudentQrPortalView } from './components/StudentQrPortalView';
 import { accessManager } from './services/accessManager';
 import { auditLogger } from './services/auditLogger';
 import { LECTURER_EMAIL_DOMAIN } from './utils/staffUtils';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const checkIsQrRoute = (): boolean => {
@@ -188,6 +188,28 @@ export default function App() {
   // PWA Installation state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
+
+  // Cloud Firestore Sync State
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
+
+  const handleForceSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const counts = await attendanceEngine.forceSyncFromFirestore();
+      soundService.playSuccess();
+      setSyncToastMessage(
+        `Berjaya disegerak terus dari Cloud Firestore: ${counts.students} Pelajar, ${counts.lecturers} Pensyarah, ${counts.subjects} Kursus, ${counts.sessions} Sesi.`
+      );
+      setTimeout(() => setSyncToastMessage(null), 6000);
+    } catch (err: any) {
+      console.error('Failed to sync from Cloud Firestore:', err);
+      setSyncToastMessage('Ralat semasa menyegerak dengan Firestore. Sila periksa sambungan internet.');
+      setTimeout(() => setSyncToastMessage(null), 6000);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -899,6 +921,8 @@ export default function App() {
         onLogoutLecturer={handleLogoutLecturer}
         onCloseActiveSession={(id) => handleSetSessionStatus(id, 'CLOSED')}
         isLecturerWorkspaceActive={activeTab === 'dashboard' && currentRole === 'LECTURER' && Boolean(activeLecturer)}
+        onForceSyncCloud={handleForceSyncCloud}
+        isSyncingCloud={isSyncingCloud}
       />
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
@@ -916,6 +940,23 @@ export default function App() {
 
         {/* Main Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          {syncToastMessage && (
+            <div className="mb-4 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span className="leading-relaxed font-semibold">{syncToastMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncToastMessage(null)}
+                className="text-emerald-400 hover:text-white p-1 rounded-lg hover:bg-emerald-500/20 cursor-pointer ml-3 shrink-0"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {migrationNotice && (
             <div className="mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between shadow-lg">
               <div className="flex items-center gap-2.5">

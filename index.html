@@ -39,24 +39,71 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ClassAttend" />
+
+    <!-- Cache Busting for Browser Navigation -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(
-            (reg) => {
-              console.log('PWA ServiceWorker registered successfully with scope:', reg.scope);
-            },
-            (err) => {
-              console.warn('PWA ServiceWorker registration failed:', err);
-            }
-          );
-        });
-      }
+      (function() {
+        // Emergency cache reset if ?refresh=true or ?reset=true is present
+        if (window.location.search.includes('reset=true') || window.location.search.includes('refresh=true')) {
+          if ('caches' in window) {
+            caches.keys().then((names) => {
+              names.forEach((name) => caches.delete(name));
+            });
+          }
+          try {
+            localStorage.removeItem('classattend_initialized_v5');
+          } catch (e) {}
+        }
+
+        if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then(
+              (reg) => {
+                console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+                // Proactively trigger update check
+                reg.update().catch(() => {});
+
+                // If an update is waiting, prompt activation
+                if (reg.waiting) {
+                  reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+
+                reg.addEventListener('updatefound', () => {
+                  const newWorker = reg.installing;
+                  if (newWorker) {
+                    newWorker.addEventListener('statechange', () => {
+                      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        console.log('[PWA] New version installed and ready.');
+                      }
+                    });
+                  }
+                });
+              },
+              (err) => {
+                console.warn('[PWA] ServiceWorker registration failed:', err);
+              }
+            );
+
+            // Reload once when the new service worker takes control
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+              }
+            });
+          });
+        }
+      })();
     </script>
   </body>
 </html>
+
 
