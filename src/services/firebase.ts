@@ -200,6 +200,68 @@ export interface FirestoreErrorInfo {
   };
 }
 
+const QUOTA_STORAGE_KEY = 'classattend_quota_exceeded_timestamp';
+const QUOTA_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute cooldown before attempting automatic sync reconnect
+
+function checkStoredQuotaExceeded(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    const raw = sessionStorage.getItem(QUOTA_STORAGE_KEY);
+    if (!raw) return false;
+    const ts = parseInt(raw, 10);
+    if (isNaN(ts)) return false;
+    if (Date.now() - ts < QUOTA_COOLDOWN_MS) {
+      return true;
+    }
+    sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+let isQuotaExceeded = typeof window !== 'undefined' ? checkStoredQuotaExceeded() : false;
+const quotaListeners = new Set<(exceeded: boolean) => void>();
+
+export function getIsQuotaExceeded(): boolean {
+  return isQuotaExceeded;
+}
+
+export function subscribeQuotaStatus(callback: (exceeded: boolean) => void): () => void {
+  quotaListeners.add(callback);
+  callback(isQuotaExceeded);
+  return () => {
+    quotaListeners.delete(callback);
+  };
+}
+
+export function markQuotaExceeded(exceeded: boolean = true) {
+  try {
+    if (typeof window !== 'undefined') {
+      if (exceeded) {
+        sessionStorage.setItem(QUOTA_STORAGE_KEY, Date.now().toString());
+      } else {
+        sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+      }
+    }
+  } catch {}
+
+  if (isQuotaExceeded !== exceeded) {
+    isQuotaExceeded = exceeded;
+    quotaListeners.forEach((cb) => {
+      try {
+        cb(exceeded);
+      } catch (err) {
+        console.warn('Quota listener error:', err);
+      }
+    });
+  }
+}
+
+export function resetQuotaStatus() {
+  markQuotaExceeded(false);
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): FirestoreErrorInfo {
   const classification = classifyFirestoreError(error);
   const errInfo: FirestoreErrorInfo = {
@@ -230,7 +292,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       console.error(`[FIRESTORE AUTH] Unauthenticated ${operationType} on "${path}":`, JSON.stringify(errInfo));
       break;
     case FirestoreErrorCategory.QUOTA_EXCEEDED:
-      console.error(`[FIRESTORE QUOTA] Free daily quota exceeded during ${operationType} on "${path}":`, JSON.stringify(errInfo));
+      markQuotaExceeded(true);
+      console.warn(`[FIRESTORE QUOTA] Free daily quota exceeded during ${operationType} on "${path}". Local-first offline cache active.`);
       break;
     case FirestoreErrorCategory.CONFIG_ERROR:
       console.error(`[FIRESTORE CONFIG] Configuration issue during ${operationType} on "${path}":`, JSON.stringify(errInfo));

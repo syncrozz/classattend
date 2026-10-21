@@ -376,8 +376,8 @@ export const ConceptGuideView: React.FC = () => {
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
-            <div className="text-xs font-bold text-indigo-400 uppercase">Sesi Kuliah Mingguan</div>
-            <h4 className="text-sm font-bold text-white">Kuliah Minggu 1, Minggu 2, Tutorial</h4>
+            <div className="text-xs font-bold text-indigo-400 uppercase">Sesi Kuliah & Kelas</div>
+            <h4 className="text-sm font-bold text-white">Sesi Kuliah, Tutorial, Amali</h4>
             <p className="text-[11px] text-slate-400">
               Buka sesi imbasan bila-bila masa. Sistem menyokong imbasan kamera dan paparan projektor skrin besar.
             </p>

@@ -41,9 +41,9 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
   const handleQuickAppend = (suffix: string) => {
     soundService.playClick();
     setSessionName((prev) => {
-      // If user clicks "a" or "b" and title ends in a number (e.g. "Minggu 6")
+      // If user clicks "a" or "b" and title ends in a number (e.g. "Sesi 1")
       if (suffix === 'a' || suffix === 'b') {
-        const regex = /(\bMinggu\s+\d+)([a-zA-Z]?)/i;
+        const regex = /(\bSesi\s+\d+|\b\d+)([a-zA-Z]?)$/i;
         if (regex.test(prev)) {
           return prev.replace(regex, `$1${suffix}`);
         }
@@ -92,7 +92,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 Kemaskini Remark / Tajuk Sesi
               </h2>
               <p className="text-xs text-slate-400">
-                Ubah tajuk sesi contohnya dari <span className="text-indigo-300 font-medium">Minggu 6</span> kepada <span className="text-emerald-300 font-medium">Minggu 6a</span>.
+                Ubah tajuk sesi contohnya dari <span className="text-indigo-300 font-medium">Sesi 1</span> kepada <span className="text-emerald-300 font-medium">Sesi 1a</span>.
               </p>
             </div>
           </div>
@@ -136,7 +136,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 setSessionName(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="cth: Kuliah Minggu 6a"
+              placeholder="cth: Sesi 1a / Kuliah Gantian"
               className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
             {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
@@ -153,7 +153,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 type="button"
                 onClick={() => handleQuickAppend('a')}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all cursor-pointer"
-                title="Tukar ke Minggu ...a (cth: Minggu 6a)"
+                title="Tambah variasi sesi 'a' (cth: Sesi 1a)"
               >
                 Tambah &quot;a&quot;
               </button>
@@ -161,7 +161,7 @@ export const EditSessionRemarkModal: React.FC<EditSessionRemarkModalProps> = ({
                 type="button"
                 onClick={() => handleQuickAppend('b')}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all cursor-pointer"
-                title="Tukar ke Minggu ...b (cth: Minggu 6b)"
+                title="Tambah variasi sesi 'b' (cth: Sesi 1b)"
               >
                 Tambah &quot;b&quot;
               </button>

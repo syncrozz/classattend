@@ -105,7 +105,7 @@ export interface Student {
 
 export interface AttendanceSession {
   id: string; // Unique session ID (e.g. SES-CLS-01)
-  sessionName: string; // e.g. "Kuliah Minggu 4: Pengenalan Cukai Pendapatan"
+  sessionName: string; // e.g. "Sesi 1: Pengenalan Perakaunan" / "Tutorial Bab 2"
   subjectId?: string;
   subjectCode: string; // e.g. "MPU 2163" or "ACC 2103"
   subjectName: string; // e.g. "Pengajian Malaysia 2"

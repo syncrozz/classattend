@@ -42,6 +42,7 @@ import { StudentCheckinModal, StudentCheckinContext } from './components/Student
 import { StudentQrPortalView } from './components/StudentQrPortalView';
 import { accessManager } from './services/accessManager';
 import { auditLogger } from './services/auditLogger';
+import { subscribeQuotaStatus } from './services/firebase';
 import { LECTURER_EMAIL_DOMAIN } from './utils/staffUtils';
 import { AlertCircle, X, CheckCircle2 } from 'lucide-react';
 
@@ -189,9 +190,18 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
 
-  // Cloud Firestore Sync State
+  // Cloud Firestore Sync & Quota State
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(false);
+  const [isQuotaBannerDismissed, setIsQuotaBannerDismissed] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubQuota = subscribeQuotaStatus((exceeded) => {
+      setIsQuotaExceeded(exceeded);
+    });
+    return () => unsubQuota();
+  }, []);
 
   const handleForceSyncCloud = async () => {
     setIsSyncingCloud(true);
@@ -203,8 +213,13 @@ export default function App() {
       );
       setTimeout(() => setSyncToastMessage(null), 6000);
     } catch (err: any) {
-      console.error('Failed to sync from Cloud Firestore:', err);
-      setSyncToastMessage('Ralat semasa menyegerak dengan Firestore. Sila periksa sambungan internet.');
+      console.warn('Sync notice:', err?.message || err);
+      const isQuota = err?.message?.toLowerCase().includes('quota') || err?.message?.toLowerCase().includes('had kuota');
+      setSyncToastMessage(
+        isQuota
+          ? 'Had kuota bacaan percuma Firestore telah dicapai untuk hari ini. Sistem beroperasi secara lancar dalam mod luar talian (LocalStorage).'
+          : 'Ralat semasa menyegerak dengan Firestore. Sila periksa sambungan internet.'
+      );
       setTimeout(() => setSyncToastMessage(null), 6000);
     } finally {
       setIsSyncingCloud(false);
@@ -513,7 +528,7 @@ export default function App() {
     });
   };
 
-  // Update Session (e.g. rename session title / remark like "Kuliah Minggu 6" -> "Kuliah Minggu 6a")
+  // Update Session (e.g. rename session title / remark like "Sesi 1" -> "Sesi 1a")
   const handleUpdateSession = (updatedSession: AttendanceSession) => {
     const updated = attendanceEngine.updateSession(updatedSession);
     setSessions(updated);
@@ -940,6 +955,52 @@ export default function App() {
 
         {/* Main Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          {isQuotaExceeded && !isQuotaBannerDismissed && (
+            <div className="mb-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border border-amber-500/40 text-amber-100 text-xs shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                    <AlertCircle className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="font-bold text-sm text-amber-300">
+                      Had Kuota Harian Percuma Firestore Telah Dicapai (Free Daily Read Units Exceeded)
+                    </p>
+                    <p className="text-amber-200/90 leading-relaxed">
+                      Pangkalan data Cloud Firestore telah mencapai had bacaan harian percuma. Sistem beroperasi sepenuhnya dalam <strong>mod luar talian (LocalStorage)</strong> tanpa gangguan atau kehilangan rekod kehadiran. Kuota percuma akan ditetapkan semula secara automatik esok.
+                    </p>
+                    <div className="pt-1 flex flex-wrap items-center gap-2">
+                      <a
+                        href="https://console.firebase.google.com/project/gen-lang-client-0739778545/firestore/databases/ai-studio-classattend-8378814f-0aae-4f9a-99ea-468f3503ec55/data?openUpgradeDialog=true"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/30 hover:bg-amber-500/40 text-amber-200 font-semibold border border-amber-500/50 transition-colors shadow-sm"
+                      >
+                        Urus Pelan & Kuota di Konsol Firebase →
+                      </a>
+                      <a
+                        href="https://firebase.google.com/pricing#cloud-firestore"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 font-medium border border-slate-700 transition-colors"
+                      >
+                        Maklumat Had Pelan Spark / Enterprise
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuotaBannerDismissed(true)}
+                  className="text-amber-400 hover:text-white p-1 rounded-lg hover:bg-amber-500/20 cursor-pointer shrink-0"
+                  title="Tutup pemberitahuan"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {syncToastMessage && (
             <div className="mb-4 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="flex items-center gap-2.5">

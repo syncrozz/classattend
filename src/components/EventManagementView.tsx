@@ -182,7 +182,7 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
   // Clean base session name
   const cleanBaseSessionName = useMemo(() => {
     const raw = newSessionName.trim();
-    if (!raw) return 'Kuliah Minggu';
+    if (!raw) return 'Sesi Kuliah';
     return raw;
   }, [newSessionName]);
 
@@ -382,17 +382,8 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
     setSelectedSubjectId(subId);
     if (sub) {
       const existingSubSessions = sessions.filter((s) => s.subjectId === subId || s.activityId === subId);
-      // Smart week deduction from existing sessions
-      let maxWeek = 0;
-      existingSubSessions.forEach((ses) => {
-        const m = ses.sessionName.match(/Minggu\s*(\d+)/i);
-        if (m && m[1]) {
-          const w = parseInt(m[1], 10);
-          if (w > maxWeek) maxWeek = w;
-        }
-      });
-      const nextWeekNum = maxWeek > 0 ? maxWeek + 1 : (existingSubSessions.length > 0 ? existingSubSessions.length + 1 : 1);
-      setNewSessionName(`Kuliah Minggu ${nextWeekNum}`);
+      const nextSessionNum = existingSubSessions.length + 1;
+      setNewSessionName(`Sesi ${nextSessionNum}`);
       setGeneratePerClass(true);
 
       // Default: Tick all sections registered for this subject, or fallback to classes with data
@@ -602,9 +593,9 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               {activeLecturer ? (
-                <span>Urus subjek, jadualkan sesi kuliah mingguan, dan mulakan imbasan kehadiran di satu tempat.</span>
+                <span>Urus subjek, jadualkan sesi kuliah, dan mulakan imbasan kehadiran di satu tempat.</span>
               ) : (
-                <span>Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan mingguan.</span>
+                <span>Urus subjek pensyarah, kelas yang diajar, dan buka sesi imbasan kehadiran.</span>
               )}
             </p>
           </div>
@@ -722,12 +713,6 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
                         </div>
                         <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-slate-200">{activeSes.subjectName || matchedSub?.name || 'Sesi Kuliah'}</span>
-                          {activeSes.academicWeek && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-indigo-300 font-semibold">{activeSes.academicWeek}</span>
-                            </>
-                          )}
                           {activeSes.startTime && (
                             <>
                               <span className="text-slate-600">•</span>
@@ -1408,55 +1393,37 @@ export const EventManagementView: React.FC<ClassManagementViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmitSession} className="space-y-4">
-              {/* 1. Base Session Name & Quick Week Presets */}
+              {/* 1. Base Session Name & Quick Presets */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                   <span>Nama Asas Sesi Kuliah *</span>
-                  <span className="text-[11px] text-slate-400">Pilih atau taip minggu:</span>
+                  <span className="text-[11px] text-slate-400">Pilih cadangan atau taip nama:</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Kuliah Minggu 3 / Tutorial Bab 2"
+                  placeholder="Contoh: Sesi 1 / Tutorial Bab 2 / Amali"
                   value={newSessionName}
                   onChange={(e) => setNewSessionName(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
-                {/* Week Preset Quick Selectors */}
+                {/* Session Type Presets */}
                 <div className="flex items-center gap-1.5 flex-wrap pt-1">
                   <span className="text-[11px] text-slate-400 font-medium">Cadangan:</span>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((wk) => {
-                    const presetVal = `Kuliah Minggu ${wk}`;
-                    const isSelected = cleanBaseSessionName === presetVal;
+                  {['Sesi Kuliah', 'Amali', 'Tutorial', 'Kuliah Gantian'].map((type) => {
+                    const isSelected = cleanBaseSessionName === type;
                     return (
                       <button
-                        key={`preset-wk-${wk}`}
+                        key={`preset-${type}`}
                         type="button"
-                        onClick={() => setNewSessionName(presetVal)}
+                        onClick={() => setNewSessionName(type)}
                         className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                         }`}
                       >
-                        Minggu {wk}
-                      </button>
-                    );
-                  })}
-                  {['Amali', 'Tutorial'].map((other) => {
-                    const isSelected = cleanBaseSessionName === other;
-                    return (
-                      <button
-                        key={`preset-${other}`}
-                        type="button"
-                        onClick={() => setNewSessionName(other)}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white shadow-sm'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                        }`}
-                      >
-                        {other}
+                        {type}
                       </button>
                     );
                   })}

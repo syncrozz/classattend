@@ -35,7 +35,7 @@ import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalize
 import { areClassesMatching } from '../utils/classHelper';
 import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
 import { auditLogger } from './auditLogger';
-import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from './firebase';
+import { db, sanitizeForFirestore, handleFirestoreError, OperationType, getIsQuotaExceeded, markQuotaExceeded } from './firebase';
 import {
   collection,
   doc,
@@ -122,20 +122,6 @@ class AttendanceEngine {
   private recordListeners: Set<(records: AttendanceRecord[]) => void> = new Set();
   private teachingAssignmentListeners: Set<(assignments: TeachingAssignment[]) => void> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
-
-  // Single shared Firestore subscription handles per application instance
-  private sharedSessionUnsub: (() => void) | null = null;
-  private isSharedSessionSubscribing: boolean = false;
-  private sharedStudentUnsub: (() => void) | null = null;
-  private sharedLecturerUnsub: (() => void) | null = null;
-  private sharedSubjectUnsub: (() => void) | null = null;
-  private sharedRecordUnsub: (() => void) | null = null;
-  private sharedEnrollmentUnsub: (() => void) | null = null;
-  private sharedAssignmentUnsub: (() => void) | null = null;
-
-  // Reconciliation idempotency and write loop guards
-  private pendingReconcileWrites: Set<string> = new Set();
-  private isReconcilingSessions: boolean = false;
 
   private isFirestoreConnected: boolean = false;
 
@@ -984,6 +970,9 @@ class AttendanceEngine {
     if (!db) {
       throw new Error('Firestore is not initialized.');
     }
+    if (getIsQuotaExceeded()) {
+      throw new Error('Had kuota bacaan percuma harian Firestore telah dicapai (Free daily read units exceeded). Sila cuba lagi esok atau naik taraf pelan pangkalan data.');
+    }
 
     try {
       // 1. Fetch Students
@@ -1088,7 +1077,7 @@ class AttendanceEngine {
     this.studentListeners.add(callback);
     callback(this.students);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.studentListeners.delete(callback);
       };
@@ -1096,6 +1085,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'students');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1140,7 +1130,14 @@ class AttendanceEngine {
           callback(this.students);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'students');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'students');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
             this.students = [...INITIAL_STUDENTS];
             this.saveStudentsLocally();
@@ -1149,8 +1146,9 @@ class AttendanceEngine {
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.studentListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch (e) {
       if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
@@ -1168,7 +1166,7 @@ class AttendanceEngine {
     this.enrollmentListeners.add(callback);
     callback(this.enrollments);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.enrollmentListeners.delete(callback);
       };
@@ -1176,6 +1174,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'enrollments');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1185,13 +1184,21 @@ class AttendanceEngine {
           callback(this.enrollments);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'enrollments');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'enrollments');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           callback(this.enrollments);
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.enrollmentListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch (e) {
       callback(this.enrollments);
@@ -1205,7 +1212,7 @@ class AttendanceEngine {
     this.lecturerListeners.add(callback);
     callback(this.lecturers);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.lecturerListeners.delete(callback);
       };
@@ -1213,6 +1220,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'lecturers');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1263,7 +1271,14 @@ class AttendanceEngine {
           callback(this.lecturers);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'lecturers');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'lecturers');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
             this.lecturers = [...INITIAL_LECTURERS];
             this.saveLecturersLocally();
@@ -1272,8 +1287,9 @@ class AttendanceEngine {
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.lecturerListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch {
       if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
@@ -1291,7 +1307,7 @@ class AttendanceEngine {
     this.subjectListeners.add(callback);
     callback(this.subjects);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.subjectListeners.delete(callback);
       };
@@ -1299,6 +1315,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'subjects');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1337,13 +1354,21 @@ class AttendanceEngine {
           callback(this.subjects);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'subjects');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'subjects');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           callback(this.subjects);
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.subjectListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch {
       callback(this.subjects);
@@ -1357,7 +1382,7 @@ class AttendanceEngine {
     this.sessionListeners.add(callback);
     callback(sortSessionsLatestFirst(this.sessions));
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.sessionListeners.delete(callback);
       };
@@ -1365,6 +1390,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'sessions');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1406,7 +1432,14 @@ class AttendanceEngine {
           callback(this.sessions);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'sessions');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'sessions');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
             this.sessions = [...INITIAL_SESSIONS];
             this.saveSessionsLocally();
@@ -1415,8 +1448,9 @@ class AttendanceEngine {
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.sessionListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch (e) {
       if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
@@ -1434,7 +1468,7 @@ class AttendanceEngine {
     this.recordListeners.add(callback);
     callback(this.attendanceRecords);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.recordListeners.delete(callback);
       };
@@ -1442,6 +1476,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'attendance_records');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1457,13 +1492,21 @@ class AttendanceEngine {
           callback(this.attendanceRecords);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'attendance_records');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'attendance_records');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           callback(this.attendanceRecords);
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.recordListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch (e) {
       callback(this.attendanceRecords);
@@ -1477,7 +1520,7 @@ class AttendanceEngine {
     this.teachingAssignmentListeners.add(callback);
     callback(this.teachingAssignments);
 
-    if (!db) {
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.teachingAssignmentListeners.delete(callback);
       };
@@ -1485,6 +1528,7 @@ class AttendanceEngine {
 
     try {
       const q = collection(db, 'teaching_assignments');
+      let isUnsubscribed = false;
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -1541,7 +1585,14 @@ class AttendanceEngine {
           callback(this.teachingAssignments);
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'teaching_assignments');
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'teaching_assignments');
+          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+            markQuotaExceeded(true);
+            if (!isUnsubscribed) {
+              isUnsubscribed = true;
+              try { unsubscribe(); } catch {}
+            }
+          }
           if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
             this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
             this.saveTeachingAssignmentsLocally();
@@ -1550,8 +1601,9 @@ class AttendanceEngine {
         }
       );
       return () => {
+        isUnsubscribed = true;
         this.teachingAssignmentListeners.delete(callback);
-        unsubscribe();
+        try { unsubscribe(); } catch {}
       };
     } catch (e) {
       if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
