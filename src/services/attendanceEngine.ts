@@ -35,7 +35,16 @@ import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalize
 import { areClassesMatching } from '../utils/classHelper';
 import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
 import { auditLogger } from './auditLogger';
-import { db, sanitizeForFirestore, handleFirestoreError, OperationType, getIsQuotaExceeded, markQuotaExceeded } from './firebase';
+import {
+  db,
+  sanitizeForFirestore,
+  handleFirestoreError,
+  OperationType,
+  FirestoreErrorCategory,
+  getIsQuotaExceeded,
+  markQuotaExceeded,
+  subscribeQuotaStatus
+} from './firebase';
 import {
   collection,
   doc,
@@ -121,6 +130,19 @@ class AttendanceEngine {
   private sessionListeners: Set<(sessions: AttendanceSession[]) => void> = new Set();
   private recordListeners: Set<(records: AttendanceRecord[]) => void> = new Set();
   private teachingAssignmentListeners: Set<(assignments: TeachingAssignment[]) => void> = new Set();
+
+  // Singleton shared Firestore listener handles (one active listener per collection)
+  private studentFirestoreUnsub: (() => void) | null = null;
+  private lecturerFirestoreUnsub: (() => void) | null = null;
+  private subjectFirestoreUnsub: (() => void) | null = null;
+  private sessionFirestoreUnsub: (() => void) | null = null;
+  private recordFirestoreUnsub: (() => void) | null = null;
+  private enrollmentFirestoreUnsub: (() => void) | null = null;
+  private teachingAssignmentFirestoreUnsub: (() => void) | null = null;
+
+  // Idempotent remote reconciliation tracking to prevent write-read amplification cascades
+  private reconcilingSessionIds: Set<string> = new Set();
+
   private broadcastChannel: BroadcastChannel | null = null;
 
   private isFirestoreConnected: boolean = false;
@@ -128,6 +150,40 @@ class AttendanceEngine {
   constructor() {
     this.initializeData();
     this.initCrossTabSync();
+    this.initQuotaListener();
+  }
+
+  private initQuotaListener() {
+    subscribeQuotaStatus((exceeded) => {
+      if (!exceeded) {
+        // Quota recovered: resume active shared subscriptions safely
+        this.resumeActiveSharedListeners();
+      } else {
+        // Quota exceeded: safely detach all open Firestore listeners immediately
+        this.detachAllFirestoreListeners();
+      }
+    });
+  }
+
+  public detachAllFirestoreListeners() {
+    if (this.sessionFirestoreUnsub) { try { this.sessionFirestoreUnsub(); } catch {} this.sessionFirestoreUnsub = null; }
+    if (this.studentFirestoreUnsub) { try { this.studentFirestoreUnsub(); } catch {} this.studentFirestoreUnsub = null; }
+    if (this.lecturerFirestoreUnsub) { try { this.lecturerFirestoreUnsub(); } catch {} this.lecturerFirestoreUnsub = null; }
+    if (this.subjectFirestoreUnsub) { try { this.subjectFirestoreUnsub(); } catch {} this.subjectFirestoreUnsub = null; }
+    if (this.recordFirestoreUnsub) { try { this.recordFirestoreUnsub(); } catch {} this.recordFirestoreUnsub = null; }
+    if (this.enrollmentFirestoreUnsub) { try { this.enrollmentFirestoreUnsub(); } catch {} this.enrollmentFirestoreUnsub = null; }
+    if (this.teachingAssignmentFirestoreUnsub) { try { this.teachingAssignmentFirestoreUnsub(); } catch {} this.teachingAssignmentFirestoreUnsub = null; }
+  }
+
+  public resumeActiveSharedListeners() {
+    if (!db || getIsQuotaExceeded()) return;
+    if (this.sessionListeners.size > 0 && !this.sessionFirestoreUnsub) this.startSharedSessionsListener();
+    if (this.studentListeners.size > 0 && !this.studentFirestoreUnsub) this.startSharedStudentsListener();
+    if (this.lecturerListeners.size > 0 && !this.lecturerFirestoreUnsub) this.startSharedLecturersListener();
+    if (this.subjectListeners.size > 0 && !this.subjectFirestoreUnsub) this.startSharedSubjectsListener();
+    if (this.recordListeners.size > 0 && !this.recordFirestoreUnsub) this.startSharedRecordsListener();
+    if (this.enrollmentListeners.size > 0 && !this.enrollmentFirestoreUnsub) this.startSharedEnrollmentsListener();
+    if (this.teachingAssignmentListeners.size > 0 && !this.teachingAssignmentFirestoreUnsub) this.startSharedTeachingAssignmentsListener();
   }
 
   private initCrossTabSync() {
@@ -562,7 +618,7 @@ class AttendanceEngine {
           return timeB - timeA;
         });
 
-        // The newest (index 0) remains OPEN; older sessions (index 1+) are safely closed
+        // The newest (index 0) remains OPEN; older sessions (index 1+) are safely closed in memory and persisted
         const toCloseIds = new Set(openSessions.slice(1).map((s) => s.id));
         this.sessions = this.sessions.map((s) => {
           if (toCloseIds.has(s.id)) {
@@ -573,8 +629,19 @@ class AttendanceEngine {
               endTime: s.endTime && s.endTime.trim().length > 0 ? s.endTime : timeStr,
               updatedAt: now.toISOString()
             };
-            if (db) {
-              setDoc(doc(db, 'sessions', closedSession.id), sanitizeForFirestore(closedSession), { merge: true }).catch(console.warn);
+
+            // Idempotent Firestore sync: only write if not already in flight and quota is available
+            if (db && !getIsQuotaExceeded() && !this.reconcilingSessionIds.has(closedSession.id)) {
+              this.reconcilingSessionIds.add(closedSession.id);
+              setDoc(doc(db, 'sessions', closedSession.id), sanitizeForFirestore(closedSession), { merge: true })
+                .catch((err) => {
+                  handleFirestoreError(err, OperationType.UPDATE, `sessions/${closedSession.id}`);
+                })
+                .finally(() => {
+                  setTimeout(() => {
+                    this.reconcilingSessionIds.delete(closedSession.id);
+                  }, 10000);
+                });
             }
             return closedSession;
           }
@@ -588,6 +655,39 @@ class AttendanceEngine {
       this.notifySessionListeners();
     }
     return modified;
+  }
+
+  /**
+   * Idempotently reconciles remote conflicting OPEN sessions in Firestore without write amplification
+   */
+  private reconcileConflictingSessionsRemotely(olderSessionIds: Set<string>) {
+    if (!db || getIsQuotaExceeded() || olderSessionIds.size === 0) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    olderSessionIds.forEach((sessionId) => {
+      if (this.reconcilingSessionIds.has(sessionId)) return;
+      const sess = this.sessions.find((s) => s.id === sessionId);
+      if (!sess) return;
+
+      this.reconcilingSessionIds.add(sessionId);
+      const closedSession: AttendanceSession = {
+        ...sess,
+        status: 'CLOSED',
+        endTime: sess.endTime && sess.endTime.trim().length > 0 ? sess.endTime : timeStr,
+        updatedAt: now.toISOString()
+      };
+
+      setDoc(doc(db!, 'sessions', sessionId), sanitizeForFirestore(closedSession), { merge: true })
+        .catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, `sessions/${sessionId}`);
+        })
+        .finally(() => {
+          setTimeout(() => {
+            this.reconcilingSessionIds.delete(sessionId);
+          }, 10000);
+        });
+    });
   }
 
   public cleanLegacyDummyData() {
@@ -606,8 +706,9 @@ class AttendanceEngine {
     this.saveEnrollmentsLocally();
     this.saveTeachingAssignmentsLocally();
 
-    // Also delete dummy documents from Firestore if present
-    if (db) {
+    // Delete dummy documents from Firestore only once, and never when quota is exceeded
+    if (db && !getIsQuotaExceeded() && safeStorageGet('classattend_cleaned_legacy_dummy_v3') !== 'true') {
+      safeStorageSet('classattend_cleaned_legacy_dummy_v3', 'true');
       DUMMY_SESSION_IDS.forEach((id) => deleteDoc(doc(db!, 'sessions', id)).catch(() => {}));
       DUMMY_SUBJECT_IDS.forEach((id) => deleteDoc(doc(db!, 'subjects', id)).catch(() => {}));
       DUMMY_LECTURER_IDS.forEach((id) => deleteDoc(doc(db!, 'lecturers', id)).catch(() => {}));
@@ -1066,36 +1167,28 @@ class AttendanceEngine {
         records: this.attendanceRecords.length
       };
     } catch (err: any) {
+      const errInfo = handleFirestoreError(err, OperationType.LIST, 'forceSyncFromFirestore');
+      if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
+        markQuotaExceeded(true);
+        throw new Error('Had kuota bacaan percuma harian Firestore telah dicapai (Free daily read units exceeded). Sistem beroperasi secara selamat dalam mod luar talian (LocalStorage).');
+      }
       console.error('Error during forceSyncFromFirestore:', err);
       throw err;
     }
   }
 
-  // --- Subscriptions ---
+  // --- Subscriptions & Shared Listeners ---
 
-  public subscribeStudents(callback: (students: Student[]) => void): () => void {
-    this.studentListeners.add(callback);
-    callback(this.students);
-
-    if (!db || getIsQuotaExceeded()) {
-      return () => {
-        this.studentListeners.delete(callback);
-      };
-    }
-
+  private startSharedStudentsListener() {
+    if (!db || getIsQuotaExceeded() || this.studentFirestoreUnsub) return;
     try {
       const q = collection(db, 'students');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
+      this.studentFirestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
-              this.students = [...INITIAL_STUDENTS];
-              this.saveStudentsLocally();
-            }
-            this.syncInitialStudentsToFirestore();
-            callback(this.students);
+            // Never overwrite with mock data; preserve authoritative local data
+            this.notifyStudentListeners();
             return;
           }
 
@@ -1114,51 +1207,84 @@ class AttendanceEngine {
             }
           });
 
-          // Self-heal: If data was somehow empty, fallback to INITIAL_STUDENTS
-          if (dedupedMap.size === 0 && INITIAL_STUDENTS.length > 0) {
-            INITIAL_STUDENTS.forEach((st) => {
-              const rawId = (st.studentId || st.id || '').trim().toUpperCase();
-              if (rawId && !dedupedMap.has(rawId)) {
-                dedupedMap.set(rawId, st);
-              }
-            });
-            this.syncInitialStudentsToFirestore();
+          if (dedupedMap.size > 0) {
+            this.students = Array.from(dedupedMap.values());
+            this.saveStudentsLocally();
           }
-
-          this.students = Array.from(dedupedMap.values());
-          this.saveStudentsLocally();
-          callback(this.students);
+          this.notifyStudentListeners();
         },
         (error) => {
           const errInfo = handleFirestoreError(error, OperationType.LIST, 'students');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
             markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
+            if (this.studentFirestoreUnsub) {
+              try { this.studentFirestoreUnsub(); } catch {}
+              this.studentFirestoreUnsub = null;
             }
           }
-          if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
-            this.students = [...INITIAL_STUDENTS];
-            this.saveStudentsLocally();
-          }
-          callback(this.students);
+          this.notifyStudentListeners();
         }
       );
-      return () => {
-        isUnsubscribed = true;
-        this.studentListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
     } catch (e) {
-      if (this.students.length === 0 && INITIAL_STUDENTS.length > 0) {
-        this.students = [...INITIAL_STUDENTS];
-        this.saveStudentsLocally();
-      }
-      callback(this.students);
+      console.warn('[SHARED STUDENT LISTENER] Failed to attach:', e);
+      this.notifyStudentListeners();
+    }
+  }
+
+  public subscribeStudents(callback: (students: Student[]) => void): () => void {
+    this.studentListeners.add(callback);
+    callback(this.students);
+
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.studentListeners.delete(callback);
       };
+    }
+
+    if (!this.studentFirestoreUnsub) {
+      this.startSharedStudentsListener();
+    }
+
+    return () => {
+      this.studentListeners.delete(callback);
+      if (this.studentListeners.size === 0 && this.studentFirestoreUnsub) {
+        try { this.studentFirestoreUnsub(); } catch {}
+        this.studentFirestoreUnsub = null;
+      }
+    };
+  }
+
+  private startSharedEnrollmentsListener() {
+    if (!db || getIsQuotaExceeded() || this.enrollmentFirestoreUnsub) return;
+    try {
+      const q = collection(db, 'enrollments');
+      this.enrollmentFirestoreUnsub = onSnapshot(
+        q,
+        (snapshot) => {
+          if (snapshot.empty) {
+            this.notifyEnrollmentListeners();
+            return;
+          }
+          const data = snapshot.docs.map((docSnap) => docSnap.data() as Enrollment);
+          this.enrollments = data;
+          this.saveEnrollmentsLocally();
+          this.notifyEnrollmentListeners();
+        },
+        (error) => {
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'enrollments');
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
+            markQuotaExceeded(true);
+            if (this.enrollmentFirestoreUnsub) {
+              try { this.enrollmentFirestoreUnsub(); } catch {}
+              this.enrollmentFirestoreUnsub = null;
+            }
+          }
+          this.notifyEnrollmentListeners();
+        }
+      );
+    } catch (e) {
+      console.warn('[SHARED ENROLLMENT LISTENER] Failed to attach:', e);
+      this.notifyEnrollmentListeners();
     }
   }
 
@@ -1172,65 +1298,28 @@ class AttendanceEngine {
       };
     }
 
-    try {
-      const q = collection(db, 'enrollments');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const data = snapshot.docs.map((docSnap) => docSnap.data() as Enrollment);
-          this.enrollments = data;
-          this.saveEnrollmentsLocally();
-          callback(this.enrollments);
-        },
-        (error) => {
-          const errInfo = handleFirestoreError(error, OperationType.LIST, 'enrollments');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
-            markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
-            }
-          }
-          callback(this.enrollments);
-        }
-      );
-      return () => {
-        isUnsubscribed = true;
-        this.enrollmentListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
-    } catch (e) {
-      callback(this.enrollments);
-      return () => {
-        this.enrollmentListeners.delete(callback);
-      };
+    if (!this.enrollmentFirestoreUnsub) {
+      this.startSharedEnrollmentsListener();
     }
+
+    return () => {
+      this.enrollmentListeners.delete(callback);
+      if (this.enrollmentListeners.size === 0 && this.enrollmentFirestoreUnsub) {
+        try { this.enrollmentFirestoreUnsub(); } catch {}
+        this.enrollmentFirestoreUnsub = null;
+      }
+    };
   }
 
-  public subscribeLecturers(callback: (lecturers: Lecturer[]) => void): () => void {
-    this.lecturerListeners.add(callback);
-    callback(this.lecturers);
-
-    if (!db || getIsQuotaExceeded()) {
-      return () => {
-        this.lecturerListeners.delete(callback);
-      };
-    }
-
+  private startSharedLecturersListener() {
+    if (!db || getIsQuotaExceeded() || this.lecturerFirestoreUnsub) return;
     try {
       const q = collection(db, 'lecturers');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
+      this.lecturerFirestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
-              this.lecturers = [...INITIAL_LECTURERS];
-              this.saveLecturersLocally();
-            }
-            this.syncInitialLecturersToFirestore();
-            callback(this.lecturers);
+            this.notifyLecturerListeners();
             return;
           }
 
@@ -1259,81 +1348,69 @@ class AttendanceEngine {
               };
             });
 
-          if (data.length === 0 && INITIAL_LECTURERS.length > 0) {
-            this.lecturers = [...INITIAL_LECTURERS];
-            this.syncInitialLecturersToFirestore();
-          } else {
+          if (data.length > 0) {
             this.lecturers = data;
+            this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
+            this.saveLecturersLocally();
           }
-
-          this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
-          this.saveLecturersLocally();
-          callback(this.lecturers);
+          this.notifyLecturerListeners();
         },
         (error) => {
           const errInfo = handleFirestoreError(error, OperationType.LIST, 'lecturers');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
             markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
+            if (this.lecturerFirestoreUnsub) {
+              try { this.lecturerFirestoreUnsub(); } catch {}
+              this.lecturerFirestoreUnsub = null;
             }
           }
-          if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
-            this.lecturers = [...INITIAL_LECTURERS];
-            this.saveLecturersLocally();
-          }
-          callback(this.lecturers);
+          this.notifyLecturerListeners();
         }
       );
-      return () => {
-        isUnsubscribed = true;
-        this.lecturerListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
-    } catch {
-      if (this.lecturers.length === 0 && INITIAL_LECTURERS.length > 0) {
-        this.lecturers = [...INITIAL_LECTURERS];
-        this.saveLecturersLocally();
-      }
-      callback(this.lecturers);
-      return () => {
-        this.lecturerListeners.delete(callback);
-      };
+    } catch (e) {
+      console.warn('[SHARED LECTURER LISTENER] Failed to attach:', e);
+      this.notifyLecturerListeners();
     }
   }
 
-  public subscribeSubjects(callback: (subjects: Subject[]) => void): () => void {
-    this.subjectListeners.add(callback);
-    callback(this.subjects);
+  public subscribeLecturers(callback: (lecturers: Lecturer[]) => void): () => void {
+    this.lecturerListeners.add(callback);
+    callback(this.lecturers);
 
     if (!db || getIsQuotaExceeded()) {
       return () => {
-        this.subjectListeners.delete(callback);
+        this.lecturerListeners.delete(callback);
       };
     }
 
+    if (!this.lecturerFirestoreUnsub) {
+      this.startSharedLecturersListener();
+    }
+
+    return () => {
+      this.lecturerListeners.delete(callback);
+      if (this.lecturerListeners.size === 0 && this.lecturerFirestoreUnsub) {
+        try { this.lecturerFirestoreUnsub(); } catch {}
+        this.lecturerFirestoreUnsub = null;
+      }
+    };
+  }
+
+  private startSharedSubjectsListener() {
+    if (!db || getIsQuotaExceeded() || this.subjectFirestoreUnsub) return;
     try {
       const q = collection(db, 'subjects');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
+      this.subjectFirestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            this.resetSubjectsToDefault();
-            callback(this.subjects);
+            this.notifySubjectListeners();
             return;
           }
+
           let data = snapshot.docs
             .map((docSnap) => docSnap.data() as Subject)
             .filter((subj) => !DUMMY_SUBJECT_IDS.includes(subj.id));
-
-          const initialCodesSet = new Set(INITIAL_SUBJECTS.map((s) => s.code.toUpperCase()));
-          const existingCodes = new Set(data.map((d) => d.code.toUpperCase()));
-          const missing = INITIAL_SUBJECTS.filter((s) => !existingCodes.has(s.code.toUpperCase()));
-          if (missing.length > 0) {
-            data = [...data, ...missing];
-          }
 
           data = data.map((subj) => {
             let lEmail = (subj.lecturerEmail || '').trim().toLowerCase();
@@ -1348,63 +1425,70 @@ class AttendanceEngine {
             };
           });
 
-          this.subjects = data;
-          this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
-          this.saveSubjectsLocally();
-          callback(this.subjects);
+          if (data.length > 0) {
+            this.subjects = data;
+            this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
+            this.saveSubjectsLocally();
+          }
+          this.notifySubjectListeners();
         },
         (error) => {
           const errInfo = handleFirestoreError(error, OperationType.LIST, 'subjects');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
             markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
+            if (this.subjectFirestoreUnsub) {
+              try { this.subjectFirestoreUnsub(); } catch {}
+              this.subjectFirestoreUnsub = null;
             }
           }
-          callback(this.subjects);
+          this.notifySubjectListeners();
         }
       );
-      return () => {
-        isUnsubscribed = true;
-        this.subjectListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
-    } catch {
-      callback(this.subjects);
-      return () => {
-        this.subjectListeners.delete(callback);
-      };
+    } catch (e) {
+      console.warn('[SHARED SUBJECT LISTENER] Failed to attach:', e);
+      this.notifySubjectListeners();
     }
   }
 
-  public subscribeSessions(callback: (sessions: AttendanceSession[]) => void): () => void {
-    this.sessionListeners.add(callback);
-    callback(sortSessionsLatestFirst(this.sessions));
+  public subscribeSubjects(callback: (subjects: Subject[]) => void): () => void {
+    this.subjectListeners.add(callback);
+    callback(this.subjects);
 
     if (!db || getIsQuotaExceeded()) {
       return () => {
-        this.sessionListeners.delete(callback);
+        this.subjectListeners.delete(callback);
       };
     }
 
+    if (!this.subjectFirestoreUnsub) {
+      this.startSharedSubjectsListener();
+    }
+
+    return () => {
+      this.subjectListeners.delete(callback);
+      if (this.subjectListeners.size === 0 && this.subjectFirestoreUnsub) {
+        try { this.subjectFirestoreUnsub(); } catch {}
+        this.subjectFirestoreUnsub = null;
+      }
+    };
+  }
+
+  private startSharedSessionsListener() {
+    if (!db || getIsQuotaExceeded() || this.sessionFirestoreUnsub) return;
+
     try {
       const q = collection(db, 'sessions');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
+      this.sessionFirestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
-              this.sessions = [...INITIAL_SESSIONS];
-              this.saveSessionsLocally();
-            }
-            this.syncInitialSessionsToFirestore();
-            callback(sortSessionsLatestFirst(this.sessions));
+            // Never overwrite with mock data or sync mock data to Firestore!
+            // Preserve authoritative in-memory / localStorage sessions
+            this.notifySessionListeners();
             return;
           }
 
-          const data = snapshot.docs
+          const rawData = snapshot.docs
             .map((docSnap) => docSnap.data() as AttendanceSession)
             .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id))
             .map((sess) => {
@@ -1420,47 +1504,141 @@ class AttendanceEngine {
               };
             });
 
-          if (data.length === 0 && INITIAL_SESSIONS.length > 0) {
-            this.sessions = sortSessionsLatestFirst([...INITIAL_SESSIONS]);
-            this.syncInitialSessionsToFirestore();
-          } else {
-            this.sessions = sortSessionsLatestFirst(data);
-          }
+          // In-memory conflict resolution (Observation separated from Reconciliation):
+          // Group by lecturer to guarantee that in-memory state always satisfies the
+          // Single Active Session invariant for UI display without triggering recursive writes
+          const openByLecturer = new Map<string, AttendanceSession[]>();
+          rawData.forEach((s) => {
+            if (s.status === 'OPEN') {
+              const key = (s.lecturerId || s.lecturerEmail || '').trim().toLowerCase();
+              if (key) {
+                const list = openByLecturer.get(key) || [];
+                list.push(s);
+                openByLecturer.set(key, list);
+              }
+            }
+          });
 
-          this.reconcileSingleActiveSessionPerLecturer();
+          // Identify older conflicting sessions to resolve in memory
+          const conflictingOlderIds = new Set<string>();
+          openByLecturer.forEach((openSessions) => {
+            if (openSessions.length > 1) {
+              openSessions.sort((a, b) => {
+                const timeA = new Date(a.createdAt || a.date).getTime() || 0;
+                const timeB = new Date(b.createdAt || b.date).getTime() || 0;
+                return timeB - timeA;
+              });
+              openSessions.slice(1).forEach((older) => {
+                conflictingOlderIds.add(older.id);
+              });
+            }
+          });
+
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+          const normalized = rawData.map((s) => {
+            if (conflictingOlderIds.has(s.id)) {
+              return {
+                ...s,
+                status: 'CLOSED' as const,
+                endTime: s.endTime && s.endTime.trim().length > 0 ? s.endTime : timeStr,
+                updatedAt: s.updatedAt || now.toISOString()
+              };
+            }
+            return s;
+          });
+
+          this.sessions = sortSessionsLatestFirst(normalized);
           this.saveSessionsLocally();
-          callback(this.sessions);
+          this.notifySessionListeners();
+
+          // Idempotent background reconciliation: Only write to close conflicting sessions
+          // if not already in flight and quota is not exceeded
+          if (conflictingOlderIds.size > 0 && !getIsQuotaExceeded()) {
+            this.reconcileConflictingSessionsRemotely(conflictingOlderIds);
+          }
         },
         (error) => {
           const errInfo = handleFirestoreError(error, OperationType.LIST, 'sessions');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
             markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
+            if (this.sessionFirestoreUnsub) {
+              try { this.sessionFirestoreUnsub(); } catch {}
+              this.sessionFirestoreUnsub = null;
             }
           }
-          if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
-            this.sessions = [...INITIAL_SESSIONS];
-            this.saveSessionsLocally();
-          }
-          callback(sortSessionsLatestFirst(this.sessions));
+          // Preserve authoritative in-memory / localStorage sessions, NEVER overwrite with mock
+          this.notifySessionListeners();
         }
       );
-      return () => {
-        isUnsubscribed = true;
-        this.sessionListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
     } catch (e) {
-      if (this.sessions.length === 0 && INITIAL_SESSIONS.length > 0) {
-        this.sessions = [...INITIAL_SESSIONS];
-        this.saveSessionsLocally();
-      }
-      callback(sortSessionsLatestFirst(this.sessions));
+      console.warn('[SHARED SESSION LISTENER] Failed to attach:', e);
+      this.notifySessionListeners();
+    }
+  }
+
+  public subscribeSessions(callback: (sessions: AttendanceSession[]) => void): () => void {
+    this.sessionListeners.add(callback);
+    callback(sortSessionsLatestFirst(this.sessions));
+
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.sessionListeners.delete(callback);
       };
+    }
+
+    if (!this.sessionFirestoreUnsub) {
+      this.startSharedSessionsListener();
+    }
+
+    return () => {
+      this.sessionListeners.delete(callback);
+      if (this.sessionListeners.size === 0 && this.sessionFirestoreUnsub) {
+        try { this.sessionFirestoreUnsub(); } catch {}
+        this.sessionFirestoreUnsub = null;
+      }
+    };
+  }
+
+  private startSharedRecordsListener() {
+    if (!db || getIsQuotaExceeded() || this.recordFirestoreUnsub) return;
+    try {
+      const q = collection(db, 'attendance_records');
+      this.recordFirestoreUnsub = onSnapshot(
+        q,
+        (snapshot) => {
+          if (snapshot.empty) {
+            this.notifyRecordListeners();
+            return;
+          }
+
+          const data = snapshot.docs
+            .map((docSnap) => docSnap.data() as AttendanceRecord)
+            .filter(
+              (rec) =>
+                !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
+                !DUMMY_SESSION_IDS.includes(rec.sessionId)
+            );
+          this.attendanceRecords = data;
+          this.saveRecordsLocally();
+          this.notifyRecordListeners();
+        },
+        (error) => {
+          const errInfo = handleFirestoreError(error, OperationType.LIST, 'attendance_records');
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
+            markQuotaExceeded(true);
+            if (this.recordFirestoreUnsub) {
+              try { this.recordFirestoreUnsub(); } catch {}
+              this.recordFirestoreUnsub = null;
+            }
+          }
+          this.notifyRecordListeners();
+        }
+      );
+    } catch (e) {
+      console.warn('[SHARED RECORD LISTENER] Failed to attach:', e);
+      this.notifyRecordListeners();
     }
   }
 
@@ -1474,88 +1652,39 @@ class AttendanceEngine {
       };
     }
 
-    try {
-      const q = collection(db, 'attendance_records');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const data = snapshot.docs
-            .map((docSnap) => docSnap.data() as AttendanceRecord)
-            .filter(
-              (rec) =>
-                !DUMMY_RECORD_PREFIXES.some((prefix) => rec.id.startsWith(prefix)) &&
-                !DUMMY_SESSION_IDS.includes(rec.sessionId)
-            );
-          this.attendanceRecords = data;
-          this.saveRecordsLocally();
-          callback(this.attendanceRecords);
-        },
-        (error) => {
-          const errInfo = handleFirestoreError(error, OperationType.LIST, 'attendance_records');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
-            markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
-            }
-          }
-          callback(this.attendanceRecords);
-        }
-      );
-      return () => {
-        isUnsubscribed = true;
-        this.recordListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
-    } catch (e) {
-      callback(this.attendanceRecords);
-      return () => {
-        this.recordListeners.delete(callback);
-      };
+    if (!this.recordFirestoreUnsub) {
+      this.startSharedRecordsListener();
     }
+
+    return () => {
+      this.recordListeners.delete(callback);
+      if (this.recordListeners.size === 0 && this.recordFirestoreUnsub) {
+        try { this.recordFirestoreUnsub(); } catch {}
+        this.recordFirestoreUnsub = null;
+      }
+    };
   }
 
-  public subscribeTeachingAssignments(callback: (assignments: TeachingAssignment[]) => void): () => void {
-    this.teachingAssignmentListeners.add(callback);
-    callback(this.teachingAssignments);
-
-    if (!db || getIsQuotaExceeded()) {
-      return () => {
-        this.teachingAssignmentListeners.delete(callback);
-      };
-    }
-
+  private startSharedTeachingAssignmentsListener() {
+    if (!db || getIsQuotaExceeded() || this.teachingAssignmentFirestoreUnsub) return;
     try {
       const q = collection(db, 'teaching_assignments');
-      let isUnsubscribed = false;
-      const unsubscribe = onSnapshot(
+      this.teachingAssignmentFirestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
-              this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
-              this.saveTeachingAssignmentsLocally();
-            }
-            this.syncInitialTeachingAssignmentsToFirestore();
-            callback(this.teachingAssignments);
+            this.notifyTeachingAssignmentListeners();
             return;
           }
 
           let data = snapshot.docs.map((docSnap) => docSnap.data() as TeachingAssignment);
 
-          // Authoritative sanitization: Filter out invalid cross-subject class assignments
+          // Authoritative in-memory sanitization: Filter out invalid cross-subject class assignments
           data = data.filter((ta) => {
             const code = ta.subjectCode?.toUpperCase();
             const normCls = normalizeClassCode(ta.className);
-            if (code === 'MPU2162' && normCls !== 'DIA3A') {
-              if (db && ta.id) deleteDoc(doc(db, 'teaching_assignments', ta.id)).catch(() => {});
-              return false;
-            }
-            if (code === 'MPU2412' && normCls === 'DIA3A') {
-              if (db && ta.id) deleteDoc(doc(db, 'teaching_assignments', ta.id)).catch(() => {});
-              return false;
-            }
+            if (code === 'MPU2162' && normCls !== 'DIA3A') return false;
+            if (code === 'MPU2412' && normCls === 'DIA3A') return false;
             return true;
           });
 
@@ -1573,48 +1702,52 @@ class AttendanceEngine {
             };
           });
 
-          if (data.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
-            this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
-            this.syncInitialTeachingAssignmentsToFirestore();
-          } else {
+          if (data.length > 0) {
             this.teachingAssignments = data;
+            this.syncAssignmentsToSubjectsAndLecturers(data);
+            this.saveTeachingAssignmentsLocally();
           }
-
-          this.syncAssignmentsToSubjectsAndLecturers(data);
-          this.saveTeachingAssignmentsLocally();
-          callback(this.teachingAssignments);
+          this.notifyTeachingAssignmentListeners();
         },
         (error) => {
           const errInfo = handleFirestoreError(error, OperationType.LIST, 'teaching_assignments');
-          if (errInfo?.category === 'QUOTA_EXCEEDED') {
+          if (errInfo?.category === FirestoreErrorCategory.QUOTA_EXCEEDED) {
             markQuotaExceeded(true);
-            if (!isUnsubscribed) {
-              isUnsubscribed = true;
-              try { unsubscribe(); } catch {}
+            if (this.teachingAssignmentFirestoreUnsub) {
+              try { this.teachingAssignmentFirestoreUnsub(); } catch {}
+              this.teachingAssignmentFirestoreUnsub = null;
             }
           }
-          if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
-            this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
-            this.saveTeachingAssignmentsLocally();
-          }
-          callback(this.teachingAssignments);
+          this.notifyTeachingAssignmentListeners();
         }
       );
-      return () => {
-        isUnsubscribed = true;
-        this.teachingAssignmentListeners.delete(callback);
-        try { unsubscribe(); } catch {}
-      };
     } catch (e) {
-      if (this.teachingAssignments.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
-        this.teachingAssignments = [...INITIAL_TEACHING_ASSIGNMENTS];
-        this.saveTeachingAssignmentsLocally();
-      }
-      callback(this.teachingAssignments);
+      console.warn('[SHARED TA LISTENER] Failed to attach:', e);
+      this.notifyTeachingAssignmentListeners();
+    }
+  }
+
+  public subscribeTeachingAssignments(callback: (assignments: TeachingAssignment[]) => void): () => void {
+    this.teachingAssignmentListeners.add(callback);
+    callback(this.teachingAssignments);
+
+    if (!db || getIsQuotaExceeded()) {
       return () => {
         this.teachingAssignmentListeners.delete(callback);
       };
     }
+
+    if (!this.teachingAssignmentFirestoreUnsub) {
+      this.startSharedTeachingAssignmentsListener();
+    }
+
+    return () => {
+      this.teachingAssignmentListeners.delete(callback);
+      if (this.teachingAssignmentListeners.size === 0 && this.teachingAssignmentFirestoreUnsub) {
+        try { this.teachingAssignmentFirestoreUnsub(); } catch {}
+        this.teachingAssignmentFirestoreUnsub = null;
+      }
+    };
   }
 
   private syncAssignmentsToSubjectsAndLecturers(assignments: TeachingAssignment[]) {

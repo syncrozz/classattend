@@ -206,14 +206,20 @@ const QUOTA_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute cooldown before attemptin
 function checkStoredQuotaExceeded(): boolean {
   try {
     if (typeof window === 'undefined') return false;
-    const raw = sessionStorage.getItem(QUOTA_STORAGE_KEY);
+    let raw = localStorage.getItem(QUOTA_STORAGE_KEY);
+    if (!raw) {
+      raw = sessionStorage.getItem(QUOTA_STORAGE_KEY);
+    }
     if (!raw) return false;
     const ts = parseInt(raw, 10);
     if (isNaN(ts)) return false;
     if (Date.now() - ts < QUOTA_COOLDOWN_MS) {
       return true;
     }
-    sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+    try {
+      localStorage.removeItem(QUOTA_STORAGE_KEY);
+      sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+    } catch {}
     return false;
   } catch {
     return false;
@@ -224,12 +230,19 @@ let isQuotaExceeded = typeof window !== 'undefined' ? checkStoredQuotaExceeded()
 const quotaListeners = new Set<(exceeded: boolean) => void>();
 
 export function getIsQuotaExceeded(): boolean {
+  // Re-check timestamp validity in case 15-min cooldown elapsed
+  if (isQuotaExceeded && typeof window !== 'undefined') {
+    const stillExceeded = checkStoredQuotaExceeded();
+    if (!stillExceeded && isQuotaExceeded) {
+      markQuotaExceeded(false);
+    }
+  }
   return isQuotaExceeded;
 }
 
 export function subscribeQuotaStatus(callback: (exceeded: boolean) => void): () => void {
   quotaListeners.add(callback);
-  callback(isQuotaExceeded);
+  callback(getIsQuotaExceeded());
   return () => {
     quotaListeners.delete(callback);
   };
@@ -239,9 +252,12 @@ export function markQuotaExceeded(exceeded: boolean = true) {
   try {
     if (typeof window !== 'undefined') {
       if (exceeded) {
-        sessionStorage.setItem(QUOTA_STORAGE_KEY, Date.now().toString());
+        const nowStr = Date.now().toString();
+        try { localStorage.setItem(QUOTA_STORAGE_KEY, nowStr); } catch {}
+        try { sessionStorage.setItem(QUOTA_STORAGE_KEY, nowStr); } catch {}
       } else {
-        sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+        try { localStorage.removeItem(QUOTA_STORAGE_KEY); } catch {}
+        try { sessionStorage.removeItem(QUOTA_STORAGE_KEY); } catch {}
       }
     }
   } catch {}

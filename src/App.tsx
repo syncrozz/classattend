@@ -42,7 +42,7 @@ import { StudentCheckinModal, StudentCheckinContext } from './components/Student
 import { StudentQrPortalView } from './components/StudentQrPortalView';
 import { accessManager } from './services/accessManager';
 import { auditLogger } from './services/auditLogger';
-import { subscribeQuotaStatus } from './services/firebase';
+import { subscribeQuotaStatus, resetQuotaStatus } from './services/firebase';
 import { LECTURER_EMAIL_DOMAIN } from './utils/staffUtils';
 import { AlertCircle, X, CheckCircle2 } from 'lucide-react';
 
@@ -986,6 +986,17 @@ export default function App() {
                       >
                         Maklumat Had Pelan Spark / Enterprise
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetQuotaStatus();
+                          handleForceSyncCloud();
+                        }}
+                        disabled={isSyncingCloud}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isSyncingCloud ? 'Sedang Menguji Sambungan...' : 'Cuba Semula Sambungan (Test Reconnect)'}
+                      </button>
                     </div>
                   </div>
                 </div>
