@@ -123,6 +123,20 @@ class AttendanceEngine {
   private teachingAssignmentListeners: Set<(assignments: TeachingAssignment[]) => void> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
 
+  // Single shared Firestore subscription handles per application instance
+  private sharedSessionUnsub: (() => void) | null = null;
+  private isSharedSessionSubscribing: boolean = false;
+  private sharedStudentUnsub: (() => void) | null = null;
+  private sharedLecturerUnsub: (() => void) | null = null;
+  private sharedSubjectUnsub: (() => void) | null = null;
+  private sharedRecordUnsub: (() => void) | null = null;
+  private sharedEnrollmentUnsub: (() => void) | null = null;
+  private sharedAssignmentUnsub: (() => void) | null = null;
+
+  // Reconciliation idempotency and write loop guards
+  private pendingReconcileWrites: Set<string> = new Set();
+  private isReconcilingSessions: boolean = false;
+
   private isFirestoreConnected: boolean = false;
 
   constructor() {

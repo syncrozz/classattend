@@ -81,6 +81,7 @@
                     newWorker.addEventListener('statechange', () => {
                       if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                         console.log('[PWA] New version installed and ready.');
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
                       }
                     });
                   }
