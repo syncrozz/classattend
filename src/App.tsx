@@ -4,7 +4,6 @@ import {
   Student,
   Subject,
   Lecturer,
-  AttendanceActivity,
   AttendanceSession,
   AttendanceRecord,
   EventStatus,
@@ -65,8 +64,14 @@ export default function App() {
   const [isQrRoute, setIsQrRoute] = useState<boolean>(checkIsQrRoute);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#support') {
-      return 'support';
+    if (typeof window !== 'undefined') {
+      if (window.location.hash === '#support') {
+        return 'support';
+      }
+      const savedTab = localStorage.getItem('classattend_active_tab') as ActiveTab | null;
+      if (savedTab && ['dashboard', 'scanner', 'activities', 'classes', 'students', 'reports', 'guide', 'support'].includes(savedTab)) {
+        return savedTab;
+      }
     }
     return 'dashboard';
   });
@@ -844,6 +849,9 @@ export default function App() {
       } catch (e) {}
     }
     setActiveTab(tab);
+    try {
+      localStorage.setItem('classattend_active_tab', tab);
+    } catch (e) {}
   };
 
   const handleOpenQrPortal = () => {

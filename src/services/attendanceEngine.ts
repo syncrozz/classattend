@@ -255,14 +255,21 @@ class AttendanceEngine {
           this.lecturers = [...INITIAL_LECTURERS];
           this.saveLecturersLocally();
         } else {
-          // Always ensure Ahmad Khairi Bin Mohd exists in lecturers
+          // Always ensure Ahmad Khairi Bin Mohd exists in lecturers with correct email, ADMIN role and PIN
           const khairiInList = this.lecturers.find(
-            (l) => l.id === 'LEC-KHAIRI' || l.name.toUpperCase().includes('AHMAD KHAIRI')
+            (l) => l.id === 'LEC-KHAIRI' || l.name.toUpperCase().includes('AHMAD KHAIRI') || l.email.toLowerCase().includes('khairi')
           );
           if (!khairiInList && INITIAL_LECTURERS.length > 0) {
             this.lecturers.push(...INITIAL_LECTURERS);
             this.saveLecturersLocally();
           } else if (khairiInList) {
+            khairiInList.email = 'khairi.mohd@mara.gov.my';
+            khairiInList.role = 'ADMIN';
+            if (!khairiInList.pin || khairiInList.pin === '1234') {
+              khairiInList.pin = '5313';
+              khairiInList.mustChangePin = false;
+              khairiInList.pinChangedAt = khairiInList.pinChangedAt || '2025-01-10T08:00:00.000Z';
+            }
             khairiInList.assignedSubjects = [
               'MPU2162 - PENGAJIAN MALAYSIA 2',
               'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'
@@ -347,7 +354,7 @@ class AttendanceEngine {
               id: 'TA-KHAIRI-MPU2162-DIA3A',
               lecturerId: 'LEC-KHAIRI',
               lecturerName: 'AHMAD KHAIRI BIN MOHD',
-              lecturerEmail: 'khairi@mara.gov.my',
+              lecturerEmail: 'khairi.mohd@mara.gov.my',
               subjectId: 'SUB-MPU2162',
               subjectCode: 'MPU2162',
               subjectName: 'PENGAJIAN MALAYSIA 2',
@@ -364,7 +371,7 @@ class AttendanceEngine {
                 id: `TA-KHAIRI-MPU2412-${cls}`,
                 lecturerId: 'LEC-KHAIRI',
                 lecturerName: 'AHMAD KHAIRI BIN MOHD',
-                lecturerEmail: 'khairi@mara.gov.my',
+                lecturerEmail: 'khairi.mohd@mara.gov.my',
                 subjectId: 'SUB-MPU2412',
                 subjectCode: 'MPU2412',
                 subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
@@ -656,6 +663,10 @@ class AttendanceEngine {
         khairiLec.pinChangedAt = khairiLec.pinChangedAt || '2025-01-10T08:00:00.000Z';
       }
     }
+    // Always map known Khairi aliases to official khairi.mohd@mara.gov.my
+    emailMigrationMap.set('khairi@mara.gov.my', 'khairi.mohd@mara.gov.my');
+    emailMigrationMap.set('khairi@bpenawar.kpm.edu.my', 'khairi.mohd@mara.gov.my');
+    emailMigrationMap.set('khairi.mohd@bpenawar.kpm.edu.my', 'khairi.mohd@mara.gov.my');
 
     // Inspect all lecturers for legacy domain @bpenawar.kpm.edu.my
     this.lecturers = this.lecturers.map((lec) => {
@@ -1090,12 +1101,27 @@ class AttendanceEngine {
           const data = snapshot.docs
             .map((docSnap) => docSnap.data() as Lecturer)
             .filter((lec) => !DUMMY_LECTURER_IDS.includes(lec.id))
-            .map((lec) => ({
-              ...lec,
-              assignedClasses: Array.from(new Set(lec.assignedClasses || [])),
-              assignedSections: Array.from(new Set(lec.assignedSections || [])),
-              assignedSubjects: Array.from(new Set(lec.assignedSubjects || []))
-            }));
+            .map((lec) => {
+              let cleanEmail = (lec.email || '').trim().toLowerCase();
+              if (lec.id === 'LEC-KHAIRI' || lec.name.toUpperCase().includes('AHMAD KHAIRI') || cleanEmail.includes('khairi')) {
+                cleanEmail = 'khairi.mohd@mara.gov.my';
+              } else if (cleanEmail.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+                cleanEmail = convertLegacyLecturerEmail(cleanEmail);
+              }
+
+              const isAdminKhairi = cleanEmail === 'khairi.mohd@mara.gov.my' || lec.id === 'LEC-KHAIRI';
+
+              return {
+                ...lec,
+                email: cleanEmail,
+                role: (isAdminKhairi || lec.role === 'ADMIN') ? ('ADMIN' as const) : ('LECTURER' as const),
+                pin: isAdminKhairi && (!lec.pin || lec.pin === '1234') ? '5313' : (lec.pin || DEFAULT_LECTURER_PIN),
+                mustChangePin: isAdminKhairi ? false : (lec.mustChangePin ?? true),
+                assignedClasses: Array.from(new Set(lec.assignedClasses || [])),
+                assignedSections: Array.from(new Set(lec.assignedSections || [])),
+                assignedSubjects: Array.from(new Set(lec.assignedSubjects || []))
+              };
+            });
 
           if (data.length === 0 && INITIAL_LECTURERS.length > 0) {
             this.lecturers = [...INITIAL_LECTURERS];
@@ -1164,6 +1190,19 @@ class AttendanceEngine {
             data = [...data, ...missing];
           }
 
+          data = data.map((subj) => {
+            let lEmail = (subj.lecturerEmail || '').trim().toLowerCase();
+            if (lEmail.includes('khairi') || subj.lecturerId === 'LEC-KHAIRI') {
+              lEmail = 'khairi.mohd@mara.gov.my';
+            } else if (lEmail.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+              lEmail = convertLegacyLecturerEmail(lEmail);
+            }
+            return {
+              ...subj,
+              lecturerEmail: lEmail || undefined
+            };
+          });
+
           this.subjects = data;
           this.syncAssignmentsToSubjectsAndLecturers(this.teachingAssignments);
           this.saveSubjectsLocally();
@@ -1213,7 +1252,19 @@ class AttendanceEngine {
 
           const data = snapshot.docs
             .map((docSnap) => docSnap.data() as AttendanceSession)
-            .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id));
+            .filter((sess) => !DUMMY_SESSION_IDS.includes(sess.id))
+            .map((sess) => {
+              let sEmail = (sess.lecturerEmail || '').trim().toLowerCase();
+              if (sEmail.includes('khairi') || sess.lecturerId === 'LEC-KHAIRI') {
+                sEmail = 'khairi.mohd@mara.gov.my';
+              } else if (sEmail.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+                sEmail = convertLegacyLecturerEmail(sEmail);
+              }
+              return {
+                ...sess,
+                lecturerEmail: sEmail || undefined
+              };
+            });
 
           if (data.length === 0 && INITIAL_SESSIONS.length > 0) {
             this.sessions = sortSessionsLatestFirst([...INITIAL_SESSIONS]);
@@ -1334,6 +1385,20 @@ class AttendanceEngine {
               return false;
             }
             return true;
+          });
+
+          // Sanitize incoming lecturer emails
+          data = data.map((ta) => {
+            let taEmail = (ta.lecturerEmail || '').trim().toLowerCase();
+            if (taEmail.includes('khairi') || ta.lecturerId === 'LEC-KHAIRI') {
+              taEmail = 'khairi.mohd@mara.gov.my';
+            } else if (taEmail.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+              taEmail = convertLegacyLecturerEmail(taEmail);
+            }
+            return {
+              ...ta,
+              lecturerEmail: taEmail
+            };
           });
 
           if (data.length === 0 && INITIAL_TEACHING_ASSIGNMENTS.length > 0) {
@@ -2817,6 +2882,10 @@ class AttendanceEngine {
         console.warn('Firestore lecturer CSV import sync warning:', err);
       }
     }
+
+    this.notifyLecturerListeners();
+    this.notifySubjectListeners();
+    this.notifyTeachingAssignmentListeners();
 
     return {
       success: true,

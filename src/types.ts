@@ -6,25 +6,6 @@ export type AttendanceMethod = 'QR' | 'MANUAL' | 'CAMERA_SCAN' | 'SIMULATOR' | '
 
 export type UserRole = 'ADMIN' | 'LECTURER' | 'STUDENT';
 
-export type TrustedRole = 'SUPER_ADMIN' | 'ADMIN' | 'LECTURER' | 'STUDENT' | 'KIOSK';
-
-export interface TrustedClaims {
-  role: TrustedRole;
-  institutionalId: string;
-  assignedClasses?: string[];
-  kioskId?: string;
-  [key: string]: unknown;
-}
-
-export interface TrustedIdentity {
-  uid: string;
-  email: string | null;
-  isAuthenticated: boolean;
-  role: TrustedRole | 'ANONYMOUS' | 'UNAUTHENTICATED';
-  institutionalId: string | null;
-  claims: TrustedClaims | null;
-  isAnonymous: boolean;
-}
 
 export type ActivityCategory =
   | 'CLASS'
@@ -122,9 +103,6 @@ export interface Student {
   department?: string; // Programme (e.g. Diploma Perakaunan)
 }
 
-// Backward compatibility alias
-export type Staff = Student;
-
 export interface AttendanceSession {
   id: string; // Unique session ID (e.g. SES-CLS-01)
   sessionName: string; // e.g. "Kuliah Minggu 4: Pengenalan Cukai Pendapatan"
@@ -156,10 +134,6 @@ export interface AttendanceSession {
   category?: string;
   organizer?: string;
 }
-
-// Backward compatibility alias
-export type AttendanceActivity = AttendanceSession;
-export type EventItem = AttendanceSession;
 
 export interface AttendanceRecord {
   id: string; // Record ID (e.g. REC-172354890)

@@ -275,9 +275,3 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
 // Initial attendance records for Class sessions
 export const INITIAL_ATTENDANCE_RECORDS: AttendanceRecord[] = [];
 
-// Aliases for compatibility
-export const INITIAL_ACTIVITIES = INITIAL_SESSIONS;
-export const MOCK_STAFF = INITIAL_STUDENTS;
-export const MOCK_EVENTS = INITIAL_SESSIONS;
-export const MOCK_ATTENDANCE_RECORDS = INITIAL_ATTENDANCE_RECORDS;
-

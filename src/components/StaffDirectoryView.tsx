@@ -130,7 +130,22 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
   onQuickSimulateScan,
   onUpdateLecturerAssignments
 }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'STUDENTS' | 'CLASSES' | 'LECTURERS' | 'SUBJECTS'>('STUDENTS');
+  const [activeMainTab, setActiveMainTabState] = useState<'STUDENTS' | 'CLASSES' | 'LECTURERS' | 'SUBJECTS'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('classattend_staff_active_main_tab') as any;
+      if (saved && ['STUDENTS', 'CLASSES', 'LECTURERS', 'SUBJECTS'].includes(saved)) {
+        return saved;
+      }
+    }
+    return 'STUDENTS';
+  });
+
+  const setActiveMainTab = (tab: 'STUDENTS' | 'CLASSES' | 'LECTURERS' | 'SUBJECTS') => {
+    setActiveMainTabState(tab);
+    try {
+      localStorage.setItem('classattend_staff_active_main_tab', tab);
+    } catch (e) {}
+  };
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSet, setSelectedSet] = useState<string>('ALL');
 
