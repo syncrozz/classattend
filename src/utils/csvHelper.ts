@@ -372,7 +372,7 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
   if (lines.length <= 1) return [];
 
   const headers = splitCSVRow(lines[0]).map((h) =>
-    h.replace(/^["']|["']$/g, '').trim().toLowerCase().replace(/[\s_]+/g, '_')
+    h.replace(/^["']|["']$/g, '').trim().toLowerCase().replace(/[\s_.-]+/g, '_')
   );
 
   let nameIndex = headers.findIndex((h) => h.includes('nama') || h.includes('name'));
@@ -428,8 +428,9 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
     const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Jabatan Pengajian Am';
     const roleRaw = roleIndex >= 0 && rawCols[roleIndex] ? rawCols[roleIndex].trim().toUpperCase() : 'LECTURER';
 
-    // PIN is default '1234' with mustChangePin = true
-    const derivedPin = DEFAULT_LECTURER_PIN;
+    // PIN from CSV or default '1234' with mustChangePin = true
+    const rawPin = pinIndex >= 0 && rawCols[pinIndex] ? rawCols[pinIndex].trim() : '';
+    const derivedPin = /^[0-9]{4}$/.test(rawPin) ? rawPin : DEFAULT_LECTURER_PIN;
 
     // Parse classes into clean array (empty allowed for new lecturers without assignments)
     const sections = sectionsRaw ? splitClassNames(sectionsRaw) : [];

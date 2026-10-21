@@ -58,22 +58,25 @@ class AuditLoggerService {
 
   private loadLogs() {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY_AUDIT_LOGS);
-      if (stored) {
-        this.logs = JSON.parse(stored);
-      } else {
-        this.logs = [...DEFAULT_SEEDED_LOGS];
-        this.saveLogs();
+      if (typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(STORAGE_KEY_AUDIT_LOGS);
+        if (stored) {
+          this.logs = JSON.parse(stored);
+          return;
+        }
       }
+      this.logs = [...DEFAULT_SEEDED_LOGS];
+      this.saveLogs();
     } catch (e) {
-      console.error('Failed to parse audit logs from storage', e);
       this.logs = [...DEFAULT_SEEDED_LOGS];
     }
   }
 
   private saveLogs() {
     try {
-      localStorage.setItem(STORAGE_KEY_AUDIT_LOGS, JSON.stringify(this.logs.slice(0, MAX_LOGS)));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_AUDIT_LOGS, JSON.stringify(this.logs.slice(0, MAX_LOGS)));
+      }
       this.notifyListeners();
       // Dispatch browser custom event for reactive across tabs/windows
       if (typeof window !== 'undefined') {

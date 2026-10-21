@@ -1697,7 +1697,7 @@ class AttendanceEngine {
   // --- Lecturer Self-Registration Engine via Admin QR ---
   public async registerLecturerSelf(params: {
     name: string;
-    icNumber: string;
+    icNumber?: string;
     email: string;
     phone?: string;
     department?: string;

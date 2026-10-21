@@ -49,7 +49,7 @@ export const normalizeLecturerName = (name?: string): string => {
   if (!name) return '';
   return name
     .toUpperCase()
-    .replace(/\b(BIN|BINTI|BT|AL|A\/L|A\/P|ANAK|ENCIK|PUAN|CIK|USTAZ|USTAZAH|DR|PROF)\b/g, '')
+    .replace(/\b(BIN|BINTI|BT|AL|A\/L|A\/P|ANAK|ENCIK|EN|PUAN|PN|CIK|USTAZ|USTAZAH|DR|PROF|TN|TUAN|HJ|HAJI)\b/g, '')
     .replace(/[^A-Z0-9]/g, '')
     .trim();
 };
