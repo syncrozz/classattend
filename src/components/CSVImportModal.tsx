@@ -95,7 +95,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
         } else if (importMode === 'LECTURER') {
           const lecturers = parseLecturerCSV(text);
           if (lecturers.length === 0) {
-            setError('Gagal membaca rekod pensyarah daripada fail CSV. Sila pastikan terdapat lajur Nama, Email KPM (@bpenawar.kpm.edu.my), dan No. IC.');
+            setError('Gagal membaca rekod pensyarah daripada fail CSV. Sila pastikan terdapat lajur Nama dan Email MARA (@mara.gov.my).');
             soundService.playError();
           } else {
             setParsedLecturers(lecturers);
@@ -186,7 +186,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
       downloadCSV(template, 'Templat_Kehadiran_Kelas_KPM.csv');
     } else if (importMode === 'LECTURER') {
       const template = generateLecturerTemplateCSV();
-      downloadCSV(template, 'Templat_Senarai_Pensyarah_KPM.csv');
+      downloadCSV(template, 'Templat_Senarai_Pensyarah_MARA.csv');
     } else {
       const template = generateSubjectTemplateCSV();
       downloadCSV(template, 'Templat_Senarai_Kursus_KPM.csv');
@@ -353,7 +353,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                   {importMode === 'STUDENT'
                     ? 'Bil, No_Pelajar, Nama_Pelajar, Kelas, No_Telefon, Email, Program'
                     : importMode === 'LECTURER'
-                    ? 'Bil, Nama_Pensyarah, Email_KPM, No_IC, Kelas, Subjek_Diajar, Jabatan'
+                    ? 'Bil, Nama_Pensyarah, Email_MARA, PIN_4Digit, Kelas, Subjek_Diajar, Jabatan, Peranan'
                     : 'Bil, Kod_Kursus, Nama_Kursus, Jabatan, Kelas_Seksyen'}
                 </div>
               </div>
@@ -531,7 +531,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
                     <tr>
                       <th className="py-2.5 px-3">Bil</th>
                       <th className="py-2.5 px-3">Nama Pensyarah</th>
-                      <th className="py-2.5 px-3">Emel KPM</th>
+                      <th className="py-2.5 px-3">Emel MARA</th>
                       <th className="py-2.5 px-3">PIN</th>
                       <th className="py-2.5 px-3">Subjek Diajar</th>
                       <th className="py-2.5 px-3">Kelas Diajar</th>

@@ -38,10 +38,13 @@ import { CSVImportModal } from './components/CSVImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { StudentSelfRegistrationModal } from './components/StudentSelfRegistrationModal';
 import { LecturerSelfRegistrationModal } from './components/LecturerSelfRegistrationModal';
+import { ForceChangePasswordModal } from './components/ForceChangePasswordModal';
 import { StudentCheckinModal, StudentCheckinContext } from './components/StudentCheckinModal';
 import { StudentQrPortalView } from './components/StudentQrPortalView';
 import { accessManager } from './services/accessManager';
 import { auditLogger } from './services/auditLogger';
+import { LECTURER_EMAIL_DOMAIN } from './utils/staffUtils';
+import { AlertCircle, X } from 'lucide-react';
 
 export default function App() {
   const checkIsQrRoute = (): boolean => {
@@ -89,6 +92,16 @@ export default function App() {
   const [sessions, setSessions] = useState<AttendanceSession[]>(() => attendanceEngine.getSessions());
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => attendanceEngine.getAttendanceRecords());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [migrationNotice, setMigrationNotice] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const notice = localStorage.getItem('classattend_migration_notice');
+      if (notice) {
+        localStorage.removeItem('classattend_migration_notice');
+        return notice;
+      }
+    }
+    return null;
+  });
 
   // Student Check-In Modal & Context (From QR Scan / Link / Hash)
   const [isStudentCheckinOpen, setIsStudentCheckinOpen] = useState<boolean>(false);
@@ -533,8 +546,8 @@ export default function App() {
       status: 'OPEN',
       attendanceMethod: 'QR',
       location: 'Bilik Kuliah / Dewan',
-      lecturerName: activeLecturer?.name || 'PENSYARAH KPM',
-      lecturerEmail: activeLecturer?.email || 'pensyarah@bpenawar.kpm.edu.my',
+      lecturerName: activeLecturer?.name || 'PENSYARAH MARA',
+      lecturerEmail: activeLecturer?.email || `pensyarah${LECTURER_EMAIL_DOMAIN}`,
       category: 'CLASS'
     };
 
@@ -895,6 +908,23 @@ export default function App() {
 
         {/* Main Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          {migrationNotice && (
+            <div className="mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between shadow-lg">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                <span className="leading-relaxed font-medium">{migrationNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMigrationNotice(null)}
+                className="text-amber-400 hover:text-white p-1 rounded-lg hover:bg-amber-500/20 cursor-pointer ml-3 shrink-0"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {activeTab === 'dashboard' && (
             currentRole === 'ADMIN' && (isAdmin || activeLecturer?.role === 'ADMIN') ? (
               <AdminControlCenterView
@@ -1116,7 +1146,7 @@ export default function App() {
           setCurrentRole(effectiveRole);
           if (lec) {
             setActiveLecturer(lec);
-            if (accessManager.isFirstTimeLecturer(lec.id)) {
+            if (!lec.mustChangePin && accessManager.isFirstTimeLecturer(lec.id)) {
               setIsFirstTimeLecturerModalOpen(true);
             }
           } else {
@@ -1129,6 +1159,21 @@ export default function App() {
           setIsLecturerSelfRegOpen(true);
         }}
       />
+
+      {/* Forced Password Change Modal for First-Time Lecturer Login */}
+      {activeLecturer && (
+        <ForceChangePasswordModal
+          isOpen={Boolean(activeLecturer && activeLecturer.mustChangePin)}
+          lecturer={activeLecturer}
+          onSuccess={(updatedLecturer) => {
+            setActiveLecturer(updatedLecturer);
+            attendanceEngine.setActiveLecturer(updatedLecturer);
+            if (accessManager.isFirstTimeLecturer(updatedLecturer.id)) {
+              setIsFirstTimeLecturerModalOpen(true);
+            }
+          }}
+        />
+      )}
 
       {/* First-Time Lecturer Onboarding & Subject Association Modal */}
       {activeLecturer && (

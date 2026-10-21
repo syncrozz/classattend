@@ -213,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 </div>
                 <div className="text-[10px] text-emerald-300 font-mono leading-tight truncate max-w-[140px]">
-                  {activeLecturer ? activeLecturer.email : 'admin@bpenawar.kpm.edu.my'}
+                  {activeLecturer ? activeLecturer.email : 'admin@mara.gov.my'}
                 </div>
               </div>
               <button
@@ -237,7 +237,7 @@ export const Header: React.FC<HeaderProps> = ({
                 id="header-btn-lecturer-auth"
                 onClick={onToggleAdminMode}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-all cursor-pointer"
-                title="Pengesahan Emel Pensyarah (@bpenawar.kpm.edu.my) & PIN No. IC"
+                title="Pengesahan Emel Pensyarah (@mara.gov.my) & Kata Laluan"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Sahkan Pensyarah</span>

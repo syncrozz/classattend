@@ -201,7 +201,7 @@ export const ConceptGuideView: React.FC = () => {
                 1 Pensyarah = 1 Identiti Master
               </strong>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Profil pensyarah didaftarkan dengan Nama, No. IC, E-mel rasmi <code className="text-teal-300">@bpenawar.kpm.edu.my</code>, No Telefon, dan Jabatan. PIN keselamatan dijana automatik daripada 4 digit terakhir No. IC.
+                Profil pensyarah didaftarkan dengan Nama, No. IC (pilihan), E-mel rasmi <code className="text-teal-300">@mara.gov.my</code>, No Telefon, dan Jabatan. Kata laluan lalai ialah 1234 yang wajib ditukar kepada PIN peribadi pada log masuk pertama.
               </p>
             </div>
             <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
@@ -248,7 +248,7 @@ export const ConceptGuideView: React.FC = () => {
                 Pensyarah Mengimbas QR & Mengisi Maklumat Peribadi
               </strong>
               <p className="text-slate-300 leading-relaxed">
-                Pensyarah mengimbas QR dengan telefon pintar (atau klik <strong className="text-teal-300">"2. Uji Borang Pendaftaran"</strong> untuk simulasi) ➔ Masukkan Nama Penuh, No. IC, E-mel rasmi Kolej, No. Telefon, dan Jabatan.
+                Pensyarah mengimbas QR dengan telefon pintar (atau klik <strong className="text-teal-300">"2. Uji Borang Pendaftaran"</strong> untuk simulasi) ➔ Masukkan Nama Penuh, No. IC (pilihan), E-mel rasmi MARA (<code className="text-teal-300">@mara.gov.my</code>), No. Telefon, dan Jabatan.
               </p>
             </div>
           </div>
@@ -296,22 +296,22 @@ export const ConceptGuideView: React.FC = () => {
           <div className="p-4 rounded-xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
             <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold">
               <Mail className="w-4 h-4" />
-              <span>E-mel Rasmi Domain KPM</span>
+              <span>E-mel Rasmi Domain MARA</span>
             </div>
-            <h4 className="text-sm font-bold text-white">Domain: @bpenawar.kpm.edu.my</h4>
+            <h4 className="text-sm font-bold text-white">Domain: @mara.gov.my</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Pensyarah mendaftar dan mengesahkan identiti dengan memasukkan e-mel rasmi (cth: <code className="text-indigo-300">khairi@bpenawar.kpm.edu.my</code> atau <code className="text-indigo-300">norazlina@bpenawar.kpm.edu.my</code>).
+              Pensyarah mendaftar dan mengesahkan identiti dengan memasukkan e-mel rasmi (cth: <code className="text-indigo-300">khairi@mara.gov.my</code> atau <code className="text-indigo-300">norazlina@mara.gov.my</code>).
             </p>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-2">
             <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
               <KeyRound className="w-4 h-4" />
-              <span>PIN Keselamatan (4 Digit Terakhir No. IC)</span>
+              <span>Kata Laluan Keselamatan (PIN 4 Digit)</span>
             </div>
-            <h4 className="text-sm font-bold text-white">Contoh: IC 861115-46-5305 ➔ PIN: 5305</h4>
+            <h4 className="text-sm font-bold text-white">Lalai: 1234 ➔ Wajib Tukar pada Log Masuk Pertama</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Kombinasi e-mel dan 4 digit terakhir Kad Pengenalan pensyarah digunakan sebagai kunci keselamatan PIN bagi melindungi rekod kelas dan pemberian akses admin.
+              Kombinasi e-mel rasmi @mara.gov.my dan kata laluan 4-digit digunakan sebagai kunci keselamatan PIN bagi melindungi rekod kelas dan pemberian akses pensyarah.
             </p>
           </div>
         </div>

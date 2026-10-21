@@ -31,9 +31,9 @@ const DEFAULT_SEEDED_LOGS: AuditLogItem[] = [
     timestamp: new Date(Date.now() - 3600000 * 8).toISOString(),
     category: 'LECTURER_STATUS',
     action: 'Pengesahan Pendaftaran Pensyarah',
-    details: 'Akaun pensyarah khairi@bpenawar.kpm.edu.my telah disahkan dan diaktifkan dengan peranan ADMIN.',
+    details: 'Akaun pensyarah khairi.mohd@mara.gov.my telah disahkan dan diaktifkan dengan peranan ADMIN.',
     performedBy: 'Master Admin',
-    target: 'khairi@bpenawar.kpm.edu.my',
+    target: 'khairi.mohd@mara.gov.my',
     severity: 'SUCCESS'
   },
   {
@@ -209,6 +209,48 @@ class AuditLoggerService {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+
+  public migrateLecturerEmails(emailMap: Map<string, string>): number {
+    let updatedCount = 0;
+    this.logs = this.logs.map((log) => {
+      let modified = false;
+      let newTarget = log.target;
+      let newDetails = log.details;
+      let newPerformedBy = log.performedBy;
+
+      emailMap.forEach((newEmail, oldEmail) => {
+        const oldRegex = new RegExp(oldEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        if (newTarget && oldRegex.test(newTarget)) {
+          newTarget = newTarget.replace(oldRegex, newEmail);
+          modified = true;
+        }
+        if (newDetails && oldRegex.test(newDetails)) {
+          newDetails = newDetails.replace(oldRegex, newEmail);
+          modified = true;
+        }
+        if (newPerformedBy && oldRegex.test(newPerformedBy)) {
+          newPerformedBy = newPerformedBy.replace(oldRegex, newEmail);
+          modified = true;
+        }
+      });
+
+      if (modified) {
+        updatedCount++;
+        return {
+          ...log,
+          target: newTarget,
+          details: newDetails,
+          performedBy: newPerformedBy
+        };
+      }
+      return log;
+    });
+
+    if (updatedCount > 0) {
+      this.saveLogs();
+    }
+    return updatedCount;
   }
 }
 

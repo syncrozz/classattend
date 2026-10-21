@@ -9,6 +9,7 @@ import {
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
 import { auditLogger } from '../services/auditLogger';
+import { LECTURER_EMAIL_DOMAIN, DEFAULT_LECTURER_PIN } from '../utils/staffUtils';
 import {
   UserCheck,
   CheckCircle2,
@@ -98,11 +99,8 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
     );
   }, [subjects]);
 
-  // Derived 4-digit PIN for preview
-  const derivedPin = useMemo(() => {
-    const numeric = icNumber.replace(/[^0-9]/g, '');
-    return numeric.length >= 4 ? numeric.slice(-4) : '••••';
-  }, [icNumber]);
+  // Default 4-digit PIN for preview (Kata laluan lalai 1234)
+  const defaultPin = DEFAULT_LECTURER_PIN;
 
   // Reset form when modal opens
   useEffect(() => {
@@ -154,7 +152,7 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
   const handleEmailInput = (newVal: string) => {
     let formatted = newVal.toLowerCase();
     if (formatted.endsWith('@') && !email.endsWith('@') && !email.includes('@')) {
-      formatted = `${formatted}bpenawar.kpm.edu.my`;
+      formatted = `${formatted}mara.gov.my`;
     }
     setEmail(formatted);
   };
@@ -162,7 +160,7 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
   const applyEmailSuggestion = (prefix: string) => {
     const user = prefix.split('@')[0].trim();
     if (user) {
-      setEmail(`${user}@bpenawar.kpm.edu.my`);
+      setEmail(`${user}${LECTURER_EMAIL_DOMAIN}`);
     }
   };
 
@@ -221,18 +219,18 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
       return;
     }
 
-    if (!cleanIC || cleanIC.replace(/[^0-9]/g, '').length < 6) {
-      setErrorMsg('Sila masukkan No. Kad Pengenalan yang sah (cth: 861115-46-5305).');
+    if (cleanIC && cleanIC.replace(/[^0-9]/g, '').length < 6) {
+      setErrorMsg('Sila masukkan No. Kad Pengenalan yang sah atau tinggalkan kosong.');
       return;
     }
 
     if (!cleanEmail) {
-      setErrorMsg('Sila masukkan Emel Rasmi kolej.');
+      setErrorMsg('Sila masukkan Emel Rasmi pensyarah.');
       return;
     }
 
-    if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
-      setErrorMsg('Emel mestilah menggunakan domain kolej rasmi: @bpenawar.kpm.edu.my');
+    if (!cleanEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
+      setErrorMsg(`Sila gunakan emel rasmi ${LECTURER_EMAIL_DOMAIN}`);
       return;
     }
 
@@ -389,7 +387,7 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400">No. Kad Pengenalan:</span>
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">{submittedResult.lecturer.icNumber}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{submittedResult.lecturer.icNumber || '-'}</p>
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400">Emel Rasmi:</span>
@@ -397,7 +395,9 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400">PIN Keselamatan (4-Digit):</span>
-                    <p className="font-bold text-emerald-600 dark:text-emerald-400 font-mono tracking-widest">{submittedResult.lecturer.pin}</p>
+                    <p className="font-bold text-emerald-600 dark:text-emerald-400 font-mono tracking-widest">
+                      {submittedResult.lecturer.pin || '1234'} <span className="text-[10px] text-amber-500 font-sans font-normal">(Lalai • Wajib Tukar)</span>
+                    </p>
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400">Jabatan:</span>
@@ -499,52 +499,51 @@ export const LecturerSelfRegistrationModal: React.FC<LecturerSelfRegistrationMod
                     />
                   </div>
 
-                  {/* IC Number */}
+                  {/* IC Number (Optional) */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      No. Kad Pengenalan (IC) <span className="text-red-500">*</span>
+                      No. Kad Pengenalan (IC) <span className="text-slate-400 font-normal">(Pilihan)</span>
                     </label>
                     <input
                       id="lecturer-reg-ic-input"
                       type="text"
-                      required
-                      placeholder="861115-46-5305"
+                      placeholder="861115-46-5305 (Pilihan)"
                       value={icNumber}
                       onChange={(e) => setIcNumber(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none transition"
                     />
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center space-x-1">
-                      <span>PIN Keselamatan Log Masuk:</span>
-                      <strong className="text-teal-600 dark:text-teal-400 font-mono">{derivedPin}</strong>
-                      <span className="text-slate-400">(4 digit terakhir IC)</span>
+                      <span>PIN Keselamatan Log Masuk Lalai:</span>
+                      <strong className="text-teal-600 dark:text-teal-400 font-mono">1234</strong>
+                      <span className="text-slate-400">(Wajib ditukar semasa log masuk pertama)</span>
                     </p>
                   </div>
 
                   {/* Official Email */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Emel Rasmi Kolej (@bpenawar.kpm.edu.my) <span className="text-red-500">*</span>
+                      Emel Rasmi MARA (@mara.gov.my) <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <input
                         id="lecturer-reg-email-input"
                         type="email"
                         required
-                        placeholder="nama.pensyarah@bpenawar.kpm.edu.my"
+                        placeholder="nama.pensyarah@mara.gov.my"
                         value={email}
                         onChange={(e) => handleEmailInput(e.target.value)}
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none transition font-mono"
                       />
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     </div>
-                    {email.trim() && !email.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                    {email.trim() && !email.toLowerCase().includes(LECTURER_EMAIL_DOMAIN) && (
                       <button
                         type="button"
                         onClick={() => applyEmailSuggestion(email)}
                         className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm mt-1"
                       >
                         <span className="truncate font-mono text-[10px]">
-                          Cadangan: {email.split('@')[0]}@bpenawar.kpm.edu.my
+                          Cadangan: {email.split('@')[0]}{LECTURER_EMAIL_DOMAIN}
                         </span>
                         <span className="text-[10px] bg-teal-600 text-white dark:bg-teal-500/40 px-1.5 py-0.2 rounded font-semibold shrink-0">
                           Gunakan

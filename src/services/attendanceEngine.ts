@@ -24,9 +24,17 @@ import {
   stripStudentId,
   findStudentById
 } from '../utils/studentUtils';
+import {
+  LECTURER_EMAIL_DOMAIN,
+  LEGACY_LECTURER_EMAIL_DOMAIN,
+  DEFAULT_LECTURER_PIN,
+  convertLegacyLecturerEmail,
+  normalizeLecturerName
+} from '../utils/staffUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
 import { areClassesMatching } from '../utils/classHelper';
 import { isLecturerAuthorizedForSession } from '../utils/sessionAuth';
+import { auditLogger } from './auditLogger';
 import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from './firebase';
 import {
   collection,
@@ -339,7 +347,7 @@ class AttendanceEngine {
               id: 'TA-KHAIRI-MPU2162-DIA3A',
               lecturerId: 'LEC-KHAIRI',
               lecturerName: 'AHMAD KHAIRI BIN MOHD',
-              lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+              lecturerEmail: 'khairi@mara.gov.my',
               subjectId: 'SUB-MPU2162',
               subjectCode: 'MPU2162',
               subjectName: 'PENGAJIAN MALAYSIA 2',
@@ -356,7 +364,7 @@ class AttendanceEngine {
                 id: `TA-KHAIRI-MPU2412-${cls}`,
                 lecturerId: 'LEC-KHAIRI',
                 lecturerName: 'AHMAD KHAIRI BIN MOHD',
-                lecturerEmail: 'khairi@bpenawar.kpm.edu.my',
+                lecturerEmail: 'khairi@mara.gov.my',
                 subjectId: 'SUB-MPU2412',
                 subjectCode: 'MPU2412',
                 subjectName: 'KURSUS INTEGRITI DAN ANTI RASUAH',
@@ -510,6 +518,9 @@ class AttendanceEngine {
     // Clean any legacy dummy data
     this.cleanLegacyDummyData();
 
+    // One-time automated data migration for MARA official email (@mara.gov.my)
+    this.runOneTimeDataMigration();
+
     // Reconcile Single Active Session Invariant (1 Pensyarah = Maksimum 1 Sesi Aktif)
     this.reconcileSingleActiveSessionPerLecturer();
 
@@ -599,6 +610,233 @@ class AttendanceEngine {
         deleteDoc(doc(db!, 'attendance_records', id)).catch(() => {});
       });
     }
+  }
+
+  public legacyLecturerWarnings: string[] = [];
+
+  public getLegacyLecturerWarnings(): string[] {
+    return [...this.legacyLecturerWarnings];
+  }
+
+  /**
+   * One-time automated migration function (Bahagian D):
+   * Migrates any @bpenawar.kpm.edu.my lecturer emails to official @mara.gov.my domain.
+   * Runs once and on application load.
+   *
+   * Responsibilities:
+   * 1. Kemas kini emel pensyarah.
+   * 2. Kemas kini lecturerEmail dalam semua TeachingAssignment, Subject, sesi kehadiran, audit log dan activeLecturer dalam localStorage.
+   * 3. Jika emel sesi aktif sudah lapuk, paksa log masuk semula dengan mesej mesra.
+   * 4. Pensyarah tanpa padanan emel MARA kekal dengan emel lama dan papar amaran kepada admin. Jangan padam data mereka.
+   * 5. Jika src/services/firebase.ts menyimpan data pensyarah, tulis migrasi dan pertukaran PIN ke Firestore juga.
+   */
+  public runOneTimeDataMigration(): {
+    migratedLecturersCount: number;
+    unmigratedCount: number;
+    warnings: string[];
+  } {
+    const emailMigrationMap = new Map<string, string>(); // oldEmail -> newEmail
+    this.legacyLecturerWarnings = [];
+    let migratedCount = 0;
+
+    // Check Ahmad Khairi Bin Mohd: ensure email is khairi.mohd@mara.gov.my, role is ADMIN, pin is 5313
+    const khairiLec = this.lecturers.find(
+      (l) => l.id === 'LEC-KHAIRI' || l.name.toUpperCase().includes('AHMAD KHAIRI') || l.email.toLowerCase().includes('khairi')
+    );
+    if (khairiLec) {
+      const oldKhairiEmail = khairiLec.email.toLowerCase().trim();
+      if (oldKhairiEmail !== 'khairi.mohd@mara.gov.my') {
+        emailMigrationMap.set(oldKhairiEmail, 'khairi.mohd@mara.gov.my');
+        khairiLec.email = 'khairi.mohd@mara.gov.my';
+      }
+      khairiLec.role = 'ADMIN';
+      if (!khairiLec.pin || khairiLec.pin === '1234') {
+        khairiLec.pin = '5313';
+        khairiLec.mustChangePin = false;
+        khairiLec.pinChangedAt = khairiLec.pinChangedAt || '2025-01-10T08:00:00.000Z';
+      }
+    }
+
+    // Inspect all lecturers for legacy domain @bpenawar.kpm.edu.my
+    this.lecturers = this.lecturers.map((lec) => {
+      const emailLower = (lec.email || '').trim().toLowerCase();
+      if (emailLower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+        const maraMatch = convertLegacyLecturerEmail(emailLower);
+        if (maraMatch && maraMatch.endsWith(LECTURER_EMAIL_DOMAIN) && maraMatch !== emailLower) {
+          emailMigrationMap.set(emailLower, maraMatch);
+          migratedCount++;
+
+          // Apply PIN migration rules:
+          let pin = lec.pin || DEFAULT_LECTURER_PIN;
+          let mustChangePin = lec.mustChangePin;
+          let pinChangedAt = lec.pinChangedAt;
+
+          if (lec.pinChangedAt) {
+            // Already changed password: keep pin
+            mustChangePin = false;
+          } else {
+            // Old PIN: reset to '1234' and force change
+            pin = DEFAULT_LECTURER_PIN;
+            mustChangePin = true;
+            pinChangedAt = undefined;
+          }
+
+          return {
+            ...lec,
+            email: maraMatch,
+            pin,
+            mustChangePin,
+            pinChangedAt,
+            role: lec.role === 'ADMIN' ? 'ADMIN' : lec.role
+          };
+        } else {
+          // No valid MARA email match: retain old email, log warning, DO NOT DELETE
+          const warning = `Pensyarah ${lec.name} (${lec.email}) belum mempunyai padanan e-mel rasmi @mara.gov.my. Data mereka dikekalkan.`;
+          this.legacyLecturerWarnings.push(warning);
+          return lec;
+        }
+      }
+      return lec;
+    });
+
+    if (emailMigrationMap.size > 0) {
+      // 1. Update Teaching Assignments
+      this.teachingAssignments = this.teachingAssignments.map((ta) => {
+        const taEmail = (ta.lecturerEmail || '').trim().toLowerCase();
+        if (emailMigrationMap.has(taEmail)) {
+          return {
+            ...ta,
+            lecturerEmail: emailMigrationMap.get(taEmail)!
+          };
+        }
+        const matchingLec = this.lecturers.find((l) => l.id === ta.lecturerId);
+        if (matchingLec && matchingLec.email !== ta.lecturerEmail) {
+          return {
+            ...ta,
+            lecturerEmail: matchingLec.email
+          };
+        }
+        return ta;
+      });
+
+      // 2. Update Subjects
+      this.subjects = this.subjects.map((sub) => {
+        const subEmail = (sub.lecturerEmail || '').trim().toLowerCase();
+        if (emailMigrationMap.has(subEmail)) {
+          return {
+            ...sub,
+            lecturerEmail: emailMigrationMap.get(subEmail)!
+          };
+        }
+        const matchingLec = this.lecturers.find((l) => l.id === sub.lecturerId);
+        if (matchingLec && matchingLec.email !== sub.lecturerEmail) {
+          return {
+            ...sub,
+            lecturerEmail: matchingLec.email
+          };
+        }
+        return sub;
+      });
+
+      // 3. Update Attendance Sessions
+      this.sessions = this.sessions.map((sess) => {
+        const sEmail = (sess.lecturerEmail || '').trim().toLowerCase();
+        if (emailMigrationMap.has(sEmail)) {
+          return {
+            ...sess,
+            lecturerEmail: emailMigrationMap.get(sEmail)!
+          };
+        }
+        const matchingLec = this.lecturers.find((l) => l.id === sess.lecturerId);
+        if (matchingLec && matchingLec.email !== sess.lecturerEmail) {
+          return {
+            ...sess,
+            lecturerEmail: matchingLec.email
+          };
+        }
+        return sess;
+      });
+
+      // 4. Update Audit Logs
+      auditLogger.migrateLecturerEmails(emailMigrationMap);
+
+      // 5. Update activeLecturer in localStorage
+      if (this.activeLecturer) {
+        const activeEmail = (this.activeLecturer.email || '').trim().toLowerCase();
+        if (emailMigrationMap.has(activeEmail)) {
+          this.activeLecturer = {
+            ...this.activeLecturer,
+            email: emailMigrationMap.get(activeEmail)!
+          };
+          this.saveActiveLecturerLocally();
+        }
+      }
+
+      // 6. Check if stored active session email was outdated (ended with @bpenawar.kpm.edu.my)
+      const rawTrusted = safeStorageGet('syncrozz_trusted_access_v1');
+      if (rawTrusted) {
+        try {
+          const sess = JSON.parse(rawTrusted);
+          if (sess && sess.email && sess.email.toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+            // Outdated session email: Force friendly re-login
+            localStorage.removeItem('syncrozz_trusted_access_v1');
+            localStorage.removeItem(STORAGE_KEYS.ACTIVE_LECTURER);
+            this.activeLecturer = null;
+            safeStorageSet(
+              'classattend_migration_notice',
+              'Sesi log masuk anda telah ditamatkan kerana migrasi e-mel rasmi @mara.gov.my. Sila log masuk semula menggunakan e-mel rasmi MARA anda dengan kata laluan lalai 1234.'
+            );
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 7. Save everything locally
+      this.saveLecturersLocally();
+      this.saveTeachingAssignmentsLocally();
+      this.saveSubjectsLocally();
+      this.saveSessionsLocally();
+
+      // 8. Log migration to audit trail
+      auditLogger.log({
+        category: 'MASTER_DATA',
+        action: 'Migrasi Emel Pensyarah (One-Time)',
+        details: `Berjaya memindahkan ${migratedCount} akaun pensyarah ke domain rasmi @mara.gov.my serta mengemas kini semua tugasan mengajar, subjek, dan sesi.`,
+        performedBy: 'Sistem Autopilot Migrasi',
+        severity: 'INFO'
+      });
+
+      // 9. Sync to Firestore if available
+      if (db) {
+        try {
+          const batch = writeBatch(db);
+          this.lecturers.forEach((l) => {
+            batch.set(doc(db, 'lecturers', l.id), sanitizeForFirestore(l), { merge: true });
+          });
+          this.teachingAssignments.forEach((ta) => {
+            batch.set(doc(db, 'teaching_assignments', ta.id), sanitizeForFirestore(ta), { merge: true });
+          });
+          this.subjects.forEach((s) => {
+            batch.set(doc(db, 'subjects', s.id), sanitizeForFirestore(s), { merge: true });
+          });
+          this.sessions.forEach((sess) => {
+            batch.set(doc(db, 'sessions', sess.id), sanitizeForFirestore(sess), { merge: true });
+          });
+          batch.commit().catch(console.warn);
+        } catch (err) {
+          console.warn('Firestore migration batch sync warning:', err);
+        }
+      }
+    }
+
+    safeStorageSet('classattend_migration_mara_email_completed', 'true');
+
+    return {
+      migratedLecturersCount: migratedCount,
+      unmigratedCount: this.legacyLecturerWarnings.length,
+      warnings: this.legacyLecturerWarnings
+    };
   }
 
   public clearAllDummyData() {
@@ -1345,7 +1583,7 @@ class AttendanceEngine {
       const adminLecturer = this.lecturers.find((l) => l.role === 'ADMIN') || {
         id: 'ADMIN-MASTER',
         name: 'PENTADBIR SISTEM (ADMIN)',
-        email: 'admin@bpenawar.kpm.edu.my',
+        email: `admin${LECTURER_EMAIL_DOMAIN}`,
         icNumber: '******-**-5313',
         pin: '5313',
         department: 'Pentadbiran Kolej',
@@ -1369,35 +1607,33 @@ class AttendanceEngine {
     };
   }
 
-  public verifyLecturer(email: string, icOrPin: string): { success: boolean; lecturer?: Lecturer; message: string } {
+  public verifyLecturer(
+    email: string,
+    pin: string
+  ): { success: boolean; lecturer?: Lecturer; message: string; requirePinChange?: boolean } {
     const cleanEmail = email.trim().toLowerCase();
-    const rawInput = icOrPin.trim();
-    const cleanInputNumeric = rawInput.replace(/[^0-9]/g, '');
+    const rawInput = pin.trim();
 
-    // Master Admin PIN direct verification if entered
-    if (rawInput === '5313') {
-      const foundAdmin = this.lecturers.find((l) => l.email.toLowerCase() === cleanEmail) || this.lecturers.find((l) => l.role === 'ADMIN');
-      if (foundAdmin) {
-        this.activeLecturer = foundAdmin;
-        this.saveActiveLecturerLocally();
-        return {
-          success: true,
-          lecturer: foundAdmin,
-          message: `Akses Pentadbir Berjaya! Selamat bertugas, ${foundAdmin.name}.`
-        };
-      }
-    }
-
-    // 1. Validate email domain
-    if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
+    // 1. Validate email domain (must be @mara.gov.my) - STRICT FIRST CHECK
+    if (!cleanEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
       return {
         success: false,
-        message: 'Domain emel tidak sah! Sila gunakan domain rasmi kolej (@bpenawar.kpm.edu.my).'
+        message: `Sila gunakan emel rasmi ${LECTURER_EMAIL_DOMAIN}`
       };
     }
 
     // 2. Look up lecturer in registered list
-    const foundLecturer = this.lecturers.find((l) => l.email.toLowerCase() === cleanEmail);
+    const foundLecturer = this.lecturers.find((l) => {
+      const lEmail = l.email.toLowerCase().trim();
+      if (lEmail === cleanEmail) return true;
+      if (
+        (cleanEmail === 'khairi.mohd@mara.gov.my' || cleanEmail === 'khairi@mara.gov.my') &&
+        (lEmail === 'khairi.mohd@mara.gov.my' || lEmail === 'khairi@mara.gov.my' || l.id === 'LEC-KHAIRI')
+      ) {
+        return true;
+      }
+      return false;
+    });
 
     if (!foundLecturer) {
       return {
@@ -1406,21 +1642,24 @@ class AttendanceEngine {
       };
     }
 
-    // 3. Extract last 4 digits of IC as PIN and normalized IC
-    const normalizedRegisteredIC = (foundLecturer.icNumber || '').replace(/[^0-9]/g, '');
-    const expectedPin = foundLecturer.pin || (normalizedRegisteredIC.length >= 4 ? normalizedRegisteredIC.slice(-4) : '');
+    // Master Admin PIN direct verification if entered
+    if (rawInput === '5313' && foundLecturer.role === 'ADMIN') {
+      this.activeLecturer = foundLecturer;
+      this.saveActiveLecturerLocally();
+      return {
+        success: true,
+        lecturer: foundLecturer,
+        message: `Akses Pentadbir Berjaya! Selamat bertugas, ${foundLecturer.name}.`,
+        requirePinChange: Boolean(foundLecturer.mustChangePin)
+      };
+    }
 
-    // Check matches:
-    // a) Exact 4-digit PIN match
+    // 3. Verify PIN strictly against lecturer.pin (default '1234'), or Master Admin bypass ('5313')
+    const expectedPin = foundLecturer.pin || DEFAULT_LECTURER_PIN;
     const isPinMatch = rawInput === expectedPin;
-    // b) Full IC match (raw input without dashes matches registered IC without dashes)
-    const isICMatch = cleanInputNumeric.length >= 6 && cleanInputNumeric === normalizedRegisteredIC;
-    // c) Input is full IC and its last 4 digits match
-    const isLast4Match = cleanInputNumeric.length >= 4 && cleanInputNumeric.slice(-4) === expectedPin;
-    // d) Master admin emergency bypass
     const isMasterBypass = rawInput === '5313';
 
-    if (isPinMatch || isICMatch || isLast4Match || isMasterBypass) {
+    if (isPinMatch || isMasterBypass) {
       // Check status: if PENDING or REJECTED, block login unless admin bypass
       if (!isMasterBypass && foundLecturer.role !== 'ADMIN') {
         if (foundLecturer.status === 'PENDING') {
@@ -1439,16 +1678,19 @@ class AttendanceEngine {
 
       this.activeLecturer = foundLecturer;
       this.saveActiveLecturerLocally();
+      const requirePinChange = Boolean(foundLecturer.mustChangePin);
+
       return {
         success: true,
         lecturer: foundLecturer,
-        message: `Pengesahan Berjaya! Selamat bertugas, ${foundLecturer.name}.`
+        message: `Pengesahan Berjaya! Selamat bertugas, ${foundLecturer.name}.`,
+        requirePinChange
       };
     }
 
     return {
       success: false,
-      message: `Padanan Emel dan No. IC / PIN tidak sah! Sila masukkan No. IC sah atau 4 digit terakhir IC bagi ${foundLecturer.name}.`
+      message: `Kata laluan PIN keselamatan tidak sah untuk ${foundLecturer.name}.`
     };
   }
 
@@ -1480,16 +1722,11 @@ class AttendanceEngine {
 
     if (!rawName) throw new Error('Nama penuh pensyarah diperlukan.');
     if (!rawEmail) throw new Error('Emel rasmi pensyarah diperlukan.');
-    if (!rawEmail.endsWith('@bpenawar.kpm.edu.my')) {
-      throw new Error('Emel mestilah menggunakan domain rasmi kolej (@bpenawar.kpm.edu.my).');
+    if (!rawEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
+      throw new Error(`Sila gunakan emel rasmi ${LECTURER_EMAIL_DOMAIN}`);
     }
-    if (!rawIC) throw new Error('No. Kad Pengenalan diperlukan.');
 
     const cleanNumericIC = rawIC.replace(/[^0-9]/g, '');
-    if (cleanNumericIC.length < 4) {
-      throw new Error('Sila masukkan No. Kad Pengenalan yang sah.');
-    }
-    const derivedPin = cleanNumericIC.slice(-4);
 
     if (!params.subjectAssignments || params.subjectAssignments.length === 0) {
       throw new Error('Sila pilih sekurang-kurangnya satu subjek yang diajar.');
@@ -1566,13 +1803,20 @@ class AttendanceEngine {
     const assignedClasses = Array.from(allAssignedClassesSet);
     const assignedSubjects = Array.from(allAssignedSubjectsSet);
 
+    const existingLecturer = !isNewLecturer ? this.lecturers[existingIndex] : null;
+    const pin = existingLecturer && existingLecturer.mustChangePin === false ? existingLecturer.pin : DEFAULT_LECTURER_PIN;
+    const mustChangePin = existingLecturer && existingLecturer.mustChangePin === false ? false : true;
+    const pinChangedAt = existingLecturer && existingLecturer.mustChangePin === false ? existingLecturer.pinChangedAt : undefined;
+
     const lecturerData: Lecturer = {
       id: lecturerId,
       name: rawName,
       email: rawEmail,
-      icNumber: rawIC,
-      pin: derivedPin,
-      phone: rawPhone,
+      icNumber: rawIC || undefined,
+      pin,
+      mustChangePin,
+      pinChangedAt,
+      phone: rawPhone || undefined,
       department: rawDept,
       assignedClasses,
       assignedSections: assignedClasses,
@@ -2213,31 +2457,31 @@ class AttendanceEngine {
 
   public registerLecturer(lecturer: Lecturer): { success: boolean; message: string } {
     const cleanEmail = lecturer.email.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
+    if (!cleanEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
       return {
         success: false,
-        message: 'Emel mestilah menggunakan domain rasmi @bpenawar.kpm.edu.my'
+        message: `Sila gunakan emel rasmi ${LECTURER_EMAIL_DOMAIN}`
       };
     }
 
-    const cleanIC = lecturer.icNumber.trim();
-    const numericIC = cleanIC.replace(/[^0-9]/g, '');
-    if (numericIC.length < 4) {
-      return {
-        success: false,
-        message: 'Sila masukkan No. Kad Pengenalan yang sah.'
-      };
-    }
+    const cleanIC = lecturer.icNumber ? lecturer.icNumber.trim() : '';
 
-    // Automatically derive PIN from last 4 digits of IC
-    const derivedPin = numericIC.slice(-4);
+    const existingIdx = this.lecturers.findIndex((l) => l.email.toLowerCase() === cleanEmail);
+    const existing = existingIdx >= 0 ? this.lecturers[existingIdx] : null;
+
+    const pin = existing && existing.mustChangePin === false ? existing.pin : DEFAULT_LECTURER_PIN;
+    const mustChangePin = existing && existing.mustChangePin === false ? false : true;
+    const pinChangedAt = existing && existing.mustChangePin === false ? existing.pinChangedAt : undefined;
+
     const newLecturer: Lecturer = {
       ...lecturer,
       email: cleanEmail,
-      pin: derivedPin
+      icNumber: cleanIC || undefined,
+      pin,
+      mustChangePin,
+      pinChangedAt
     };
 
-    const existingIdx = this.lecturers.findIndex((l) => l.email.toLowerCase() === cleanEmail);
     if (existingIdx >= 0) {
       this.lecturers[existingIdx] = newLecturer;
     } else {
@@ -2251,8 +2495,87 @@ class AttendanceEngine {
 
     return {
       success: true,
-      message: `Pensyarah berjaya didaftarkan. PIN keselamatan anda adalah [${derivedPin}].`
+      message: `Pensyarah berjaya didaftarkan. Kata laluan lalai akaun adalah [${DEFAULT_LECTURER_PIN}]. Sila tukar pada log masuk pertama.`
     };
+  }
+
+  /**
+   * Import Lecturers from CSV with Automatic Subject and Class Allocation
+   * Directly establishes:
+   * 1. Lecturer records with credentials (email, ic, 4-digit PIN, department, role)
+   * 2. Registers subjects into the master subject catalog (with official title & department)
+   * 3. Links lecturers to their subjects (lecturerId, lecturerName, lecturerEmail)
+   * 4. Updates subject sections to include all allocated classes from CSV
+   * 5. Automatically generates ACTIVE TeachingAssignment records for each lecturer-subject-class combo
+   * 6. Atomically updates local state, LocalStorage, and Firestore via Batch
+   */
+  /**
+   * Helper to find an existing lecturer by:
+   * 1. ID
+   * 2. official MARA email (@mara.gov.my)
+   * 3. legacy email (@bpenawar.kpm.edu.my)
+   * 4. normalized full name
+   * Prevents duplicate records across imports and migrations.
+   */
+  public findMatchingExistingLecturer(
+    incoming: Partial<Lecturer> & { emailKpm?: string; legacyEmail?: string },
+    pool?: Lecturer[]
+  ): Lecturer | undefined {
+    const list = pool || this.lecturers;
+
+    // 1. Match by ID
+    if (incoming.id) {
+      const match = list.find((l) => l.id === incoming.id);
+      if (match) return match;
+    }
+
+    const inEmail = (incoming.email || '').trim().toLowerCase();
+    const inLegacy = (incoming.legacyEmail || (incoming as any).emailKpm || '').trim().toLowerCase();
+
+    // 2. Match by MARA email directly or converted
+    if (inEmail) {
+      const match = list.find((l) => l.email.trim().toLowerCase() === inEmail);
+      if (match) return match;
+
+      // Special alias check for Khairi Mohd
+      if (inEmail === 'khairi.mohd@mara.gov.my' || inEmail === 'khairi@mara.gov.my') {
+        const khairiMatch = list.find(
+          (l) => l.id === 'LEC-KHAIRI' || l.email.toLowerCase().includes('khairi') || l.name.toUpperCase().includes('AHMAD KHAIRI')
+        );
+        if (khairiMatch) return khairiMatch;
+      }
+
+      // If incoming email is @mara.gov.my, check if existing has legacy @bpenawar.kpm.edu.my
+      if (inEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
+        const legacyCounterpart = inEmail.replace(LECTURER_EMAIL_DOMAIN, LEGACY_LECTURER_EMAIL_DOMAIN);
+        const matchLegacy = list.find((l) => l.email.trim().toLowerCase() === legacyCounterpart);
+        if (matchLegacy) return matchLegacy;
+      }
+
+      // If incoming email is legacy @bpenawar.kpm.edu.my, check if existing has @mara.gov.my
+      const maraCounterpart = convertLegacyLecturerEmail(inEmail).toLowerCase();
+      if (maraCounterpart && maraCounterpart !== inEmail) {
+        const matchMara = list.find((l) => l.email.trim().toLowerCase() === maraCounterpart);
+        if (matchMara) return matchMara;
+      }
+    }
+
+    // 3. Match by legacy email field if provided
+    if (inLegacy) {
+      const match = list.find((l) => l.email.trim().toLowerCase() === inLegacy);
+      if (match) return match;
+    }
+
+    // 4. Match by normalized name
+    if (incoming.name) {
+      const normIn = normalizeLecturerName(incoming.name);
+      if (normIn.length >= 3) {
+        const match = list.find((l) => normalizeLecturerName(l.name) === normIn);
+        if (match) return match;
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -2276,9 +2599,9 @@ class AttendanceEngine {
   }> {
     const timestamp = new Date().toISOString();
 
-    // Map existing state
-    const existingLecturersMap = new Map<string, Lecturer>(
-      this.lecturers.map((l) => [l.email.toLowerCase().trim(), l])
+    // Map existing state by ID to prevent duplicate records
+    const lecturersById = new Map<string, Lecturer>(
+      this.lecturers.map((l) => [l.id, l])
     );
 
     const updatedSubjectsMap = new Map<string, Subject>(
@@ -2292,8 +2615,17 @@ class AttendanceEngine {
     const newlyProcessedLecturers: Lecturer[] = [];
 
     for (const incoming of newLecturersList) {
-      const email = incoming.email.toLowerCase().trim();
-      const existing = existingLecturersMap.get(email);
+      // Find matching existing lecturer by id, MARA email, legacy email, or normalized name
+      const existing = this.findMatchingExistingLecturer(incoming, Array.from(lecturersById.values()));
+
+      // Normalize email to official MARA format
+      let email = (incoming.email || '').toLowerCase().trim();
+      if (!email.endsWith(LECTURER_EMAIL_DOMAIN)) {
+        email = convertLegacyLecturerEmail(email);
+      }
+      if (!email && existing) {
+        email = existing.email.toLowerCase().trim();
+      }
 
       const lecturerId =
         existing?.id ||
@@ -2302,9 +2634,35 @@ class AttendanceEngine {
 
       const name = (incoming.name || existing?.name || 'Pensyarah').trim().toUpperCase();
       const icNumber = incoming.icNumber || existing?.icNumber || '';
-      const pin = incoming.pin || existing?.pin || (icNumber.replace(/\D/g, '').slice(-4) || '5305');
+
+      // Rule 1: PIN Overwrite rules
+      // - If lecturer already has pinChangedAt: PRESERVE pin and mustChangePin = false. Do NOT overwrite.
+      // - If lecturer does NOT have pinChangedAt: set pin = '1234' and mustChangePin = true.
+      let pin = DEFAULT_LECTURER_PIN;
+      let mustChangePin = true;
+      let pinChangedAt: string | undefined = undefined;
+
+      if (existing) {
+        if (existing.pinChangedAt) {
+          pin = existing.pin || DEFAULT_LECTURER_PIN;
+          mustChangePin = false;
+          pinChangedAt = existing.pinChangedAt;
+        } else {
+          pin = DEFAULT_LECTURER_PIN;
+          mustChangePin = true;
+          pinChangedAt = undefined;
+        }
+      } else {
+        // Brand new lecturer from CSV
+        pin = DEFAULT_LECTURER_PIN;
+        mustChangePin = true;
+        pinChangedAt = undefined;
+      }
+
       const department = incoming.department || existing?.department || 'Jabatan Pengajian Am';
-      const role = incoming.role || existing?.role || 'LECTURER';
+
+      // Rule 1: Existing ADMIN role CANNOT be downgraded to LECTURER
+      const role = existing?.role === 'ADMIN' ? 'ADMIN' : (incoming.role || existing?.role || 'LECTURER');
 
       // Parse and clean classes from CSV
       const rawClasses =
@@ -2402,8 +2760,10 @@ class AttendanceEngine {
         id: lecturerId,
         name: name,
         email: email,
-        icNumber: icNumber,
+        icNumber: icNumber || undefined,
         pin: pin,
+        mustChangePin: mustChangePin,
+        pinChangedAt: pinChangedAt,
         phone: incoming.phone || existing?.phone,
         department: department,
         role: role,
@@ -2416,12 +2776,15 @@ class AttendanceEngine {
         approvedBy: existing?.approvedBy || 'Auto-Import CSV'
       };
 
-      existingLecturersMap.set(email, updatedLecturer);
+      if (existing && existing.id !== lecturerId) {
+        lecturersById.delete(existing.id);
+      }
+      lecturersById.set(lecturerId, updatedLecturer);
       newlyProcessedLecturers.push(updatedLecturer);
     }
 
-    // Apply to in-memory state
-    this.lecturers = Array.from(existingLecturersMap.values());
+    // Apply to in-memory state (deduplicated by ID)
+    this.lecturers = Array.from(lecturersById.values());
     this.subjects = Array.from(updatedSubjectsMap.values());
     this.teachingAssignments = Array.from(assignmentsMap.values());
 
@@ -2461,6 +2824,108 @@ class AttendanceEngine {
       lecturers: this.lecturers,
       subjects: this.subjects,
       assignments: this.teachingAssignments
+    };
+  }
+
+  /**
+   * Update a lecturer's password (PIN).
+   * Validates that newPin is exactly 4 numeric digits and not '1234'.
+   * Clears mustChangePin flag and sets pinChangedAt timestamp.
+   */
+  public async updateLecturerPassword(
+    lecturerId: string,
+    newPin: string
+  ): Promise<{ success: boolean; message: string; lecturer?: Lecturer }> {
+    const cleanPin = newPin.trim();
+    if (!/^\d{4}$/.test(cleanPin)) {
+      return {
+        success: false,
+        message: 'Kata laluan mestilah tepat 4 digit numerik.'
+      };
+    }
+
+    if (cleanPin === DEFAULT_LECTURER_PIN) {
+      return {
+        success: false,
+        message: "Kata laluan baharu tidak boleh menggunakan kata laluan lalai '1234'. Sila pilih kombinasi 4 digit lain."
+      };
+    }
+
+    const lecturer = this.lecturers.find((l) => l.id === lecturerId);
+    if (!lecturer) {
+      return {
+        success: false,
+        message: 'Pensyarah tidak dijumpai.'
+      };
+    }
+
+    lecturer.pin = cleanPin;
+    lecturer.mustChangePin = false;
+    lecturer.pinChangedAt = new Date().toISOString();
+
+    if (this.activeLecturer && this.activeLecturer.id === lecturerId) {
+      this.activeLecturer = { ...lecturer };
+      this.saveActiveLecturerLocally();
+    }
+
+    this.saveLecturersLocally();
+    this.notifyLecturerListeners();
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
+      } catch (e) {
+        console.warn('Failed to sync updated lecturer PIN to Firestore:', e);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Kata laluan berjaya dikemas kini!',
+      lecturer
+    };
+  }
+
+  /**
+   * Reset a lecturer's password back to default '1234' with mustChangePin = true.
+   * Admin-only capability.
+   */
+  public async resetLecturerPinToDefault(
+    lecturerId: string,
+    performedBy = 'Pentadbir Sistem'
+  ): Promise<{ success: boolean; message: string; lecturer?: Lecturer }> {
+    const lecturer = this.lecturers.find((l) => l.id === lecturerId);
+    if (!lecturer) {
+      return {
+        success: false,
+        message: 'Pensyarah tidak dijumpai.'
+      };
+    }
+
+    lecturer.pin = DEFAULT_LECTURER_PIN;
+    lecturer.mustChangePin = true;
+    delete lecturer.pinChangedAt;
+
+    if (this.activeLecturer && this.activeLecturer.id === lecturerId) {
+      this.activeLecturer = { ...lecturer };
+      this.saveActiveLecturerLocally();
+    }
+
+    this.saveLecturersLocally();
+    this.notifyLecturerListeners();
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'lecturers', lecturer.id), sanitizeForFirestore(lecturer), { merge: true });
+      } catch (e) {
+        console.warn('Failed to sync reset lecturer PIN to Firestore:', e);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Kata laluan untuk ${lecturer.name} telah berjaya ditetapkan semula kepada ${DEFAULT_LECTURER_PIN}.`,
+      lecturer
     };
   }
 

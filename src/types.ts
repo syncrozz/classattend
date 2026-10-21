@@ -42,9 +42,11 @@ export type ActivityCategory =
 export interface Lecturer {
   id: string;
   name: string;
-  email: string; // Must end with @bpenawar.kpm.edu.my
-  icNumber: string; // e.g. 861115-46-5305
-  pin: string; // Last 4 digits of IC (e.g. 5305)
+  email: string; // Must end with @mara.gov.my
+  icNumber?: string; // Optional (e.g. 861115-46-5305)
+  pin: string; // 4-digit PIN (default '1234')
+  mustChangePin?: boolean;
+  pinChangedAt?: string;
   phone?: string;
   department?: string;
   assignedSections?: string[]; // e.g. ['DIA_4A', 'DIA_4B']
@@ -133,7 +135,7 @@ export interface AttendanceSession {
   section?: string;
   teachingAssignmentId?: string; // Authoritative teaching assignment ID binding (SES v4.5)
   lecturerName: string; // e.g. "Khairi bin Abdul Rahman"
-  lecturerEmail?: string; // e.g. "khairi@bpenawar.kpm.edu.my"
+  lecturerEmail?: string; // e.g. "khairi@mara.gov.my"
   lecturerId?: string;
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
@@ -248,7 +250,7 @@ export interface AuditLogItem {
   action: string; // e.g. "Import Pelajar (CSV)", "Padam Sesi Kuliah", "Kelulusan Pensyarah"
   details: string; // Detailed description of the event
   performedBy: string; // e.g. "Ts. Dr. Ahmad (Admin)", "Sistem"
-  target?: string; // e.g. "MPU 2163", "DIA_4A", "ahmad@bpenawar.kpm.edu.my"
+  target?: string; // e.g. "MPU 2163", "DIA_4A", "ahmad@mara.gov.my"
   metadata?: Record<string, any>;
   severity: AuditSeverity;
 }

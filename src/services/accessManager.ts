@@ -41,7 +41,7 @@ class AccessManager {
         const matchingAdmin = list.find((l) => l.role === 'ADMIN' || l.id === session.lecturerId) || {
           id: session.lecturerId || 'ADMIN-MASTER',
           name: session.name || 'PENTADBIR SISTEM (ADMIN)',
-          email: session.email || 'admin@bpenawar.kpm.edu.my',
+          email: session.email || 'admin@mara.gov.my',
           icNumber: '******-**-5313',
           pin: '5313',
           department: 'Pentadbiran Kolej',

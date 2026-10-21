@@ -2,10 +2,12 @@ import { Student, AttendanceRecord, AttendanceSession, Lecturer, Subject } from 
 import { normalizePhoneNumber } from './phoneHelper';
 import { splitClassNames, normalizeClassCode } from './classHelper';
 import { normalizeStudentId } from './studentUtils';
+import { LECTURER_EMAIL_DOMAIN, DEFAULT_LECTURER_PIN } from './staffUtils';
 import type { AttendanceMatrixData } from './attendanceMatrix';
 
 export * from './phoneHelper';
 export * from './classHelper';
+export * from './staffUtils';
 
 /**
  * Generate standard CSV template for Kursus / Subjek
@@ -247,15 +249,16 @@ export const generateClassTemplateCSV = (sampleClassName: string = 'DIA_4A'): st
 
 /**
  * Generate standard CSV template for Lecturers list (Senarai Pensyarah)
+ * Format lajur bersih: Bil, Nama_Pensyarah, Email_MARA, PIN_4Digit, Kelas, Subjek_Diajar, Jabatan, Peranan
  */
 export const generateLecturerTemplateCSV = (): string => {
-  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
+  const headers = ['Bil', 'Nama_Pensyarah', 'Email_MARA', 'PIN_4Digit', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
   const sampleRows = [
     [
       1,
-      'EN. KHAIRI BIN ABDUL RAHMAN',
-      'khairi@bpenawar.kpm.edu.my',
-      '861115-46-5305',
+      'AHMAD KHAIRI BIN MOHD',
+      'khairi.mohd@mara.gov.my',
+      '1234',
       'DIA_4A, DIA_4B',
       'MPU 2163 - Pengajian Malaysia 2, QMT 2023 - Statistik Perniagaan',
       'Pengajian Am',
@@ -272,18 +275,23 @@ export const generateLecturerTemplateCSV = (): string => {
 };
 
 export const exportLecturersToCSV = (lecturers: Lecturer[]): string => {
-  const headers = ['Bil', 'Nama_Pensyarah', 'Email_KPM', 'No_IC', 'PIN_4Digit', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
-  const rows = lecturers.map((l, idx) => [
-    idx + 1,
-    `"${l.name.replace(/"/g, '""')}"`,
-    `"${l.email.toLowerCase()}"`,
-    `"${l.icNumber || ''}"`,
-    `"${l.pin || (l.icNumber ? l.icNumber.replace(/[^0-9]/g, '').slice(-4) : '')}"`,
-    `"${(l.assignedSections || l.assignedClasses || []).join(', ')}"`,
-    `"${(l.assignedSubjects || []).join(', ')}"`,
-    `"${l.department || 'Perakaunan'}"`,
-    `"${l.role || 'LECTURER'}"`
-  ]);
+  const headers = ['Bil', 'Nama_Pensyarah', 'Email_MARA', 'PIN_4Digit', 'Kelas', 'Subjek_Diajar', 'Jabatan', 'Peranan'];
+  const rows = lecturers.map((l, idx) => {
+    const emailMara = l.email.toLowerCase().endsWith(LECTURER_EMAIL_DOMAIN)
+      ? l.email.toLowerCase()
+      : `${l.email.split('@')[0].toLowerCase()}${LECTURER_EMAIL_DOMAIN}`;
+
+    return [
+      idx + 1,
+      `"${l.name.replace(/"/g, '""')}"`,
+      `"${emailMara}"`,
+      `"${l.pin || DEFAULT_LECTURER_PIN}"`,
+      `"${(l.assignedSections || l.assignedClasses || []).join(', ')}"`,
+      `"${(l.assignedSubjects || []).join(', ')}"`,
+      `"${l.department || 'Jabatan Pengajian Am'}"`,
+      `"${l.role || 'LECTURER'}"`
+    ];
+  });
 
   return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 };
@@ -368,6 +376,8 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
   );
 
   let nameIndex = headers.findIndex((h) => h.includes('nama') || h.includes('name'));
+  let emailMaraIndex = headers.findIndex((h) => h.includes('email_mara') || h.includes('emel_mara') || (h.includes('mara') && h.includes('mel')) || (h.includes('mara') && h.includes('mail')));
+  let emailKpmIndex = headers.findIndex((h) => h.includes('email_kpm') || h.includes('emel_kpm') || (h.includes('kpm') && h.includes('mel')) || (h.includes('kpm') && h.includes('mail')));
   let emailIndex = headers.findIndex((h) => h.includes('email') || h.includes('emel') || h.includes('mel'));
   let icIndex = headers.findIndex((h) => h.includes('ic') || h.includes('kad_pengenalan') || h.includes('kp') || h.includes('nric'));
   let phoneIndex = headers.findIndex((h) => h.includes('telefon') || h.includes('phone') || h.includes('tel') || h.includes('hp'));
@@ -379,8 +389,6 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
 
   // Positional fallbacks if headers are simple
   if (nameIndex === -1 && headers.length >= 2) nameIndex = 1;
-  if (emailIndex === -1 && headers.length >= 3) emailIndex = 2;
-  if (icIndex === -1 && headers.length >= 4) icIndex = 3;
 
   const resultLecturers: Lecturer[] = [];
 
@@ -389,30 +397,50 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
     if (rawCols.length < 2) continue;
 
     const name = nameIndex >= 0 && rawCols[nameIndex] ? rawCols[nameIndex].trim().toUpperCase() : `Pensyarah ${i}`;
-    const email = emailIndex >= 0 && rawCols[emailIndex] ? rawCols[emailIndex].trim().toLowerCase() : '';
+    
+    // Login email MUST come from Email_MARA column and end with @mara.gov.my
+    let email = '';
+    if (emailMaraIndex >= 0 && rawCols[emailMaraIndex]) {
+      email = rawCols[emailMaraIndex].trim().toLowerCase();
+    } else {
+      // Find column value ending with @mara.gov.my
+      const foundMara = rawCols.find((c) => c.trim().toLowerCase().endsWith(LECTURER_EMAIL_DOMAIN));
+      if (foundMara) {
+        email = foundMara.trim().toLowerCase();
+      } else if (emailIndex >= 0 && rawCols[emailIndex]) {
+        const candidate = rawCols[emailIndex].trim().toLowerCase();
+        if (candidate.endsWith(LECTURER_EMAIL_DOMAIN)) {
+          email = candidate;
+        }
+      }
+    }
+
+    if (!name || !email || !email.endsWith(LECTURER_EMAIL_DOMAIN)) {
+      continue;
+    }
+
+    // No_IC is optional
     const icNumber = icIndex >= 0 && rawCols[icIndex] ? rawCols[icIndex].trim() : '';
     const rawPhone = phoneIndex >= 0 && rawCols[phoneIndex] ? rawCols[phoneIndex] : '';
     const phone = normalizePhoneNumber(rawPhone);
-    const customPin = pinIndex >= 0 && rawCols[pinIndex] ? rawCols[pinIndex].trim() : '';
     const sectionsRaw = sectionIndex >= 0 && rawCols[sectionIndex] ? rawCols[sectionIndex].trim() : '';
     const subjectsRaw = subjectIndex >= 0 && rawCols[subjectIndex] ? rawCols[subjectIndex].trim() : '';
     const department = deptIndex >= 0 && rawCols[deptIndex] ? rawCols[deptIndex].trim() : 'Jabatan Pengajian Am';
     const roleRaw = roleIndex >= 0 && rawCols[roleIndex] ? rawCols[roleIndex].trim().toUpperCase() : 'LECTURER';
 
-    if (!name || !email) continue;
+    // PIN is default '1234' with mustChangePin = true
+    const derivedPin = DEFAULT_LECTURER_PIN;
 
-    const numericIC = icNumber.replace(/[^0-9]/g, '');
-    const cleanPin = customPin.replace(/[^0-9]/g, '');
-    const derivedPin = cleanPin.length === 4 ? cleanPin : (numericIC.length >= 4 ? numericIC.slice(-4) : '5305');
+    // Parse classes into clean array (empty allowed for new lecturers without assignments)
+    const sections = sectionsRaw ? splitClassNames(sectionsRaw) : [];
 
-    // Parse classes into clean array (e.g. ['DIA4A', 'DIA4B', 'DIA4C', 'DIA3A'])
-    const sections = splitClassNames(sectionsRaw);
-
-    // Parse subjects into clean array (e.g. ['MPU2162 - PENGAJIAN MALAYSIA 2', 'MPU2412 - KURSUS INTEGRITI DAN ANTI RASUAH'])
+    // Parse subjects into clean array (empty allowed for new lecturers without assignments)
     const rawSubjectEntries = subjectsRaw
-      .split(/[,;|]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      ? subjectsRaw
+          .split(/[,;|]/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
 
     const formattedSubjects = Array.from(
       new Set(
@@ -439,8 +467,9 @@ export const parseLecturerCSV = (csvText: string): Lecturer[] => {
       id: lecturerId,
       name,
       email,
-      icNumber: icNumber || `${derivedPin}`,
+      icNumber: icNumber || undefined,
       pin: derivedPin,
+      mustChangePin: true,
       phone: phone || undefined,
       department,
       assignedSections: sections,

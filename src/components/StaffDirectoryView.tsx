@@ -62,10 +62,13 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Copy
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 import { attendanceEngine } from '../services/attendanceEngine';
 import { soundService } from '../services/soundService';
+import { auditLogger } from '../services/auditLogger';
+import { LECTURER_EMAIL_DOMAIN, LEGACY_LECTURER_EMAIL_DOMAIN, DEFAULT_LECTURER_PIN } from '../utils/staffUtils';
 import { GenerateLecturerQRModal } from './GenerateLecturerQRModal';
 import { LecturerSelfRegistrationModal } from './LecturerSelfRegistrationModal';
 
@@ -436,14 +439,14 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       return;
     }
     const csvContent = exportLecturersToCSV(lecturers);
-    const filename = `Senarai_Pensyarah_KPM_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `Senarai_Pensyarah_MARA_${new Date().toISOString().split('T')[0]}.csv`;
     downloadCSV(csvContent, filename);
     soundService.playClick();
   };
 
   const handleDownloadLecturerTemplate = () => {
     const template = generateLecturerTemplateCSV();
-    downloadCSV(template, 'Templat_Senarai_Pensyarah_KPM.csv');
+    downloadCSV(template, 'Templat_Senarai_Pensyarah_MARA.csv');
     soundService.playClick();
   };
 
@@ -556,20 +559,14 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       onRequestAdminAccess('Daftar Pensyarah Baharu');
       return;
     }
-    if (!lecName || !lecEmail || !lecIC) {
-      alert('Sila lengkapkan Nama, Emel KPM, dan No. IC');
+    if (!lecName || !lecEmail) {
+      alert('Sila lengkapkan Nama dan Emel Pensyarah');
       return;
     }
 
     const cleanEmail = lecEmail.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@bpenawar.kpm.edu.my')) {
-      alert('Emel mestilah menggunakan domain rasmi kolej: @bpenawar.kpm.edu.my');
-      return;
-    }
-
-    const numericIC = lecIC.replace(/[^0-9]/g, '');
-    if (numericIC.length < 4) {
-      alert('Sila masukkan No. IC yang sah (sekurang-kurangnya 4 digit).');
+    if (!cleanEmail.endsWith(LECTURER_EMAIL_DOMAIN)) {
+      alert(`Sila gunakan emel rasmi ${LECTURER_EMAIL_DOMAIN}`);
       return;
     }
 
@@ -587,8 +584,9 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
       id: `LEC-${Date.now()}`,
       name: lecName.trim().toUpperCase(),
       email: cleanEmail,
-      icNumber: lecIC.trim(),
-      pin: numericIC.slice(-4),
+      icNumber: lecIC ? lecIC.trim() : undefined,
+      pin: DEFAULT_LECTURER_PIN,
+      mustChangePin: true,
       department: lecDepartment,
       assignedSections: sections.length > 0 ? sections : ['DIA_4A'],
       assignedClasses: sections.length > 0 ? sections : ['DIA_4A'],
@@ -604,6 +602,37 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
     setLecEmail('');
     setLecIC('');
     soundService.playSuccess();
+  };
+
+  const handleResetPassword = async (lec: Lecturer) => {
+    if (!isAdmin && (!activeLecturer || activeLecturer.role !== 'ADMIN')) {
+      onRequestAdminAccess('Menetapkan Semula Kata Laluan Pensyarah');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Adakah anda pasti ingin menetapkan semula kata laluan bagi pensyarah ${lec.name} ke '1234'? Pensyarah ini akan diwajibkan menukar kata laluan pada log masuk seterusnya.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await attendanceEngine.resetLecturerPinToDefault(lec.id, activeLecturer?.name);
+      if (res.success && res.lecturer) {
+        soundService.playSuccess();
+        auditLogger.log({
+          category: 'SECURITY_AUTH',
+          action: 'Reset Kata Laluan Pensyarah',
+          details: `Kata laluan untuk pensyarah ${lec.name} (${lec.email}) telah berjaya ditetapkan semula kepada 1234 oleh pentadbir ${activeLecturer?.name || 'Admin'}.`,
+          performedBy: activeLecturer?.name || 'Master Admin',
+          target: lec.email,
+          severity: 'WARNING'
+        });
+        alert(`Kata laluan bagi ${lec.name} telah berjaya ditetapkan semula kepada 1234.`);
+      }
+    } catch (e: any) {
+      soundService.playError();
+      alert('Ralat semasa menetapkan semula kata laluan pensyarah.');
+    }
   };
 
   // Helper: Retrieve all assigned subjects for a specific lecturer
@@ -1077,7 +1106,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
-                    placeholder="Cari nama pensyarah, e-mel @bpenawar, No IC, subjek..."
+                    placeholder={`Cari nama pensyarah, e-mel ${LECTURER_EMAIL_DOMAIN}, subjek...`}
                     value={lecturerSearch}
                     onChange={(e) => setLecturerSearch(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
@@ -2158,6 +2187,29 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               );
             })()}
 
+            {/* Admin Warning for unmigrated legacy lecturers */}
+            {(() => {
+              const legacyLecturers = lecturers.filter(
+                (l) => l.email && l.email.toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)
+              );
+              if (legacyLecturers.length === 0) return null;
+              return (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1.5 shadow-md mb-4">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Perhatian Pentadbir: {legacyLecturers.length} pensyarah masih menggunakan domain e-mel lama (@bpenawar.kpm.edu.my)</span>
+                  </div>
+                  <p className="text-slate-300 pl-6 leading-relaxed">
+                    Pensyarah berikut belum mempunyai padanan e-mel rasmi @mara.gov.my. Data dan tugasan mengajar mereka dikekalkan dengan selamat (tidak dipadam):
+                    <span className="font-mono text-amber-200 font-semibold ml-1">
+                      {legacyLecturers.map((l) => `${l.name} (${l.email})`).join(', ')}
+                    </span>
+                    . Sila kemas kini akaun mereka kepada e-mel rasmi MARA.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* MAIN LECTURERS DIRECTORY */}
             {filteredLecturers.length === 0 ? (
               <div className="text-center py-12 bg-slate-900/60 rounded-2xl border border-slate-800 p-8 space-y-4">
@@ -2275,7 +2327,7 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
                             <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>E-mel Rasmi KPM:</span>
+                            <span>E-mel Rasmi Pensyarah:</span>
                           </span>
                           <span className="font-mono text-emerald-300 font-semibold">{lec.email}</span>
                         </div>
@@ -2283,37 +2335,18 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                         <div className="flex items-center justify-between border-t border-slate-800/60 pt-1.5">
                           <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
                             <Key className="w-3.5 h-3.5 text-amber-400" />
-                            <span>No. PIN:</span>
+                            <span>Status Kata Laluan:</span>
                           </span>
-                          {isAdmin ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-amber-300">
-                                {isPinVisible ? `${lec.icNumber} (PIN: ${pinToDisplay})` : `******-**-${pinToDisplay}`}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => toggleShowPin(lec.id)}
-                                className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
-                                title="Papar/Sembunyi No IC Penuh"
-                              >
-                                {isPinVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                              </button>
-                            </div>
+                          {lec.mustChangePin !== false ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 text-amber-400" />
+                              <span>Kata laluan lalai (belum ditukar)</span>
+                            </span>
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-slate-500 tracking-wider text-xs">
-                                ••••••••••••
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => onRequestAdminAccess('Melihat PIN Keselamatan Pensyarah')}
-                                className="text-[10px] text-amber-400/90 hover:text-amber-300 px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 flex items-center gap-1 cursor-pointer transition-colors"
-                                title="Buka Mod Admin untuk melihat maklumat PIN"
-                              >
-                                <Shield className="w-3 h-3 text-amber-400" />
-                                <span>Mod Admin Sahaja</span>
-                              </button>
-                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              <span>Telah ditukar</span>
+                            </span>
                           )}
                         </div>
                       </div>
@@ -2406,19 +2439,34 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
                           </div>
                         )}
 
-                        {isAdmin && onDeleteLecturer && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Padam pensyarah ${lec.name} daripada senarai master?`)) {
-                                onDeleteLecturer(lec.id);
-                              }
-                            }}
-                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
-                            title="Padam Pensyarah (Mod Admin)"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {isAdmin && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleResetPassword(lec)}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                              title="Tetapkan semula kata laluan pensyarah ini kepada lalai '1234' (wajib tukar pada log masuk seterusnya)"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                              <span className="hidden sm:inline">Reset Kata Laluan (1234)</span>
+                              <span className="sm:hidden">Reset 1234</span>
+                            </button>
+
+                            {onDeleteLecturer && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`Padam pensyarah ${lec.name} daripada senarai master?`)) {
+                                    onDeleteLecturer(lec.id);
+                                  }
+                                }}
+                                className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                                title="Padam Pensyarah (Mod Admin)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2729,34 +2777,34 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                  <span>E-mel Rasmi Kolej</span>
-                  <span className="text-[10px] text-emerald-400 font-mono">@bpenawar.kpm.edu.my</span>
+                  <span>E-mel Rasmi Pensyarah</span>
+                  <span className="text-[10px] text-emerald-400 font-mono">{LECTURER_EMAIL_DOMAIN}</span>
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="Contoh: shah.ismail@bpenawar.kpm.edu.my"
+                  placeholder={`Contoh: shah.ismail${LECTURER_EMAIL_DOMAIN}`}
                   value={lecEmail}
                   onChange={(e) => {
                     let val = e.target.value;
                     if (val.endsWith('@') && !lecEmail.endsWith('@') && !lecEmail.includes('@')) {
-                      val = `${val}bpenawar.kpm.edu.my`;
+                      val = `${val}${LECTURER_EMAIL_DOMAIN.replace('@', '')}`;
                     }
                     setLecEmail(val);
                   }}
                   className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                 />
-                {lecEmail.trim() && !lecEmail.toLowerCase().includes('@bpenawar.kpm.edu.my') && (
+                {lecEmail.trim() && !lecEmail.toLowerCase().includes(LECTURER_EMAIL_DOMAIN) && (
                   <button
                     type="button"
                     onClick={() => {
                       const user = lecEmail.split('@')[0].trim();
-                      if (user) setLecEmail(`${user}@bpenawar.kpm.edu.my`);
+                      if (user) setLecEmail(`${user}${LECTURER_EMAIL_DOMAIN}`);
                     }}
                     className="w-full text-left inline-flex items-center justify-between gap-1 text-[11px] font-medium text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 hover:bg-emerald-900/80 px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm mt-1"
                   >
                     <span className="truncate font-mono text-[10px]">
-                      Cadangan: {lecEmail.split('@')[0]}@bpenawar.kpm.edu.my
+                      Cadangan: {lecEmail.split('@')[0]}{LECTURER_EMAIL_DOMAIN}
                     </span>
                     <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.2 rounded font-semibold shrink-0">
                       Gunakan
@@ -2766,17 +2814,16 @@ export const StaffDirectoryView: React.FC<StudentDirectoryViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300">No. Kad Pengenalan * (PIN = 4 Digit Terakhir)</label>
+                <label className="text-xs font-semibold text-slate-300">No. Kad Pengenalan (Pilihan)</label>
                 <input
                   type="text"
-                  required
                   placeholder="Contoh: 850412-01-5678"
                   value={lecIC}
                   onChange={(e) => setLecIC(e.target.value)}
                   className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                 />
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  PIN 4-digit keselamatan akan diambil secara automatik daripada 4 digit terakhir No. IC.
+                  Kata laluan lalai ialah 1234. Pensyarah perlu menukar kata laluan pada log masuk pertama.
                 </p>
               </div>
 

@@ -467,7 +467,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-white">{lecturers.length}</div>
           <div className="text-[11px] text-slate-400 mt-1">
-            <span>@bpenawar.kpm.edu.my</span>
+            <span>@mara.gov.my</span>
           </div>
         </div>
       </div>
