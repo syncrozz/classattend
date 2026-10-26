@@ -19,7 +19,14 @@ import { attendanceEngine } from '../services/attendanceEngine';
 import { accessManager } from '../services/accessManager';
 import { auditLogger } from '../services/auditLogger';
 import { Lecturer, UserRole } from '../types';
-import { LECTURER_EMAIL_DOMAIN, DEFAULT_LECTURER_PIN } from '../utils/staffUtils';
+import {
+  LECTURER_EMAIL_DOMAIN,
+  LEGACY_LECTURER_EMAIL_DOMAIN,
+  LEGACY_LECTURER_EMAIL_DOMAIN_ALT,
+  DEFAULT_LECTURER_PIN,
+  convertLegacyLecturerEmail,
+  isLegacyLecturerEmail
+} from '../utils/staffUtils';
 
 
 interface LecturerAuthModalProps {
@@ -67,7 +74,15 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
       // 1. Retrieve saved email from last login for this device
       const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY);
       const active = attendanceEngine.getActiveLecturer();
-      const initialEmail = active?.email || savedEmail || '';
+      let initialEmail = active?.email || savedEmail || '';
+
+      // Auto-migrate any legacy saved email to official @mara.gov.my
+      if (initialEmail && isLegacyLecturerEmail(initialEmail)) {
+        initialEmail = convertLegacyLecturerEmail(initialEmail);
+        try {
+          localStorage.setItem(SAVED_EMAIL_KEY, initialEmail);
+        } catch {}
+      }
 
       setEmail(initialEmail);
       setPin('');
@@ -98,8 +113,11 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
 
   const handleEmailChange = (newEmail: string) => {
     let formatted = newEmail;
-    // Auto-complete @mara.gov.my when user types @
-    if (newEmail.endsWith('@') && !email.endsWith('@') && !email.includes('@')) {
+    // Auto-convert any legacy @bpenawar domain if pasted or typed
+    if (isLegacyLecturerEmail(formatted)) {
+      formatted = convertLegacyLecturerEmail(formatted);
+    } else if (newEmail.endsWith('@') && !email.endsWith('@') && !email.includes('@')) {
+      // Auto-complete @mara.gov.my when user types @
       formatted = `${newEmail}${LECTURER_EMAIL_DOMAIN.replace('@', '')}`;
     }
     setEmail(formatted);

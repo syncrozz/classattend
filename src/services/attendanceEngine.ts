@@ -884,12 +884,17 @@ class AttendanceEngine {
         }
       }
 
-      // 6. Check if stored active session email was outdated (ended with @bpenawar.kpm.edu.my)
+      // 6. Check if stored active session email was outdated (ended with @bpenawar.kpm.edu.my or @bpenawar.kpmbp.edu.my)
       const rawTrusted = safeStorageGet('syncrozz_trusted_access_v1');
       if (rawTrusted) {
         try {
           const sess = JSON.parse(rawTrusted);
-          if (sess && sess.email && sess.email.toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+          if (
+            sess &&
+            sess.email &&
+            (sess.email.toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN) ||
+              sess.email.toLowerCase().endsWith('@bpenawar.kpmbp.edu.my'))
+          ) {
             // Outdated session email: Force friendly re-login
             localStorage.removeItem('syncrozz_trusted_access_v1');
             localStorage.removeItem(STORAGE_KEYS.ACTIVE_LECTURER);
@@ -901,6 +906,18 @@ class AttendanceEngine {
           }
         } catch {
           // ignore
+        }
+      }
+
+      // 6b. Also auto-migrate classattend_saved_lecturer_email in localStorage
+      const savedEmail = safeStorageGet('classattend_saved_lecturer_email');
+      if (savedEmail) {
+        if (
+          savedEmail.toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN) ||
+          savedEmail.toLowerCase().endsWith('@bpenawar.kpmbp.edu.my')
+        ) {
+          const converted = convertLegacyLecturerEmail(savedEmail);
+          safeStorageSet('classattend_saved_lecturer_email', converted);
         }
       }
 

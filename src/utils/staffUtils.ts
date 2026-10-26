@@ -5,6 +5,7 @@ export * from './studentUtils';
  */
 export const LECTURER_EMAIL_DOMAIN = '@mara.gov.my';
 export const LEGACY_LECTURER_EMAIL_DOMAIN = '@bpenawar.kpm.edu.my';
+export const LEGACY_LECTURER_EMAIL_DOMAIN_ALT = '@bpenawar.kpmbp.edu.my';
 export const DEFAULT_LECTURER_PIN = '1234';
 
 /**
@@ -16,26 +17,37 @@ export const isLecturerEmail = (email?: string): boolean => {
 };
 
 /**
- * Validates whether an email belongs to the legacy lecturer domain (@bpenawar.kpm.edu.my)
+ * Validates whether an email belongs to the legacy lecturer domain (@bpenawar.kpm.edu.my or @bpenawar.kpmbp.edu.my)
  */
 export const isLegacyLecturerEmail = (email?: string): boolean => {
   if (!email) return false;
-  return email.trim().toLowerCase().endsWith(LEGACY_LECTURER_EMAIL_DOMAIN);
+  const lower = email.trim().toLowerCase();
+  return lower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN) || lower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN_ALT);
 };
 
 /**
- * Converts a legacy @bpenawar.kpm.edu.my lecturer email to official @mara.gov.my format.
- * E.g. 'khairi@bpenawar.kpm.edu.my' -> 'khairi@mara.gov.my'
- * E.g. 'shah@bpenawar.kpm.edu.my' -> 'shah@mara.gov.my'
+ * Converts a legacy @bpenawar.kpm.edu.my or @bpenawar.kpmbp.edu.my lecturer email to official @mara.gov.my format.
+ * E.g. 'khairi@bpenawar.kpm.edu.my' -> 'khairi.mohd@mara.gov.my'
+ * E.g. 'shah@bpenawar.kpmbp.edu.my' -> 'shah@mara.gov.my'
  */
 export const convertLegacyLecturerEmail = (email?: string): string => {
   if (!email) return '';
   const trimmed = email.trim().toLowerCase();
-  if (trimmed === 'khairi@bpenawar.kpm.edu.my' || trimmed === 'khairi.mohd@bpenawar.kpm.edu.my' || trimmed === 'khairi@mara.gov.my') {
+  if (
+    trimmed === 'khairi@bpenawar.kpm.edu.my' ||
+    trimmed === 'khairi.mohd@bpenawar.kpm.edu.my' ||
+    trimmed === 'khairi@bpenawar.kpmbp.edu.my' ||
+    trimmed === 'khairi.mohd@bpenawar.kpmbp.edu.my' ||
+    trimmed === 'khairi@mara.gov.my'
+  ) {
     return 'khairi.mohd@mara.gov.my';
   }
   if (trimmed.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
     const user = trimmed.slice(0, -LEGACY_LECTURER_EMAIL_DOMAIN.length);
+    return `${user}${LECTURER_EMAIL_DOMAIN}`;
+  }
+  if (trimmed.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN_ALT)) {
+    const user = trimmed.slice(0, -LEGACY_LECTURER_EMAIL_DOMAIN_ALT.length);
     return `${user}${LECTURER_EMAIL_DOMAIN}`;
   }
   return trimmed;

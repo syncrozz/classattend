@@ -50,16 +50,29 @@
     <script type="module" src="/src/main.tsx"></script>
     <script>
       (function() {
-        // Emergency cache reset if ?refresh=true or ?reset=true is present
-        if (window.location.search.includes('reset=true') || window.location.search.includes('refresh=true')) {
+        const CURRENT_VERSION = 'v6-mara-2026';
+        const storedVersion = localStorage.getItem('classattend_sw_version');
+
+        // Automatically purge stale caches and legacy saved email on version bump or reset
+        const shouldPurge =
+          storedVersion !== CURRENT_VERSION ||
+          window.location.search.includes('reset=true') ||
+          window.location.search.includes('refresh=true');
+
+        if (shouldPurge) {
           if ('caches' in window) {
             caches.keys().then((names) => {
               names.forEach((name) => caches.delete(name));
             });
           }
           try {
-            localStorage.removeItem('classattend_initialized_v5');
+            // Clean legacy saved email if it contains outdated domain
+            const savedEmail = localStorage.getItem('classattend_saved_lecturer_email');
+            if (savedEmail && (savedEmail.includes('@bpenawar.kpm') || savedEmail.includes('@bpenawar.kpmbp'))) {
+              localStorage.removeItem('classattend_saved_lecturer_email');
+            }
           } catch (e) {}
+          localStorage.setItem('classattend_sw_version', CURRENT_VERSION);
         }
 
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
@@ -69,6 +82,10 @@
                 console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
                 // Proactively trigger update check
                 reg.update().catch(() => {});
+
+                if (shouldPurge && reg.active) {
+                  reg.active.postMessage({ type: 'PURGE_CACHE' });
+                }
 
                 // If an update is waiting, prompt activation
                 if (reg.waiting) {
