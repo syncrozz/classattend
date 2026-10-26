@@ -46,6 +46,9 @@
     <!-- Immediate Cache Busting & ServiceWorker Unregistration -->
     <script>
       (function() {
+        var APP_BUILD_ID = 'mara-2026-v8';
+        var lastBuild = localStorage.getItem('classattend_build_id');
+
         // 1. Immediately wipe all browser cache storages
         if ('caches' in window) {
           caches.keys().then(function(names) {
@@ -54,6 +57,7 @@
             }
           });
         }
+
         // 2. Unregister ALL service workers immediately
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations().then(function(registrations) {
@@ -62,7 +66,8 @@
             }
           });
         }
-        // 3. Remove legacy saved emails or stale sessions
+
+        // 3. Remove legacy saved emails or stale sessions containing bpenawar
         try {
           var saved = localStorage.getItem('classattend_saved_lecturer_email');
           if (saved && (saved.indexOf('bpenawar') !== -1 || saved.indexOf('@mara.gov.my') === -1)) {
@@ -74,6 +79,15 @@
             localStorage.removeItem('classattend_active_lecturer_v5');
           }
         } catch(e) {}
+
+        // 4. One-time clean cache-busting URL navigation
+        if (lastBuild !== APP_BUILD_ID) {
+          localStorage.setItem('classattend_build_id', APP_BUILD_ID);
+          if (!window.location.search.includes('v=' + APP_BUILD_ID)) {
+            var url = window.location.pathname + '?v=' + APP_BUILD_ID + window.location.hash;
+            window.location.replace(url);
+          }
+        }
       })();
     </script>
   </head>

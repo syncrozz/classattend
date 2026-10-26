@@ -418,7 +418,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
             <div className="space-y-1">
               <label className="text-[11px] font-medium text-slate-300 flex items-center justify-between">
                 <span>Emel Rasmi Pensyarah</span>
-                <span className="text-[10px] text-indigo-400 font-mono">{LECTURER_EMAIL_DOMAIN}</span>
+                <span className="text-[10px] text-indigo-400 font-mono font-bold tracking-wide">@mara.gov.my</span>
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -433,7 +433,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                       lecturerPinInputRef.current?.focus();
                     }
                   }}
-                  placeholder={`nama${LECTURER_EMAIL_DOMAIN}`}
+                  placeholder="nama@mara.gov.my"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>
@@ -449,7 +449,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                     <div className="flex items-center gap-1 truncate font-mono text-[11px]">
                       <span className="text-slate-400">Cadangan:</span>
                       <span className="font-bold text-indigo-200 truncate">
-                        {email.split('@')[0]}{LECTURER_EMAIL_DOMAIN}
+                        {email.split('@')[0]}@mara.gov.my
                       </span>
                     </div>
                     <span className="text-[10px] bg-indigo-500/40 text-indigo-200 px-1.5 py-0.5 rounded font-semibold shrink-0">
@@ -463,7 +463,7 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
                 <div className="flex justify-between items-center text-[10px] text-slate-400 px-1 pt-0.5">
                   <span className="text-emerald-400 flex items-center gap-1">
                     <Check className="w-3 h-3 text-emerald-400" />
-                    <span>Domain sah {LECTURER_EMAIL_DOMAIN}</span>
+                    <span>Domain sah @mara.gov.my</span>
                   </span>
                   <button
                     type="button"
@@ -551,6 +551,31 @@ export const LecturerAuthModal: React.FC<LecturerAuthModalProps> = ({
               >
                 <Check className="w-4 h-4" />
                 <span>Masuk Workspace</span>
+              </button>
+            </div>
+
+            {/* In-Modal Emergency Cache Purge Button */}
+            <div className="pt-2 text-center border-t border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    if ('caches' in window) {
+                      caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
+                    }
+                    if ('serviceWorker' in navigator) {
+                      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+                    }
+                    localStorage.removeItem('classattend_saved_lecturer_email');
+                    localStorage.removeItem('syncrozz_trusted_access_v1');
+                    localStorage.removeItem('classattend_active_lecturer_v5');
+                  } catch (e) {}
+                  window.location.replace(window.location.pathname + '?reset=' + Date.now() + window.location.hash);
+                }}
+                className="text-[10px] text-slate-400 hover:text-indigo-300 underline transition-colors cursor-pointer inline-flex items-center gap-1"
+                title="Padam cache peranti dan muat semula versi rasmi terkini"
+              >
+                <span>Masih nampak domain lama? Klik untuk Segar Semula Cache</span>
               </button>
             </div>
           </form>
