@@ -43,83 +43,43 @@
     <!-- Cache Busting for Browser Navigation -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+    <!-- Immediate Cache Busting & ServiceWorker Unregistration -->
+    <script>
+      (function() {
+        // 1. Immediately wipe all browser cache storages
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var i = 0; i < names.length; i++) {
+              caches.delete(names[i]);
+            }
+          });
+        }
+        // 2. Unregister ALL service workers immediately
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var i = 0; i < registrations.length; i++) {
+              registrations[i].unregister();
+            }
+          });
+        }
+        // 3. Remove legacy saved emails or stale sessions
+        try {
+          var saved = localStorage.getItem('classattend_saved_lecturer_email');
+          if (saved && (saved.indexOf('bpenawar') !== -1 || saved.indexOf('@mara.gov.my') === -1)) {
+            localStorage.removeItem('classattend_saved_lecturer_email');
+          }
+          var trusted = localStorage.getItem('syncrozz_trusted_access_v1');
+          if (trusted && trusted.indexOf('bpenawar') !== -1) {
+            localStorage.removeItem('syncrozz_trusted_access_v1');
+            localStorage.removeItem('classattend_active_lecturer_v5');
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      (function() {
-        const CURRENT_VERSION = 'v6-mara-2026';
-        const storedVersion = localStorage.getItem('classattend_sw_version');
-
-        // Automatically purge stale caches and legacy saved email on version bump or reset
-        const shouldPurge =
-          storedVersion !== CURRENT_VERSION ||
-          window.location.search.includes('reset=true') ||
-          window.location.search.includes('refresh=true');
-
-        if (shouldPurge) {
-          if ('caches' in window) {
-            caches.keys().then((names) => {
-              names.forEach((name) => caches.delete(name));
-            });
-          }
-          try {
-            // Clean legacy saved email if it contains outdated domain
-            const savedEmail = localStorage.getItem('classattend_saved_lecturer_email');
-            if (savedEmail && (savedEmail.includes('@bpenawar.kpm') || savedEmail.includes('@bpenawar.kpmbp'))) {
-              localStorage.removeItem('classattend_saved_lecturer_email');
-            }
-          } catch (e) {}
-          localStorage.setItem('classattend_sw_version', CURRENT_VERSION);
-        }
-
-        if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
-          window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').then(
-              (reg) => {
-                console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
-                // Proactively trigger update check
-                reg.update().catch(() => {});
-
-                if (shouldPurge && reg.active) {
-                  reg.active.postMessage({ type: 'PURGE_CACHE' });
-                }
-
-                // If an update is waiting, prompt activation
-                if (reg.waiting) {
-                  reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-                }
-
-                reg.addEventListener('updatefound', () => {
-                  const newWorker = reg.installing;
-                  if (newWorker) {
-                    newWorker.addEventListener('statechange', () => {
-                      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        console.log('[PWA] New version installed and ready.');
-                      }
-                    });
-                  }
-                });
-              },
-              (err) => {
-                console.warn('[PWA] ServiceWorker registration failed:', err);
-              }
-            );
-
-            // Reload once when the new service worker takes control
-            let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-              if (!refreshing) {
-                refreshing = true;
-                window.location.reload();
-              }
-            });
-          });
-        }
-      })();
-    </script>
   </body>
 </html>
 

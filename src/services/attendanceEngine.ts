@@ -27,8 +27,10 @@ import {
 import {
   LECTURER_EMAIL_DOMAIN,
   LEGACY_LECTURER_EMAIL_DOMAIN,
+  LEGACY_LECTURER_EMAIL_DOMAIN_ALT,
   DEFAULT_LECTURER_PIN,
   convertLegacyLecturerEmail,
+  isLegacyLecturerEmail,
   normalizeLecturerName
 } from '../utils/staffUtils';
 import { KNOWN_KPM_COURSES, deduceDepartmentFromCode, splitClassNames, normalizeClassCode } from '../utils/csvHelper';
@@ -769,10 +771,14 @@ class AttendanceEngine {
     emailMigrationMap.set('khairi@bpenawar.kpm.edu.my', 'khairi.mohd@mara.gov.my');
     emailMigrationMap.set('khairi.mohd@bpenawar.kpm.edu.my', 'khairi.mohd@mara.gov.my');
 
-    // Inspect all lecturers for legacy domain @bpenawar.kpm.edu.my
+    // Inspect all lecturers for legacy domain @bpenawar.kpm.edu.my or @bpenawar.kpmbp.edu.my
     this.lecturers = this.lecturers.map((lec) => {
       const emailLower = (lec.email || '').trim().toLowerCase();
-      if (emailLower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN)) {
+      if (
+        emailLower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN) ||
+        emailLower.endsWith(LEGACY_LECTURER_EMAIL_DOMAIN_ALT) ||
+        emailLower.includes('bpenawar')
+      ) {
         const maraMatch = convertLegacyLecturerEmail(emailLower);
         if (maraMatch && maraMatch.endsWith(LECTURER_EMAIL_DOMAIN) && maraMatch !== emailLower) {
           emailMigrationMap.set(emailLower, maraMatch);
